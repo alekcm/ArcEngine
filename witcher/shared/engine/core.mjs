@@ -70,7 +70,7 @@ export function locActionInfo(state, p) {
         }
         case 'poker': if (p.gold < 1) info.err = 'Нужно хотя бы 1 золото'; break;
         case 'swap': {
-            const okCards = p.hand.filter(h => state.row.some(r => r && CARDS[r].cost <= CARDS[h].cost + 1));
+            const okCards = p.hand.filter(h => !CARDS[h].burn && state.row.some(r => r && !CARDS[r].burn && CARDS[r].cost <= CARDS[h].cost + 1));
             if (!okCards.length) info.err = p.hand.length ? 'В ряду нет подходящей карты' : 'Рука пуста';
             break;
         }
@@ -109,6 +109,16 @@ export function options(state, seat) {
     for (const n of ADJ[p.loc] || []) {
         if (!canEnter(state, n)) continue;
         o.moves.push({ to: n, terrain: LOC[n].terrain });
+    }
+    // Выносливость: two moves for one card (the first location is passed through).
+    if (p.hand.some(id => CARDS[id].endurance)) {
+        for (const n of ADJ[p.loc] || []) {
+            if (!canEnter(state, n)) continue;
+            for (const m of ADJ[n] || []) {
+                if (m === p.loc || !canEnter(state, m) || o.moves.some(x => x.to === m)) continue;
+                o.moves.push({ to: m, via: n, terrain: LOC[m].terrain, endurance: true });
+            }
+        }
     }
     o.loc = locActionInfo(state, p);
     o.gearMoves = Object.keys(GEAR_MOVES).filter(k => k === 'CONT79-16' ? hasGear(p, k) : (p.keeps || []).some(x => x.id === k))
@@ -208,18 +218,22 @@ function turnCmd(state, p, cmd) {
         }
         case 'move': {
             const to = Number(cmd.to);
-            if (!(ADJ[p.loc] || []).includes(to) || !canEnter(state, to)) return err('Туда нет дороги');
+            const via = cmd.via == null ? null : Number(cmd.via);
+            if (via != null) {
+                if (!(ADJ[p.loc] || []).includes(via) || !(ADJ[via] || []).includes(to) || to === p.loc || !canEnter(state, via) || !canEnter(state, to)) return err('Туда нет дороги');
+            } else if (!(ADJ[p.loc] || []).includes(to) || !canEnter(state, to)) return err('Туда нет дороги');
             const cards = Array.isArray(cmd.cards) ? cmd.cards : [];
             const gold = Number(cmd.gold) || 0;
-            const e = movePaymentError(state, p, to, cards, gold);
+            const e = movePaymentError(state, p, to, cards, gold, via);
             if (e) return err(e);
             for (const id of cards) { removeFrom(p.hand, id); p.discard.push(id); }
             p.gold -= gold;
             const from = p.loc;
             p.loc = to;
             t.moved = true;
-            log(state, `${p.name}: ${LOC[from].name} → ${LOC[to].name}${gold ? ' (1 карта + 1 золото)' : cards.length === 2 ? ' (2 карты)' : ''}`, { kind: 'move' });
-            fx(state, { k: 'move', seat: p.seat, from, to, cards });
+            log(state, `${p.name}: ${LOC[from].name} → ${via != null ? LOC[via].name + ' → ' : ''}${LOC[to].name}${via != null ? ' (Выносливость)' : gold ? ' (1 карта + 1 золото)' : cards.length === 2 ? ' (2 карты)' : ''}`, { kind: 'move' });
+            if (via != null) { fx(state, { k: 'move', seat: p.seat, from, to: via, cards }); fx(state, { k: 'move', seat: p.seat, from: via, to, cards: [] }); }
+            else fx(state, { k: 'move', seat: p.seat, from, to, cards });
             push(state, { op: 'arrive', seat: p.seat });
             state.undoable = true;
             return ok();
@@ -255,7 +269,7 @@ function turnCmd(state, p, cmd) {
                 }
                 case 'swap': {
                     mark();
-                    const okCards = p.hand.filter(h => state.row.some(r => r && CARDS[r].cost <= CARDS[h].cost + 1));
+                    const okCards = p.hand.filter(h => !CARDS[h].burn && state.row.some(r => r && !CARDS[r].burn && CARDS[r].cost <= CARDS[h].cost + 1));
                     ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: okCards, min: 1, max: 1, title: 'Обмен карты', text: 'Уберите из игры 1 карту из руки; затем возьмите из ряда карту с напечатанной стоимостью не больше чем на 1 выше.', op: 'locSwapPick', args: { seat: p.seat } });
                     break;
                 }
@@ -304,7 +318,8 @@ function fightCmd(state, p, cmd) {
             const blood = cmd.blood == null ? null : Number(cmd.blood);
             const e = comboError(state, p, ids, { free: !!cmd.free, blood });
             if (e) return err(e);
-            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood });
+            const mutOff = Array.isArray(cmd.mutOff) ? cmd.mutOff.filter(x => typeof x === 'string') : [];
+            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood, mutOff, mut8: cmd.mut8 === 'draw' ? 'draw' : 'dmg' });
             return ok();
         }
     }

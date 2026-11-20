@@ -14,6 +14,7 @@ import { sfx } from './sound.js';
 import { MONSTER, LOC } from '/shared/engine/util.mjs';
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
+import { MUTAGEN } from '/shared/data/trail-data.mjs';
 
 let board = null;
 function ensureBoard() {
@@ -126,6 +127,8 @@ function feedback(events, prev) {
             case 'quest': sfx('card'); if (board && prev) setTimeout(() => board.focus(e.loc, 9), 300); break;
             case 'questDone': sfx('trophy'); break;
             case 'd6': sfx('dice'); break;
+            case 'mutagenGain': sfx('elixir'); if (e.seat === S.you && MUTAGEN[e.id]) banner('Мутаген — ' + MUTAGEN[e.id].name, 'Срабатывает раз за битву', 1800); break;
+            case 'mutagen': sfx('elixir'); if (MUTAGEN[e.id]) toast(`${v.players[e.seat].name}: ${MUTAGEN[e.id].name}`, 'info'); break;
         }
     }
     fightEvents(events);

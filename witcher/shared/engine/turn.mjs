@@ -5,8 +5,9 @@ import {
     CARDS, LOC, ADJ, MONSTER, card, log, fx, drawCards, removeFrom, shuffle, skillVal, maxShield, clampShield, potionOf, pname,
 } from './util.mjs';
 import {
-    SCHOOLS, ROW_MODS, LOC_ACTIONS, SKILL_NAME, LEVEL_DRAW, ELIXIR_LIMIT, PHASE3_HAND, TERRAIN_NAME, EXHAUST, TRACK_GOLD, TROPHIES_TO_WIN,
+    SCHOOLS, ROW_MODS, LOC_ACTIONS, SKILL_NAME, LEVEL_DRAW, ELIXIR_LIMIT, PHASE3_HAND, TERRAIN_NAME, EXHAUST, TRACK_GOLD, TROPHIES_TO_WIN, trailOn,
 } from '../data/rules-data.mjs';
+import { MUTAGEN, MUTAGEN_GAIN } from '../data/trail-data.mjs';
 import { SKILLTROPHIES } from '../data/gen-data.mjs';
 import { hasTrophy, hasGear, keepOf, elixirCap, trainCost, GEAR_MOVES } from './effects.mjs';
 import { bombOfferError, askElixirOrBomb } from './bombs.mjs';
@@ -68,11 +69,38 @@ STEPS.levelCheck = (state, step) => {
     const p = state.players[step.seat];
     while (p.level < 5 && Object.values(p.skills).every(v => v > p.level)) {
         p.level++;
+        // «По следу монстра», мутагены: mutagens instead of the cards for the new level.
+        if (trailOn(state, 'mutagens')) {
+            const m = MUTAGEN_GAIN[p.level] || 0;
+            log(state, `${p.name} достигает ${p.level}-го уровня ведьмака и получает мутаген${m > 1 ? 'ы' : ''} (${m})`, { kind: 'level' });
+            fx(state, { k: 'level', seat: p.seat, v: p.level });
+            for (let i = 0; i < m; i++) push(state, { op: 'mutagenGain', seat: p.seat });
+            continue;
+        }
         const n = LEVEL_DRAW[p.level] || 0;
         log(state, `${p.name} достигает ${p.level}-го уровня ведьмака${n ? ` и берёт ${n} карт${n === 1 ? 'у' : 'ы'}` : ''}`, { kind: 'level' });
         fx(state, { k: 'level', seat: p.seat, v: p.level });
         drawCards(state, p, n);
     }
+};
+/** Mutagen: reveal 3, keep 1, shuffle the other 2 back (По следу монстра.md p. 3). */
+STEPS.mutagenGain = (state, step) => {
+    const p = state.players[step.seat];
+    const deck = state.mutagenDeck || [];
+    const top = deck.splice(0, 3);
+    if (!top.length) { log(state, 'Колода мутагенов пуста'); return; }
+    if (top.length === 1 || p.bot) { push(state, { op: 'mutagenTake', seat: p.seat, ids: [top[0]], rest: top.slice(1) }); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'mutagens', ids: top, min: 1, max: 1, big: true, title: 'Мутаген', text: 'Выберите 1 мутаген. Его эффект можно применять раз в каждой битве; остальные вернутся в колоду.', op: 'mutagenTake', args: { seat: p.seat, rest: top } });
+};
+STEPS.mutagenTake = (state, step) => {
+    const p = state.players[step.seat];
+    const id = step.ids[0];
+    p.mutagens = p.mutagens || [];
+    p.mutagens.push(id);
+    state.mutagenDeck.push(...step.rest.filter(x => x !== id));
+    shuffle(state, state.mutagenDeck);
+    log(state, `${p.name} получает мутаген: ${MUTAGEN[id].name} — ${MUTAGEN[id].cond.replace(/:$/, '')}`);
+    fx(state, { k: 'mutagenGain', seat: p.seat, id });
 };
 
 STEPS.gainElixir = (state, step) => {
@@ -174,7 +202,7 @@ STEPS.gameOver = (state, step) => {
 // ---------------------------------------------------------------------------------------------
 export const rowCost = (state, slot) => {
     const id = state.row[slot];
-    return id ? Math.max(0, CARDS[id].cost + ROW_MODS[slot]) : null;
+    return id ? (CARDS[id].burn ? -1 : Math.max(0, CARDS[id].cost + ROW_MODS[slot])) : null;
 };
 /** What `p` pays for row cell `slot` this turn: free / discounted by an event, Гертруда ignores
  *  the +1 cell modifier (CONT80-39). */
@@ -183,6 +211,8 @@ export function buyCost(state, p, slot) {
     if (!id) return null;
     const t = state.turn;
     if (t && t.freeBuy) return 0;
+    // «Убрать из игры 1 карту из руки» — not a number, the cell does not change it (shown as -1).
+    if (CARDS[id].burn) return -1;
     const mod = ROW_MODS[slot] > 0 && hasGear(p, 'CONT80-39') ? 0 : ROW_MODS[slot];
     return Math.max(0, CARDS[id].cost + mod - ((t && t.buyDiscount) || 0));
 }
@@ -229,10 +259,12 @@ STEPS.takeZeroDone = (state, step) => {
 // Movement
 // ---------------------------------------------------------------------------------------------
 /** Can these cards/gold pay for entering `to`? (База.md p. 12) */
-export function movePaymentError(state, p, to, cards, gold) {
+export function movePaymentError(state, p, to, cards, gold, via) {
     const dest = LOC[to];
     if (!cards.every(id => p.hand.includes(id)) || new Set(cards).size !== cards.length) return 'Этих карт нет в руке';
     if (gold > p.gold) return 'Не хватает золота';
+    // Выносливость («По следу монстра»): one card pays for two moves through `via`.
+    if (via != null) return cards.length === 1 && !gold && CARDS[cards[0]].endurance ? null : `Два перемещения (через ${LOC[via].name}) — только картой «Выносливость»`;
     const matches = (id) => { const c = CARDS[id]; return c.terrain === 'joker' || dest.terrain === 'joker' || c.terrain === dest.terrain; };
     if (cards.length === 1 && gold === 0 && matches(cards[0])) return null;
     if (cards.length === 2 && gold === 0) return null;
@@ -342,8 +374,8 @@ STEPS.locSwapPick = (state, step) => {
     const removed = step.ids[0];
     removeFrom(p.hand, removed);
     p.removed.push(removed);
-    const lim = CARDS[removed].cost + 1;
-    const ok = state.row.filter(id => id && CARDS[id].cost <= lim);
+    const lim = CARDS[removed].burn ? -1 : CARDS[removed].cost + 1;
+    const ok = state.row.filter(id => id && !CARDS[id].burn && CARDS[id].cost <= lim);
     log(state, `${p.name} убирает из игры «${CARDS[removed].name}»`);
     if (!ok.length) return;
     ask(state, { seat: p.seat, kind: 'cards', from: 'row', ids: ok, min: 1, max: 1, title: 'Обмен карты', text: `Возьмите в руку карту из ряда с напечатанной стоимостью не больше ${lim}.`, op: 'locSwapTake', args: { seat: p.seat } });
@@ -402,7 +434,7 @@ STEPS.p3discardAsk = (state) => {
     const min = Math.max(0, p.hand.length - PHASE3_HAND);
     if (!p.hand.length) { push(state, { op: 'p3draw' }); return; }
     ask(state, {
-        seat: p.seat, kind: 'cards', from: 'hand', ids: p.hand.slice(), min, max: p.hand.length, ui: 'hand',
+        seat: p.seat, kind: 'cards', from: 'hand', ids: p.hand.slice(), min, max: p.hand.length, ui: 'hand', big: true,
         title: 'Фаза III: сброс', text: min ? `Сбросьте карты, чтобы в руке осталось не больше 3 (минимум ${min}).` : 'Можно сбросить любые карты (необязательно).',
         op: 'p3discard', args: {},
     });
@@ -427,6 +459,7 @@ export function buyOptions(state, p) {
     return state.row.map((id, slot) => {
         if (!id) return null;
         const cost = buyCost(state, p, slot);
+        if (cost < 0) return { slot, id, cost, burn: true, ok: p.hand.length >= 1 };
         const water = hasTrophy(p, 'MON-31') && p.hand.some(h => CARDS[h].terrain === 'water');
         return { slot, id, cost, ok: p.hand.length >= cost || water };
     }).filter(Boolean);
@@ -438,7 +471,7 @@ STEPS.p3buyAsk = (state) => {
     ask(state, {
         seat: p.seat, kind: 'choice', ui: 'row', title: 'Фаза III: новая карта',
         text: 'Обязательно возьмите 1 карту из ряда, сбросив из руки карты по её стоимости (с учётом ячейки).',
-        options: opts.map(o => ({ id: String(o.slot), label: `${CARDS[o.id].name} — ${o.cost}`, cost: o.cost, disabled: !o.ok, hint: o.ok ? '' : 'Мало карт в руке' })),
+        options: opts.map(o => ({ id: String(o.slot), label: `${CARDS[o.id].name} — ${o.burn ? 'убрать 1 карту' : o.cost}`, cost: o.cost, burn: !!o.burn, disabled: !o.ok, hint: o.ok ? '' : o.burn ? 'Нужна карта в руке, чтобы убрать её из игры' : 'Мало карт в руке' })),
         op: 'p3buyPick', args: {},
     });
 };
@@ -447,6 +480,14 @@ STEPS.p3buyPick = (state, step) => {
     const slot = Number(step.choice);
     const cost = buyCost(state, p, slot);
     const waterOk = hasTrophy(p, 'MON-31') && p.hand.some(h => CARDS[h].terrain === 'water');
+    if (cost < 0) {
+        ask(state, {
+            seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, big: true,
+            title: 'Оплата: убрать карту из игры', text: `Чтобы взять «${CARDS[state.row[slot]].name}», уберите из игры 1 карту из руки.`,
+            op: 'p3buyPay', args: { slot, burn: true },
+        });
+        return;
+    }
     if (cost === 0) { push(state, { op: 'p3buyPay', slot, ids: [] }); return; }
     if (waterOk) {
         ask(state, {
@@ -465,11 +506,12 @@ STEPS.p3buyPick = (state, step) => {
 STEPS.p3buyPay = (state, step) => {
     const p = state.players[state.turn.seat];
     const id = state.row[step.slot];
-    for (const c of step.ids) { removeFrom(p.hand, c); p.discard.push(c); }
+    if (step.burn) for (const c of step.ids) { removeFrom(p.hand, c); p.removed.push(c); log(state, `${p.name} убирает из игры «${CARDS[c].name}»`); }
+    else for (const c of step.ids) { removeFrom(p.hand, c); p.discard.push(c); }
     state.row[step.slot] = null;
     p.hand.push(id);
     fx(state, { k: 'gain', seat: p.seat, id, to: 'hand', slot: step.slot });
-    log(state, `${p.name} получает «${CARDS[id].name}»${step.ids.length ? `, сбросив ${step.ids.length}` : ''}`);
+    log(state, `${p.name} получает «${CARDS[id].name}»${step.burn ? '' : step.ids.length ? `, сбросив ${step.ids.length}` : ''}`);
     // Solo: if the card was not taken from the rightmost cell, that cell's card leaves the game.
     if (state.solo && step.slot !== 5 && state.row[5]) {
         const gone = state.row[5];

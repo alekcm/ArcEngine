@@ -153,6 +153,32 @@ export function bombScenario(seed = 14) {
     if (state_locPop(st, slot.terrain) != null) p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
     return st;
 }
+/**
+ * «По следу монстра» without the bombs: Алувар (Школа Мантикоры) on a monster with every other
+ * mini-expansion on — his unique «Цикл дыхания», master actions in the hand (Боевой транс,
+ * Засада, Пируэт, Обман, Выносливость for a double move), Уворот/Контратака on top of the deck
+ * (discard effects), three mutagens, two elixirs for «Быстрый метаболизм», a «Решающий удар» in
+ * the row (cost: remove a card from the hand).
+ */
+export const TRAIL_ALL = ['trail', 'trail:bombs', 'trail:manticore', 'trail:troll', 'trail:mutagens', 'trail:unique', 'trail:masters'];
+export function trailScenario(seed = 15) {
+    const st = createGame({ seed, exp: TRAIL_ALL, players: [{ name: 'Игрок', school: 'manticore' }, { name: 'Весемир', school: 'wolf', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    const slot = st.slots.find(s => s.mon);
+    p.loc = slot.token;
+    st.turn.moved = true;
+    const take = (id) => { st.actionDeck.splice(st.actionDeck.indexOf(id), 1); return id; };
+    const own = [...p.hand, ...p.deck];
+    p.hand = ['WITCHER-UNIQUE-06', take('MASTER-29'), take('MASTER-33'), take('MASTER-01'), take('MASTER-17'), take('MASTER-25')];
+    p.deck = [take('MASTER-09'), take('MASTER-21'), ...own.filter(id => !p.hand.includes(id))];
+    st.actionDeck.push(st.row[2]); st.row[2] = take('MASTER-05');
+    for (const m of ['MUT-02', 'MUT-08', 'MUT-15']) { st.mutagenDeck.splice(st.mutagenDeck.indexOf(m), 1); p.mutagens.push(m); }
+    p.skills.spec = 3; p.skills.alchemy = 3; p.skills.defense = 2; p.shield = 1; p.gold = 4; p.level = 3; p.skills.combat = 3;
+    p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift());
+    if (state_locPop(st, slot.terrain) != null) p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -186,8 +212,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

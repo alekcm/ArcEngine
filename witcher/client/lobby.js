@@ -5,6 +5,7 @@ import { Store } from './store.js';
 import { icon } from './icons.js';
 import { esc } from './cards.js';
 import { SCHOOLS, SCHOOL_ORDER, GAME_MODES, HOUSE_RULES, EXPANSIONS_READY } from '/shared/data/rules-data.mjs';
+import { TRAIL_PARTS } from '/shared/data/trail-data.mjs';
 import { Preview } from './board.js';
 
 let preview = null;
@@ -15,13 +16,15 @@ const SCHOOL_TEXT = {
     viper: 'Джаспер. «Отравленный клинок»: когда противник сбрасывает карты — сбросить ещё.',
     griffin: 'Годрик. «Магия»: Знак любого цвета продолжает комбинацию.',
     ciri: 'Цири. «Старшая Кровь»: раз за битву одна карта комбинации получает связь любого цвета. Родная школа — Каэр Морхен.',
+    manticore: 'Алувар. «Быстрый метаболизм»: раз за битву сбросить неиспользованные эликсиры — урон и карты из колоды.',
 };
+const SCHOOL_NEEDS = { ciri: '«Цири и доп. события»', 'trail:manticore': '«По следу монстра» → Школа Мантикоры' };
 const EXPANSIONS = [
     ['legendary', 'Легендарная охота', 'легендарные монстры и снаряжение'],
     ['skellige', 'Скеллиге', 'острова 19–21, корабли и новые события'],
     ['mages', 'Чародеи', 'играбельные чародеи'],
     ['ciri', 'Цири и доп. события', 'Цири, новые события исследования, тайные карты и жетоны заданий'],
-    ['trail', 'По следу монстра', 'пока что бомбы — альтернатива эликсирам; Мантикора, мутагены, мастерские действия и уязвимости — следующими'],
+    ['trail', 'По следу монстра', 'мини-дополнения можно включать по отдельности — уязвимости и особые атаки монстров подключаются следующими'],
     ['extra', 'Дополнительный монстр', 'новый монстр'],
 ];
 
@@ -36,7 +39,7 @@ export function renderLobby() {
     const schools = Object.entries(SCHOOLS).map(([k, sc]) => {
         const open = sc.base || (L.settings.exp || []).includes(sc.exp);
         const cls = k === mySchool ? 'sel' : (taken.has(k) || !open) ? 'taken' : '';
-        const why = !open ? 'Включите дополнение «Цири и доп. события»' : taken.has(k) ? 'Уже выбрано другим игроком' : '';
+        const why = !open ? `Включите дополнение ${SCHOOL_NEEDS[sc.exp] || ''}` : taken.has(k) ? 'Уже выбрано другим игроком' : '';
         return `<div class="school ${cls}" data-school="${k}" style="--sc:${sc.color}" ${why ? `title="${esc(why)}"` : ''}><b>${esc(sc.school)}</b><small>${esc(SCHOOL_TEXT[k] || '')}${!open ? '<em> · нужно дополнение</em>' : ''}</small></div>`;
     }).join('');
     const seats = L.seats.map(s => `<div class="seat" style="--sc:${SCHOOLS[s.school].color}"><span class="dot"></span><span class="nm">${s.bot ? icon('bot') + ' ' : ''}${esc(s.name)}</span><span class="tag ${s.host ? 'host' : ''}">${s.host ? 'хозяин' : s.bot ? 'бот' : s.online ? 'в сети' : 'не в сети'} · ${esc(SCHOOLS[s.school].name)}</span>${isHost && s.id !== S.you ? btn({ label: '', icon: icon('close'), small: true, data: `data-kick="${s.id}"` }) : ''}</div>`).join('');
@@ -61,9 +64,9 @@ export function renderLobby() {
             <div class="exp">${EXPANSIONS.map(([id, n, d]) => {
                 const ready = EXPANSIONS_READY.includes(id);
                 const why = !ready ? 'Подключается на следующем этапе' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
-                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>`;
+                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>${id === 'trail' ? trailParts(L, isHost) : ''}`;
             }).join('')}
-            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий; «По следу монстра» — бомбы.</div></div>
+            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий; «По следу монстра» — бомбы, Мантикора, тролль, мутагены, уникальные и мастерские действия.</div></div>
             ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 12).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
             <div class="lobby-actions">${isHost ? btn({ id: 'lStart', label: 'Начать партию', primary: true, key: 'Enter' }) : '<span style="color:var(--dim)">Ждём, пока хозяин начнёт партию…</span>'}</div>
             <div class="lan">Друзья в той же сети подключаются по адресу: ${(L.addresses || []).map(a => `<code>http://${a}:${L.port}/</code>`).join(' ') || '<code>' + location.host + '</code>'}</div>
@@ -80,7 +83,13 @@ export function renderLobby() {
     on('lSeed', 'onchange', (e) => send({ t: 'lobby', settings: { seed: e.target.value } }));
     on('lStart', 'onclick', () => send({ t: 'start' }));
     for (const b of el.querySelectorAll('[data-mode]')) b.onclick = () => { if (isHost) send({ t: 'lobby', settings: { mode: b.dataset.mode } }); };
-    for (const c of el.querySelectorAll('[data-exp]')) c.onchange = () => send({ t: 'lobby', settings: { exp: [...el.querySelectorAll('[data-exp]:checked')].map(x => x.dataset.exp) } });
+    for (const c of el.querySelectorAll('[data-exp]')) c.onchange = () => {
+        let exp = [...el.querySelectorAll('[data-exp]:checked')].map(x => x.dataset.exp);
+        // Switching «По следу монстра» on turns every mini-expansion on; switching all of them off turns it off.
+        if (c.dataset.exp === 'trail' && c.checked) exp = [...exp.filter(x => !x.startsWith('trail:')), ...TRAIL_PARTS.map(t => 'trail:' + t.id)];
+        if (c.dataset.exp.startsWith('trail:') && !exp.some(x => x.startsWith('trail:'))) exp = exp.filter(x => x !== 'trail');
+        send({ t: 'lobby', settings: { exp } });
+    };
     for (const c of el.querySelectorAll('[data-rule]')) c.onchange = () => send({ t: 'lobby', settings: { rules: { [c.dataset.rule]: c.checked } } });
     // One persistent preview canvas (WebGL contexts are limited), moved into the fresh markup.
     if (!previewBox) {
@@ -95,6 +104,17 @@ export function renderLobby() {
     if (preview) { preview.show(mySchool); preview.engine.stopRenderLoop(); preview.engine.runRenderLoop(() => preview.scene.render()); setTimeout(() => preview.engine.resize(), 0); }
 }
 let previewBox = null;
+
+/** «По следу монстра» mini-expansions, each on its own (Книги правил/По следу монстра.md p. 3). */
+function trailParts(L, isHost) {
+    const exp = L.settings.exp || [];
+    const on = exp.includes('trail');
+    return `<div class="subexp ${on ? '' : 'off'}">${TRAIL_PARTS.map(t => {
+        const id = 'trail:' + t.id;
+        const why = !on ? 'Сначала включите «По следу монстра»' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
+        return `<label class="check" title="${esc(why)}"><input type="checkbox" data-exp="${id}" ${on && exp.includes(id) ? 'checked' : ''} ${on && isHost ? '' : 'disabled'}><span><b>${esc(t.name)}</b> — ${esc(t.text)}</span></label>`;
+    }).join('')}</div>`;
+}
 
 /** Game creation mode: «Кастомная игра» (house rules toggled freely) or «Игра на MMR» (all on). */
 function modeHtml(L, isHost) {

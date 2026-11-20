@@ -2,7 +2,8 @@
 // everyone else sees who is deciding.
 import { S, $, cmd, btn } from './ctx.js';
 import { icon } from './icons.js';
-import { actionCard, elixirCard, bombCard, attackCard, monsterCard, eventCard, esc } from './cards.js';
+import { actionCard, elixirCard, bombCard, attackCard, monsterCard, eventCard, mutagenCard, esc } from './cards.js';
+import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { CARDS, ATTACK, MONSTER } from '/shared/engine/util.mjs';
 import { ROW_MODS } from '/shared/data/rules-data.mjs';
 import { sfx } from './sound.js';
@@ -48,13 +49,16 @@ export function renderPrompt() {
     const sel = S.ui.sel;
     const cardsHtml = pr.ids.map(id => {
         const s = sel.includes(id);
-        const o = { sel: s, cls: 'pick' + (pr.from === 'row' ? ' buy' : ''), small: pr.ids.length > 8 };
+        // Phase III discard: the hand as big as the purchase row (nearly touching).
+        const big = pr.from === 'row' || pr.big;
+        const o = { sel: s, cls: 'pick' + (big ? ' buy' : ''), small: !big && pr.ids.length > 8 };
         if (String(id).startsWith('POTION')) return elixirCard(id, o);
         if (String(id).startsWith('BOMB')) return bombCard(id, { ...o, cls: o.cls });
         if (ATTACK[id]) return `<div class="pick ${s ? 'sel' : ''}" data-id="${esc(id)}" style="border-radius:9px">${attackCard(id)}</div>`;
         if (MONSTER[id]) return monsterCard(id, {});
+        if (MUTAGEN[id]) return mutagenCard(id, { sel: s, cls: 'pick big' });
         if (CARDS[id]) {
-            if (pr.from === 'row') { const i = v.row.indexOf(id); if (i >= 0) o.cost = Math.max(0, CARDS[id].cost + ROW_MODS[i]); }
+            if (pr.from === 'row' && !CARDS[id].burn) { const i = v.row.indexOf(id); if (i >= 0) o.cost = Math.max(0, CARDS[id].cost + ROW_MODS[i]); }
             return actionCard(id, o);
         }
         return `<div class="card pick ${s ? 'sel' : ''}" data-id="${esc(id)}"><div class="name">${esc(id)}</div></div>`;
@@ -67,9 +71,9 @@ export function renderPrompt() {
     const need = chainErr || (pr.min === pr.max ? `Выберите ${pr.min}` : `Выберите от ${pr.min} до ${pr.max}`);
     const tot = combo && n ? comboTotals(v, v.players[S.you], sel) : null;
     const comboInfo = combo ? `<div class="combosum">${n ? `${sel.map((id, i) => `<b>${i + 1}</b> ${esc(CARDS[id].name)}`).join(' → ')} · урон <b>${tot.dmg}</b> · щит <b>+${tot.shield}</b>` : 'Щёлкайте карты по порядку цепочки'}</div>` : '';
-    el.innerHTML = `<div class="box"><h2>${esc(pr.title || 'Выбор карт')}</h2>${pr.text ? `<p>${esc(pr.text)}</p>` : ''}
+    el.innerHTML = `<div class="box${pr.big ? ' rowbox' : ''}"><h2>${esc(pr.title || 'Выбор карт')}</h2>${pr.text ? `<p>${esc(pr.text)}</p>` : ''}
         <div class="${combo ? 'comborow' : ''}">${pr.card && combo ? `<div class="combocard">${eventCard(pr.card, { stage: 'full' })}</div>` : ''}
-        <div class="${combo ? 'combopick' : ''}"><div class="cards">${cardsHtml || '<span style="color:var(--dim)">Нет подходящих карт</span>'}</div>${comboInfo}</div></div>
+        <div class="${combo ? 'combopick' : ''}"><div class="cards${pr.big ? ' bigrow' : ''}">${cardsHtml || '<span style="color:var(--dim)">Нет подходящих карт</span>'}</div>${comboInfo}</div></div>
         <div class="foot"><span class="cnt">${need}. Выбрано: ${n}</span>
         ${pr.min === 0 && n === 0 ? btn({ id: 'pSkip', label: 'Пропустить', key: 'Esc' }) : ''}
         ${btn({ id: 'pOk', label: combo ? 'Разыграть' : 'Готово', primary: true, why: okCount ? null : need, key: 'Enter' })}</div></div>`;
@@ -96,7 +100,7 @@ function renderRow(el, pr) {
         const cost = o.cost != null ? o.cost : Math.max(0, CARDS[id].cost + ROW_MODS[slot]);
         return `<div class="buyslot ${o.disabled ? 'dis' : ''}" data-c="${esc(o.id)}" ${o.disabled ? `title="${esc(o.hint || 'Недоступно')}"` : ''}>
             ${actionCard(id, { cls: 'buy ' + (o.disabled ? 'no' : 'pick'), cost })}
-            <div class="buycap">${o.disabled ? esc(o.hint || 'Недоступно') : `сбросить ${cost}`}</div></div>`;
+            <div class="buycap">${o.disabled ? esc(o.hint || 'Недоступно') : o.burn ? 'убрать из игры 1 карту' : `сбросить ${cost}`}</div></div>`;
     }).join('');
     el.innerHTML = `<div class="box rowbox"><h2>${esc(pr.title || 'Выбор')}</h2>${pr.text ? `<p>${esc(pr.text)}</p>` : ''}
         <div class="buyrow">${cards}</div>
@@ -118,7 +122,7 @@ export function initZoom() {
         cur = null; hosts = [];
     };
     const show = (on) => {
-        const c = on && over && over.closest ? over.closest('.card.action, .card.attack, .evcard') : null;
+        const c = on && over && over.closest ? over.closest('.card.action, .card.attack, .card.mutagen, .evcard') : null;
         if (c === cur) return;
         reset();
         if (!c) return;

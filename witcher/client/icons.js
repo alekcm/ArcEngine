@@ -53,5 +53,5 @@ export function icon(name, cls = '', title = '') {
 }
 
 export const TERRAIN_COLOR = { forest: '#3f8a3a', mountain: '#8a8f98', water: '#2f7fbf', joker: '#b08a3a' };
-export const CARD_COLOR = { blue: '#3b7fc4', red: '#b8382f', green: '#3e9150', purple: '#7d4fb0', yellow: '#c9a12e' };
+export const CARD_COLOR = { blue: '#3b7fc4', red: '#b8382f', green: '#3e9150', purple: '#7d4fb0', yellow: '#c9a12e', grey: '#8a8b8d' };
 export const SKILL_ICON = { combat: 'combat', defense: 'defense', alchemy: 'alchemy', spec: 'spec' };

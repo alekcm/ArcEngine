@@ -5,8 +5,9 @@
 import { STEPS, push, ask } from './flow.mjs';
 import { log, fx, removeFrom, shuffle, potionOf } from './util.mjs';
 import { BOMBS_IN_PLAY, BOMB_COPIES, BOMB_LIMIT, bombOf, BOMB } from '../data/bombs-data.mjs';
+import { trailOn } from '../data/rules-data.mjs';
 
-export const bombsOn = (state) => (state.exp || []).includes('trail');
+export const bombsOn = (state) => trailOn(state, 'bombs');
 /** Older saves and sandboxes switched to «По следу монстра» get their bomb deck on first use. */
 export function ensureBombs(state) {
     if (!bombsOn(state)) return;

@@ -1,8 +1,9 @@
 // Game setup (База.md pp. 6–8, solo p. 33).
 import { STARTER, COMMON, POTIONS, SKILLTROPHIES } from '../data/gen-data.mjs';
 import { BOMBS_IN_PLAY, BOMB_COPIES } from '../data/bombs-data.mjs';
-import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp } from '../data/rules-data.mjs';
-import { MONSTER, LOC, shuffle, randInt, log, drawCards } from './util.mjs';
+import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
+import { MASTERS, MUTAGENS, UNIQUE_OF } from '../data/trail-data.mjs';
+import { MONSTER, LOC, CARDS, shuffle, randInt, log, drawCards } from './util.mjs';
 import { push, run, ask } from './flow.mjs';
 
 /**
@@ -25,11 +26,12 @@ export function createGame(opts) {
     const lobby = order.map(i => opts.players[i]);
 
     // 2. Action deck and row: three cost-0 cards to the right, three random to the left.
-    state.actionDeck = shuffle(state, COMMON.map(c => c.id));
+    // «По следу монстра»: the master action sets are shuffled into the action deck.
+    state.actionDeck = shuffle(state, [...COMMON.map(c => c.id), ...(trailOn(state, 'masters') ? MASTERS.map(c => c.id) : [])]);
     const zeros = [], others = [];
     while (zeros.length < 3) {
         const id = state.actionDeck.shift();
-        (COMMON.find(c => c.id === id).cost === 0 ? zeros : others).push(id);
+        (CARDS[id].cost === 0 ? zeros : others).push(id);
     }
     state.actionDeck.push(...others);
     shuffle(state, state.actionDeck);
@@ -39,7 +41,7 @@ export function createGame(opts) {
     // 3. Elixirs: 4 copies of each of 7.
     state.elixirDeck = shuffle(state, POTIONS.flatMap(p => [1, 2, 3, 4].map(k => p.id + '#' + k)));
     // «По следу монстра»: the bomb deck lies next to the elixirs (4 copies of each bomb in play).
-    if (state.exp.includes('trail')) state.bombDeck = shuffle(state, BOMBS_IN_PLAY.flatMap(b => Array.from({ length: BOMB_COPIES }, (_, k) => b.id + '#' + (k + 1))));
+    if (trailOn(state, 'bombs')) state.bombDeck = shuffle(state, BOMBS_IN_PLAY.flatMap(b => Array.from({ length: BOMB_COPIES }, (_, k) => b.id + '#' + (k + 1))));
 
     // 4. Skill trophies.
     if (n === 1) {
@@ -54,7 +56,9 @@ export function createGame(opts) {
     }
 
     // 8. Monsters.
-    for (const id of BASE_MONSTERS) state.monsterStacks[MONSTER[id].level].push(id);
+    for (const id of [...BASE_MONSTERS, ...(trailOn(state, 'troll') ? ['MON-30'] : [])]) state.monsterStacks[MONSTER[id].level].push(id);
+    // Mutagens: a face-down deck next to the board.
+    state.mutagenDeck = trailOn(state, 'mutagens') ? shuffle(state, MUTAGENS.map(m => m.id)) : [];
     for (const l of [1, 2, 3]) shuffle(state, state.monsterStacks[l]);
     let levels = [1, 1, 1];
     if (n === 1) levels = [1, 2, 3];
@@ -76,14 +80,15 @@ export function createGame(opts) {
     // 10. Players.
     lobby.forEach((lp, seat) => {
         const school = SCHOOLS[lp.school] ? lp.school : 'wolf';
-        const deck = shuffle(state, STARTER.filter(c => c.school === school).map(c => c.id));
+        // Unique actions: the hero's own card goes into the starting deck (11 cards).
+        const deck = shuffle(state, [...STARTER.filter(c => c.school === school).map(c => c.id), ...(trailOn(state, 'unique') && UNIQUE_OF[school] ? [UNIQUE_OF[school]] : [])]);
         const [cards, gold] = n === 1 ? [5, 3] : START_RES[n][seat];
         const p = {
             seat, name: lp.name || SCHOOLS[school].hero, school, bot: lp.bot || 0, loc: SCHOOLS[school].home,
             gold, hand: [], deck, discard: [], removed: [], elixirs: [], bombs: [],
             skills: { combat: 1, defense: 1, alchemy: 1, spec: 1 }, level: 1, shield: 1,
             trophies: [], track: 0, witcherTrophies: n - 1, trackTokens: { forest: null, mountain: null, water: null },
-            hunts: [], quests: [], gear: [], keeps: [], monstersDefeated: 0, turns: 0,
+            hunts: [], quests: [], gear: [], keeps: [], mutagens: [], monstersDefeated: 0, turns: 0,
         };
         state.players.push(p);
         drawCards(state, p, cards);

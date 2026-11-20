@@ -72,6 +72,9 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .check { display: flex; align-items: center; gap: 8px; color: var(--txt); font-size: 13px; cursor: pointer; }
 .exp { font-size: 12px; color: var(--dim); line-height: 1.5; }
 .exp b { color: var(--txt); font-weight: 500; }
+.exp .subexp { margin: 0 0 4px 22px; padding-left: 10px; border-left: 2px solid var(--line2); }
+.exp .subexp.off { opacity: .45; }
+.exp .subexp .check { margin: 1px 0; }
 
 /* ---------------------------------------------------------------- HUD layout */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
@@ -215,6 +218,8 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 #modal .opts { display: flex; flex-direction: column; gap: 6px; }
 #modal .opts .btn { justify-content: flex-start; white-space: normal; text-align: left; }
 #modal .cards { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; margin: 8px 0 14px; }
+#modal .cards.bigrow { gap: 6px; }
+#modal .cards.bigrow .card.sel { transform: translateY(-10px); }
 #modal .foot { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 8px; }
 #modal .foot .cnt { flex: 1; color: var(--dim); }
 #modal .wait { display: flex; align-items: center; gap: 10px; color: var(--dim); }
@@ -258,6 +263,17 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 #fight .wit .bigstat .ic { width: 26px; height: 26px; }
 #fight .fbtns { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 #fight .fbtns .btn { justify-content: flex-start; white-space: normal; text-align: left; }
+#fight .fmuts { width: 100%; padding: 6px 8px; flex-shrink: 0; }
+#fight .me > .wit, #fight .me > .fbtns { flex-shrink: 0; }
+#fight .flog { min-height: 60px; }
+#fight .fmuts .ttl { font-size: 11.5px; color: var(--dim); margin-bottom: 4px; }
+#fight .fmuts .row2 { display: flex; flex-wrap: wrap; gap: 6px; }
+#fight .fmut { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 76px; }
+#fight .fmut small { font-size: 10.5px; color: var(--dim); text-align: center; line-height: 1.1; }
+#fight .fmut[data-mut] { cursor: pointer; }
+#fight .fmut.on .card { box-shadow: 0 0 0 2px var(--gold2), 0 0 14px var(--gold); }
+#fight .fmut.on small { color: var(--gold2); }
+#fight .fmut.off .card { opacity: .55; outline: 2px dashed var(--line2); }
 #fight .fhand { grid-column: 1 / 4; display: flex; justify-content: center; align-items: flex-end; padding: 18px 0 10px; min-width: 0; }
 #fight .fhand .hslot { position: relative; transition: transform .14s; }
 #fight .fhand .hslot:last-child { margin-right: 0 !important; }
@@ -363,6 +379,14 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .card.action .nm { left: 246px; top: 822px; width: 250px; height: 36px; display: flex; align-items: center; justify-content: center; font-family: 'WName', var(--font); font-weight: 800; color: #1c1c1c; text-transform: uppercase; white-space: nowrap; letter-spacing: .2px; }
 .card.action .cs { left: 511px; top: 805px; width: 44px; height: 72px; display: flex; align-items: center; justify-content: center; font: 600 64px/1 'WNum', var(--font); color: #e6e2da; -webkit-text-stroke: 3px #1d1b19; paint-order: stroke fill; }
 .card.action .cs.down { color: #9fe08a; } .card.action .cs.up { color: #ff8f7a; }
+.card.action.printed .face .art { background-position: 50% 50%; background-size: 100% 100%; }
+.card.action .cs.over { background: #2a2622; border-radius: 6px; box-shadow: 0 0 0 3px #1d1b19; }
+.card.mutagen { width: 128px; height: 199px; border: 0; border-radius: 6px; background: #111; overflow: hidden; position: relative; }
+.card.mutagen .art { position: absolute; inset: 0; height: auto; background-size: 100% 100%; }
+.card.mutagen .art::after { display: none; }
+.card.mutagen.big, #modal .cards.bigrow .card.mutagen { width: 196px; height: 304px; }
+.card.mutagen.small { width: 72px; height: 112px; }
+.card.mutagen.used { filter: grayscale(.85) brightness(.6); }
 .card .cmod { position: absolute; right: 2px; bottom: calc(103px * var(--k)); padding: 0 4px; border-radius: 6px; font: 700 10px/14px var(--font); background: #000c; }
 .card .cmod.down { color: #9fe08a; } .card .cmod.up { color: #ff8f7a; }
 .card.action .order { top: 30%; }

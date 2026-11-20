@@ -10,7 +10,9 @@ export const cardValue = (id) => {
     const c = CARDS[id];
     if (!c) return 0;
     const f = c.fx;
-    return (f.dmg || 0) * 3 + (f.shield || 0) * 2 + (f.draw || 0) + (f.top ? 2 : 0) + c.links.length * 1.5 + c.cost;
+    // «По следу монстра»: dice, Река гнева, any colour; «убрать карту» cost counts as 3.
+    return (f.dmg || 0) * 3 + (f.shield || 0) * 2 + (f.draw || 0) + (f.top ? 2 : 0) + c.links.length * 1.5 + (c.burn ? 3 : c.cost)
+        + (f.dice ? 6 : 0) + (f.river ? 5 : 0) + (c.any ? 2 : 0) + (f.fixedDraw != null ? -2 : 0) + (c.onDiscard ? 1 : 0);
 };
 
 /** Best combo by DFS over the hand (at most ~7 cards, cheap). With Цири's «Старшая Кровь»
@@ -23,7 +25,8 @@ export function bestCombo(view, p, useBlood = false) {
     const score = (ids, blood) => {
         const t = comboTotals(view, p, ids, { blood });
         // Blood is once per fight: only spend it for a real gain.
-        return t.dmg * 3 + Math.min(t.shield, 4 - p.shield) * 2 + t.draw * 1.2 + t.top + t.ret.length * 2 - (blood != null ? 2.5 : 0);
+        const diceEv = t.dice.reduce((a, d) => a + (d.kind === 'aard' ? 1 : 2.67), 0);
+        return (t.dmg + diceEv) * 3 + Math.min(t.shield, 4 - p.shield) * 2 + (t.fixedDraw != null ? -4 : t.draw * 1.2) + t.top + t.ret.length * 2 - (blood != null ? 2.5 : 0);
     };
     const dfs = (chain, rest, blood) => {
         if (chain.length) {
@@ -110,7 +113,7 @@ export function botCommand(view, opts = {}) {
     if (fightOpt && !fightOpt.err && strong && (t.moved || !o.moves.length)) return { t: 'fight' };
     if (!t.moved && o.moves.length) {
         // Move: prefer a monster we can fight, then an action we can use; pay as cheaply as possible.
-        const targets = o.moves.map(m => {
+        const targets = o.moves.filter(m => m.via == null).map(m => {
             let s = R();
             if (view.slots.some(sl => sl.mon && sl.token === m.to)) s += p.hand.length >= 4 ? 5 : 1;
             if (p.hunts.some(h => h.loc === m.to)) s += 4;

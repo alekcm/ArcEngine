@@ -7,6 +7,7 @@ export function viewFor(state, seat) {
     s.actionDeck = s.actionDeck.length;
     s.elixirDeck = s.elixirDeck.length;
     s.bombDeck = (s.bombDeck || []).length;
+    s.mutagenDeck = (s.mutagenDeck || []).length;
     s.attackDeck = s.attackDeck.length;
     for (const k of Object.keys(s.locPiles)) s.locPiles[k] = s.locPiles[k].length;
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;

@@ -3,7 +3,8 @@
 import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { icon, TERRAIN_COLOR } from './icons.js';
-import { actionCard, monsterCard, elixirCard, bombCard, eventCard, trophyLabel, artCss, esc, fxText } from './cards.js';
+import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, artCss, esc, fxText } from './cards.js';
+import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
 import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
@@ -50,6 +51,7 @@ function renderPlayers(v) {
                 <span class="c-shield" title="Щит">${icon('shield')}${p.shield}</span>
                 <span title="Эликсиры" style="color:#7fd0b4">${icon('elixir')}${p.elixirs.length}</span>
                 ${(p.bombs || []).length ? `<span title="Бомбы: ${esc(p.bombs.map(b => bombOf(b).name).join(', '))}" class="c-bomb">${icon('bomb')}${p.bombs.length}</span>` : ''}
+                ${(p.mutagens || []).length ? `<span title="Мутагены: ${esc(p.mutagens.map(m => MUTAGEN[m].name).join(', '))}" style="color:#9fd6e6">${icon('alchemy')}${p.mutagens.length}</span>` : ''}
                 ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
@@ -213,7 +215,7 @@ function renderHand(v) {
         let cls = '';
         if (pay) {
             cls = 'pick';
-            if (!movePaymentError(v, p, pay.to, [id], 0)) cls += ' can';
+            if (!movePaymentError(v, p, pay.to, [id], 0, pay.via)) cls += ' can';
         }
         return actionCard(id, { sel: pay && pay.cards.includes(id), cls });
     }).join('');
@@ -227,7 +229,7 @@ function renderHand(v) {
     };
     for (const c of el.querySelectorAll('.card')) c.ondblclick = () => {
         if (!S.ui.pay) return;
-        if (!movePaymentError(v, p, S.ui.pay.to, [c.dataset.id], 0)) doMove(S.ui.pay.to, [c.dataset.id], 0);
+        if (!movePaymentError(v, p, S.ui.pay.to, [c.dataset.id], 0, S.ui.pay.via)) doMove(S.ui.pay.to, [c.dataset.id], 0);
     };
 }
 
@@ -240,6 +242,7 @@ function renderMine(v) {
     el.innerHTML = `<div class="r" style="font-family:var(--serif);font-size:15px;color:${sc.color}"><b style="color:var(--gold2)">${esc(sc.school)}</b> · ${esc(LOC[p.loc].name)}</div>
         <div class="r" style="margin-top:4px;color:var(--dim)">Специализация: ${esc(sc.spec)} (${p.skills.spec})</div>
         <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}${(p.bombs || []).map(b => { const bd = bombOf(b); return `<span class="el bomb" data-bombcard="${esc(b)}" title="${esc(bd.name + ': ' + bd.text)}">${icon('bomb', 'c-bomb')}${esc(bd.name)}</span>`; }).join('')}</div>
+        ${(p.mutagens || []).length ? `<div class="gear muts">${p.mutagens.map(id => `<span class="el" data-mutcard="${esc(id)}" title="${esc(MUTAGEN[id].cond + ' ' + fxText(MUTAGEN[id].fx) + (MUTAGEN[id].alt ? ' или ' + fxText(MUTAGEN[id].alt) : ''))}">${icon('alchemy')}${esc(MUTAGEN[id].name)}</span>`).join('')}</div>` : ''}
         ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].kind + ': ' + EVENTS[id].text)}">${icon(EVENTS[id].kind === 'Спутник' ? 'meditate' : 'combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
         ${(p.keeps || []).length ? `<div class="gear keeps">${p.keeps.map(k => `<span class="el" data-keep="${esc(k.card)}" data-pick="${k.id.slice(-1) === 'A' ? 'a' : 'b'}" title="${esc(k.text)}">${icon('card')}${esc(k.name)}</span>`).join('')}</div>` : ''}
         ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" data-pick="${questPick(q.id)}" title="Задание — ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}">${icon('explore')}${esc(questLabel(q))} → ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span>`).join('')}</div>` : ''}
@@ -255,6 +258,7 @@ function renderMine(v) {
     $('zRemoved').onclick = () => openViewer('Убраны из игры', p.removed.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zTroph').onclick = () => openPlayer(p.seat);
     for (const g of el.querySelectorAll('[data-secret]')) g.onclick = () => openViewer(`Событие ${EVENTS[g.dataset.secret].num} — зачитаете другому игроку`, `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.secret, { stage: 'full' })}</div>`);
+    for (const g of el.querySelectorAll('[data-mutcard]')) g.onclick = () => openViewer('Мутаген', `<div style="display:flex;gap:14px;justify-content:center">${mutagenCard(g.dataset.mutcard, { cls: 'big' })}</div>`);
     for (const g of el.querySelectorAll('[data-bombcard]')) g.onclick = () => openViewer('Бомба', `<div style="display:flex;gap:14px;justify-content:center">${bombCard(g.dataset.bombcard, { cls: 'big' })}</div>`);
     for (const g of el.querySelectorAll('[data-gear],[data-qcard],[data-keep]')) g.onclick = () => openViewer(g.dataset.gear ? EVENTS[g.dataset.gear].kind : g.dataset.keep ? 'Карта перед вами' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard || g.dataset.keep, g.dataset.pick ? { stage: 'outcome', pick: g.dataset.pick } : { stage: 'full' })}</div>`);
 }
@@ -280,15 +284,17 @@ export function startMove(to) {
     const o = S.options, v = S.view, p = me();
     if (!o || !p || !o.moves.some(m => m.to === to)) return false;
     // A single matching card in hand: suggest it, but let the player choose.
-    S.ui.pay = { to, cards: [], gold: 0 };
-    const singles = p.hand.filter(id => !movePaymentError(v, p, to, [id], 0));
+    const mv = o.moves.find(m => m.to === to);
+    S.ui.pay = { to, cards: [], gold: 0, via: mv.via };
+    const singles = p.hand.filter(id => !movePaymentError(v, p, to, [id], 0, mv.via));
     if (singles.length === 1 && p.hand.length >= 1) S.ui.pay.cards = [singles[0]];
     renderHand(v); renderPay(v); renderActions(v);
     return true;
 }
 function doMove(to, cards, gold) {
+    const via = S.ui.pay ? S.ui.pay.via : undefined;
     S.ui.pay = null;
-    cmd({ t: 'move', to, cards, gold }, 'перемещение в ' + LOC[to].name);
+    cmd({ t: 'move', to, cards, gold, ...(via != null ? { via } : {}) }, 'перемещение в ' + LOC[to].name);
 }
 function renderPay(v) {
     const el = $('pay');
@@ -297,18 +303,18 @@ function renderPay(v) {
     if (!pay || !p || !S.options || !S.options.moves.some(m => m.to === pay.to)) { el.classList.add('hidden'); S.ui.pay = null; return; }
     el.classList.remove('hidden');
     const dest = LOC[pay.to];
-    const err = movePaymentError(v, p, pay.to, pay.cards, pay.gold);
+    const err = movePaymentError(v, p, pay.to, pay.cards, pay.gold, pay.via);
     const goldOk = p.gold >= 1;
     el.innerHTML = `<span class="t">${icon('move')} ${esc(dest.name)} <span class="c-${dest.terrain}">${icon(dest.terrain)}</span></span>
-        <span style="color:var(--dim);font-size:12.5px;max-width:330px">Оплата: карта «${TERRAIN_NAME[dest.terrain].toLowerCase()}» или джокер (подсвечены), 2 любые карты, или 1 карта + 1 золото. Выберите карты в руке.</span>
-        <label class="check" ${goldOk ? '' : 'style="opacity:.4"'}><input type="checkbox" id="payGold" ${pay.gold ? 'checked' : ''} ${goldOk ? '' : 'disabled'}> +1 золото</label>
+        <span style="color:var(--dim);font-size:12.5px;max-width:330px">${pay.via != null ? `Два перемещения через ${esc(LOC[pay.via].name)} (её действие пропускается): оплата — карта «Выносливость».` : `Оплата: карта «${TERRAIN_NAME[dest.terrain].toLowerCase()}» или джокер (подсвечены), 2 любые карты, или 1 карта + 1 золото. Выберите карты в руке.`}</span>
+        ${pay.via != null ? '' : `<label class="check" ${goldOk ? '' : 'style="opacity:.4"'}><input type="checkbox" id="payGold" ${pay.gold ? 'checked' : ''} ${goldOk ? '' : 'disabled'}> +1 золото</label>`}
         ${btn({ id: 'payGo', label: 'Идти', primary: true, why: err, key: 'Enter' })}
         ${btn({ id: 'payCancel', label: 'Отмена', key: 'Esc' })}`;
-    $('payGold').onchange = (e) => { pay.gold = e.target.checked ? 1 : 0; if (pay.gold && pay.cards.length > 1) pay.cards.splice(1); renderPay(v); renderHand(v); };
+    if ($('payGold')) $('payGold').onchange = (e) => { pay.gold = e.target.checked ? 1 : 0; if (pay.gold && pay.cards.length > 1) pay.cards.splice(1); renderPay(v); renderHand(v); };
     const go = $('payGo'); if (go) go.onclick = () => doMove(pay.to, pay.cards.slice(), pay.gold);
     $('payCancel').onclick = () => cancelMove();
 }
-export function confirmMove() { const pay = S.ui.pay; if (pay && !movePaymentError(S.view, me(), pay.to, pay.cards, pay.gold)) doMove(pay.to, pay.cards.slice(), pay.gold); }
+export function confirmMove() { const pay = S.ui.pay; if (pay && !movePaymentError(S.view, me(), pay.to, pay.cards, pay.gold, pay.via)) doMove(pay.to, pay.cards.slice(), pay.gold); }
 export function cancelMove() { S.ui.pay = null; renderHand(S.view); renderPay(S.view); renderActions(S.view); }
 
 // ---------------------------------------------------------------------------------------------
@@ -354,6 +360,7 @@ function openPlayer(seat) {
     const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
     openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${SKILL_NAME[s]} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
+        ${(p.mutagens || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Мутагены (${p.mutagens.length})</h3>${p.mutagens.map(id => mutagenCard(id)).join('')}` : ''}
         ${p.gear.length || p.quests.length || (p.keeps || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение, спутники и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${(p.keeps || []).map(k => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(k.card, { small: true, stage: 'outcome', pick: k.id.slice(-1) === 'A' ? 'a' : 'b' })}<span style="color:#d8ccb7;font-size:12px">${esc(k.name)}</span></div>`).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'outcome', pick: questPick(q.id) })}<span style="color:#d8ccb7;font-size:12px">→ ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span></div>`).join('')}` : ''}
         <h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Сброс (${p.discard.length})</h3>${p.discard.map(id => actionCard(id, { small: true })).join('') || '<span style="color:var(--dim)">Пусто</span>'}`);
 }

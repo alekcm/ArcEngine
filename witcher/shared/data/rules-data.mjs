@@ -13,6 +13,8 @@ export const SCHOOLS = {
     griffin: { name: 'Грифон', school: 'Школа Грифона', hero: 'Годрик', home: 1, color: '#c9a640', spec: 'Магия', model: 'Witcher/Ведьмаки/Грифон.obj', base: true },
     // «Цири и доп. события», p. 4: home school is Каэр Морхен (3), shared with the Wolf.
     ciri: { name: 'Цири', school: 'Дитя Старшей Крови', hero: 'Цири', home: 3, color: '#d9dde6', spec: 'Старшая Кровь', model: 'Witcher/Ведьмаки/Цири.obj', exp: 'ciri' },
+    // «По следу монстра», p. 3: the Manticore school, home Бехельт Нар (0).
+    manticore: { name: 'Мантикора', school: 'Школа Мантикоры', hero: 'Алувар', home: 0, color: '#d9792b', spec: 'Быстрый метаболизм', model: 'Witcher/Ведьмаки/Мантикора.obj', exp: 'trail:manticore' },
 };
 export const SCHOOL_ORDER = ['wolf', 'cat', 'bear', 'viper', 'griffin'];
 
@@ -24,6 +26,7 @@ export const SPEC_TABLE = {
     bear: [[0, 1], [1, 1], [1, 2], [2, 2], [2, 2]],      // shield+, draw — automatic at shield 0
     griffin: [['top', 2], ['top', 1], ['top', 0], ['any', 0], ['any', 0]], // take from discard, then discard
     ciri: [[0, -1], [0, 1], [1, 1], [2, 1], [2, 1]],     // «Старшая Кровь» link: damage, draw at the end of the fight turn
+    manticore: [[2, 1, 0], [1, 1, 0], [1, 1, 2], [1, 2, 2], [1, 2, 2]], // «Быстрый метаболизм»: discard elixirs, damage, draw
 };
 
 /** Skill value -> effect (Планшеты.md «Общие значения навыков»): combat draw, defence max shield, alchemy elixirs per fight. */
@@ -76,8 +79,8 @@ export const LOC_ACTION_TEXT = {
 
 export const TERRAINS = ['forest', 'mountain', 'water'];
 export const TERRAIN_NAME = { forest: 'Лес', mountain: 'Горы', water: 'Вода', joker: 'Джокер' };
-export const COLOR_NAME = { blue: 'Быстрая атака', red: 'Мощная атака', green: 'Защитный приём', purple: 'Атакующий Знак', yellow: 'Защитный Знак' };
-export const COLOR_SHORT = { blue: 'синяя', red: 'красная', green: 'зелёная', purple: 'фиолетовая', yellow: 'жёлтая' };
+export const COLOR_NAME = { blue: 'Быстрая атака', red: 'Мощная атака', green: 'Защитный приём', purple: 'Атакующий Знак', yellow: 'Защитный Знак', grey: 'Серая карта' };
+export const COLOR_SHORT = { blue: 'синяя', red: 'красная', green: 'зелёная', purple: 'фиолетовая', yellow: 'жёлтая', grey: 'серая' };
 
 /** Seat colours for player bases/UI, in school order — the school colour is the base of the miniature. */
 export const BOT_NAMES = ['Весемир', 'Ламберт', 'Эскель', 'Койон', 'Лето'];
@@ -95,13 +98,24 @@ export const GAME_MODES = {
 };
 export const HOUSE_RULES = [
     { id: 'elixirReturn', name: 'Возврат эликсиров', text: 'После битвы каждый выпитый в ней эликсир можно вернуть за 1 золото.' },
-    { id: 'bombs', name: 'Выбор бомбы и восстановление', text: 'Бомбу выбираете при получении; после битвы использованную бомбу можно восстановить за 2 золота.', needs: 'trail', needsText: 'Бомбы — из дополнения «По следу монстра»: правило работает, когда оно включено.' },
+    { id: 'bombs', name: 'Выбор бомбы и восстановление', text: 'Бомбу выбираете при получении; после битвы использованную бомбу можно восстановить за 2 золота.', needs: 'trail:bombs', needsText: 'Бомбы — из дополнения «По следу монстра»: правило работает, когда включены бомбы.' },
     { id: 'openEvents', name: 'Открытые последствия', text: 'Последствия обоих вариантов карты события видны до выбора.' },
 ];
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
 /** Expansions that can already be switched on in the lobby. */
-export const EXPANSIONS_READY = ['ciri', 'trail'];
-export const normalizeExp = (exp) => Array.isArray(exp) ? EXPANSIONS_READY.filter(x => exp.includes(x)) : [];
+export const TRAIL_PART_IDS = ['bombs', 'manticore', 'troll', 'mutagens', 'unique', 'masters'];
+export const EXPANSIONS_READY = ['ciri', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
+/** Keeps known ids; the «По следу монстра» parts only together with 'trail'. A bare 'trail'
+ *  (saves made before the parts existed) means the bombs only. */
+export function normalizeExp(exp) {
+    if (!Array.isArray(exp)) return [];
+    let out = EXPANSIONS_READY.filter(x => exp.includes(x));
+    if (!out.includes('trail')) out = out.filter(x => !x.startsWith('trail:'));
+    else if (!out.some(x => x.startsWith('trail:'))) out.push('trail:bombs');
+    return out;
+}
+/** Is a «По следу монстра» part on? `s` is a state/view (with .exp) or an exp array. */
+export const trailOn = (s, part) => { const e = Array.isArray(s) ? s : (s && s.exp) || []; return e.includes('trail') && (e.includes('trail:' + part) || (part === 'bombs' && !e.some(x => x.startsWith('trail:')))); };
 
 export function normalizeRules(mode, rules = {}) {
     const m = GAME_MODES[mode] ? mode : 'custom';

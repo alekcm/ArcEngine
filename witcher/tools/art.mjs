@@ -11,7 +11,7 @@
 //    the client (outcomes must stay covered until picked).
 //
 // Needs `sharp`, which is NOT a dependency of the game — run once on a developer machine:
-//   SHARP=/path/to/node_modules/sharp node witcher/tools/art.mjs [actions|monsters|potions|bombs|gear]
+//   SHARP=/path/to/node_modules/sharp node witcher/tools/art.mjs [actions|monsters|potions|bombs|gear|trail]
 // Output (committed): witcher/client/art/*.webp. A hand-made file with the same ID but another
 // extension (jpg/png) wins in the art index only if this one is deleted.
 import fs from 'node:fs';
@@ -22,6 +22,7 @@ import { CARDS } from '../shared/engine/util.mjs';
 import { MONSTERS, POTIONS } from '../shared/data/gen-data.mjs';
 import { EVENTS } from '../shared/data/events-data.mjs';
 import { BOMBS } from '../shared/data/bombs-data.mjs';
+import { MASTERS, UNIQUES, MUTAGENS } from '../shared/data/trail-data.mjs';
 
 const require = createRequire(import.meta.url);
 const sharp = require(process.env.SHARP || 'sharp');
@@ -36,6 +37,9 @@ const ATLAS = {
     MON: 'Монстры/Упрощённые карты монстров.jpg',
     POT: 'Доп колоды/Зелья.jpg',
     BOMB: 'Доп колоды/Бомбы.jpg',
+    M: 'Ведьмаки/4E644DF6BCD4C59326ADA604F3FE2B1A029470CD_httpcloud3steamusercontentcomugc2033984369202594531F621553636B9C5DE48E7E4D8956E483531A1F905.jpg',
+    U: 'Ведьмаки/Трофеи и стартовые карты.jpg',
+    MUT: 'Доп колоды/Мутагены.jpg',
     EV1: 'События/Ивенты 1.jpg',
     EV2: 'События/Ивенты 2.jpg',
 };
@@ -58,6 +62,7 @@ async function cut(k, cell, box, file, width) {
 async function actions() {
     let n = 0;
     for (const c of Object.values(CARDS)) {
+        if (c.printed) continue;
         const k = c.starter ? 'S' : c.id.startsWith('W-A') ? 'A' : 'B';
         await cut(k, c.cell, { x: 0, y: 0, w: W, h: H }, `${c.id}.webp`, 420);
         n++;
@@ -71,6 +76,12 @@ async function monsters() {
 async function bombs() {
     for (const b of BOMBS) await cut('BOMB', b.cell, { x: 60, y: 500, w: W - 120, h: 252 }, `${b.id}.webp`, 420);
     console.log('бомбы:', BOMBS.length);
+}
+/** «По следу монстра»: master/unique actions and mutagens are shown as printed (whole card). */
+async function trail() {
+    for (const c of [...MASTERS, ...UNIQUES]) await cut(c.printed, c.cell, { x: 0, y: 0, w: W, h: H }, `${c.id}.webp`, 480);
+    for (const m of MUTAGENS) await cut('MUT', m.cell, { x: 0, y: 0, w: W, h: H }, `${m.id}.webp`, 480);
+    console.log('мастерские/уникальные действия и мутагены:', MASTERS.length + UNIQUES.length + MUTAGENS.length);
 }
 async function potions() {
     for (const p of POTIONS) await cut('POT', p.cell, { x: 0, y: 236, w: W, h: 510 }, `${p.id}.webp`, 420);
@@ -93,3 +104,4 @@ if (!only || only === 'monsters') await monsters();
 if (!only || only === 'potions') await potions();
 if (!only || only === 'bombs') await bombs();
 if (!only || only === 'gear') await gear();
+if (!only || only === 'trail') await trail();

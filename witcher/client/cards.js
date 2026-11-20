@@ -7,6 +7,7 @@ import { bombOf } from '/shared/data/bombs-data.mjs';
 import { COLOR_NAME, TERRAIN_NAME, SKILL_NAME } from '/shared/data/rules-data.mjs';
 import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
+import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { icon, CARD_COLOR, TERRAIN_COLOR } from './icons.js';
 
 let ART = {};
@@ -68,6 +69,8 @@ export function fxText(f) {
     if (f.draw) p.push(`взять ${f.draw}`);
     if (f.top) p.push('взять верхнюю карту колоды');
     if (f.ret) p.push('эта карта вернётся в руку');
+    if (f.dice) p.push(f.dice === 'aard' ? 'кубик: 4–6 — урон 2' : 'кубик: урон 2/3/4');
+    if (f.fixedDraw != null) p.push('в конце хода — 0 карт');
     return p.join(', ') || 'нет эффекта';
 }
 
@@ -108,6 +111,7 @@ const nameSize = (name) => Math.min(27, Math.floor(250 / (name.length * 0.56)));
 export function actionCard(id, opts = {}) {
     const c = CARDS[id];
     if (!c) return `<div class="card blank"></div>`;
+    if (c.printed) return printedAction(c, opts);
     const col = CARD_COLOR[c.color] || '#777';
     const terr = c.terrain;
     const cost = opts.cost != null ? opts.cost : c.cost;
@@ -132,6 +136,30 @@ export function actionCard(id, opts = {}) {
         </div>
         ${opts.mod ? `<div class="cmod ${opts.mod < 0 ? 'down' : 'up'}">${opts.mod > 0 ? '+' : '−'}${Math.abs(opts.mod)}</div>` : ''}
         ${opts.order ? `<div class="order">${opts.order}</div>` : ''}
+    </div>`;
+}
+
+/** Master and unique actions («По следу монстра»): the printed card as it is — their rules text
+ *  is on the face. Only a changed cost (row cell) is drawn over the printed cost box. */
+function printedAction(c, opts) {
+    const col = CARD_COLOR[c.color] || '#777';
+    const cost = opts.cost != null ? opts.cost : c.cost;
+    const tip = `${c.name} — ${COLOR_NAME[c.color]}. ${fxText(c.fx)}. ${c.burn ? 'Стоимость: убрать из игры 1 карту из руки' : 'Стоимость ' + c.cost}. Местность: ${TERRAIN_NAME[c.terrain]}.`
+        + c.links.map(l => ` Связка (${COLOR_NAME[l.color]}): ${fxText(l.fx)}${l.cond ? ' / при 2 картах этого цвета дальше — ещё урон 3' : ''}.`).join('') + (c.text ? ' ' + c.text : '');
+    const cc = !c.burn && cost !== c.cost ? (cost < c.cost ? 'down' : 'up') : '';
+    return `<div class="card action printed ${opts.small ? 'small' : ''} ${opts.sel ? 'sel' : ''} ${opts.dim ? 'dim' : ''} ${opts.cls || ''}" data-id="${esc(c.id)}" style="--cc:${col}" title="${esc(tip)}">
+        <div class="face"><div class="art" style="background-image:${artCss(c.id, col)}"></div>${cc ? `<div class="cs over ${cc}">${cost}</div>` : ''}</div>
+        ${opts.mod && !c.burn ? `<div class="cmod ${opts.mod < 0 ? 'down' : 'up'}">${opts.mod > 0 ? '+' : '−'}${Math.abs(opts.mod)}</div>` : ''}
+        ${opts.order ? `<div class="order">${opts.order}</div>` : ''}
+    </div>`;
+}
+/** Mutagen card («По следу монстра»): printed scan. opts: {sel, cls, used, off} */
+export function mutagenCard(id, opts = {}) {
+    const m = MUTAGEN[id];
+    if (!m) return '';
+    const fx = fxText(m.fx) + (m.alt ? ' или ' + fxText(m.alt) : '');
+    return `<div class="card mutagen ${opts.sel ? 'sel' : ''} ${opts.used ? 'used' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(`${m.name}. ${m.cond} ${fx}. Раз за битву.`)}">
+        <div class="art" style="background-image:${artCss(id, CARD_COLOR[m.color] || '#555', 'alchemy')}"></div>
     </div>`;
 }
 

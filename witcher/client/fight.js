@@ -3,16 +3,19 @@
 // trophy abilities, fight log and the result screen.
 import { S, $, cmd, me, btn, toast } from './ctx.js';
 import { icon } from './icons.js';
-import { actionCard, monsterCard, attackCard, esc } from './cards.js';
+import { actionCard, monsterCard, attackCard, mutagenCard, esc } from './cards.js';
+import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { CARDS, MONSTER, POTION } from '/shared/engine/util.mjs';
-import { SCHOOLS, SPEC_TABLE } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SPEC_TABLE, trailOn } from '/shared/data/rules-data.mjs';
 import { linkIndex, comboTotals, comboError, bloodFx } from '/shared/engine/fight.mjs';
 import { COLOR_SHORT } from '/shared/data/rules-data.mjs';
 import { sfx } from './sound.js';
 
 let logFrom = 0;
-export function fightStarted(v) { logFrom = v.log.length ? v.log[v.log.length - 1].i - 8 : 0; S.ui.combo = []; S.ui.blood = null; }
+export function fightStarted(v) { logFrom = v.log.length ? v.log[v.log.length - 1].i - 8 : 0; S.ui.combo = []; S.ui.blood = null; S.ui.mutOff = []; S.ui.mut8 = 'dmg'; }
+/** Mutagen choices of the combo builder: switched-off mutagens and the MUT-08 effect. */
+const mutOpts = () => ({ mutOff: S.ui.mutOff || [], mut8: S.ui.mut8 || 'dmg' });
 /** Цири's «Старшая Кровь» in the combo builder: null (off), 'armed' (the next card joins with any
  *  colour) or the index of the card joined by the blood link. */
 const bloodAt = () => (typeof S.ui.blood === 'number' && S.ui.blood < (S.ui.combo || []).length) ? S.ui.blood : null;
@@ -39,7 +42,7 @@ export function renderFight() {
     const armed = S.ui.blood === 'armed';
     const lifePct = Math.max(0, Math.min(100, (f.lifeCount / m.life) * 100));
     const free = !!(f.cur && f.cur.blizzard && combo.length >= 2 && linkIndex(CARDS[combo[combo.length - 2]], CARDS[combo[combo.length - 1]]) < 0);
-    const tot = p && combo.length ? comboTotals(v, p, combo, { free, blood }) : null;
+    const tot = p && combo.length ? comboTotals(v, p, combo, { free, blood, ...mutOpts() }) : null;
     const cErr = p ? comboError(v, p, combo, { free, blood }) : 'Не ваш ход';
 
     const last = f.lastAttack ? `<div class="lastatk"><span>Последняя атака</span>${attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
@@ -57,7 +60,7 @@ export function renderFight() {
         for (const e of o.elixirs) { const po = POTION[e.id.split('#')[0]]; fbtns.push(btn({ label: `${esc(po.name)}`, icon: icon('elixir', 'c-forest'), why: e.err, data: `data-el="${esc(e.id)}"`, small: true }).replace('<button', `<button title="${esc(po.text)}"`)); }
         for (const b of o.bombs || []) { const bd = bombOf(b.id); fbtns.push(btn({ label: `Бомба: ${esc(bd.name)}`, icon: icon('bomb', 'c-bomb'), why: b.err, data: `data-bomb="${esc(b.id)}"`, small: true }).replace('<button', `<button title="${esc(bd.text)}"`)); }
         const sc = SCHOOLS[p.school];
-        if (p.school === 'cat' || p.school === 'griffin') fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
+        if (p.school === 'cat' || p.school === 'griffin' || p.school === 'manticore') fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
         if (bOpt !== undefined) {
             const bf = bloodFx(p);
             const fxTxt = `${bf.dmg ? `урон ${bf.dmg}, ` : ''}${bf.draw >= 0 ? '+' : ''}${bf.draw} карт(а) в конце хода`;
@@ -90,7 +93,7 @@ export function renderFight() {
     <div class="ftop"><b>${esc(fighter.name)} против: ${esc(m.name)}</b>
         <span class="turnbadge ${f.stage === 'witcher' ? 'me' : ''}">${f.stage === 'witcher' ? `Ход ведьмака ${Math.max(1, f.wTurns)}` : 'Ход монстра'}</span>
         ${f.track ? `<span class="turnbadge">${icon('track')} жетон следа: ведьмак ходит первым</span>` : ''}
-        <span class="turnbadge" title="Лимит по навыку алхимии">${(v.exp || []).includes('trail') ? 'Эликсиры и бомбы' : 'Эликсиры'}: ${f.elixirsUsed}</span>
+        <span class="turnbadge" title="Лимит по навыку алхимии">${trailOn(v, 'bombs') ? 'Эликсиры и бомбы' : 'Эликсиры'}: ${f.elixirsUsed}</span>
         ${f.noAbility ? '<span class="turnbadge">Чёртов гриб: способность монстра не действует</span>' : ''}${f.moonDust ? '<span class="turnbadge">Лунная пыль: тип следующей атаки можно сменить</span>' : ''}</div>
     <div class="mon">
         <div id="fMonCard">${monsterCard(f.mon, { big: true, life: f.lifeCount })}</div>
@@ -98,7 +101,7 @@ export function renderFight() {
     </div>
     <div class="center">
         <div class="crow">${last}<div class="combo" id="fCombo">${comboHtml}</div></div>
-        <div class="totals">${tot ? `<span class="fx dmg">${icon('sword')}<b>${tot.dmg}</b></span><span class="fx shield">${icon('shield')}<b>+${tot.shield}</b></span><span class="fx draw">${icon('draw')}<b>${tot.draw}</b></span>${tot.top ? `<span class="fx top">${icon('top')}<b>${tot.top}</b></span>` : ''}${tot.ret.length ? `<span class="fx ret">${icon('ret')}<b>${tot.ret.length}</b></span>` : ''}${free ? '<span style="color:#9ccff0">Пурга: последняя карта без связки</span>' : ''}${tot.blood ? `<span class="bloodnote">Старшая Кровь: ${esc(COLOR_SHORT[tot.blood.color])} связь${tot.blood.off ? ' (подавлена)' : ''}</span>` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта — любого цвета</span>' : ''}` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта после первой — любого цвета</span>' : ''}</div>
+        <div class="totals">${tot ? `<span class="fx dmg">${icon('sword')}<b>${tot.dmg}</b></span><span class="fx shield">${icon('shield')}<b>+${tot.shield}</b></span><span class="fx draw">${icon('draw')}<b>${tot.draw}</b></span>${tot.top ? `<span class="fx top">${icon('top')}<b>${tot.top}</b></span>` : ''}${tot.ret.length ? `<span class="fx ret">${icon('ret')}<b>${tot.ret.length}</b></span>` : ''}${tot.dice.length ? `<span class="fx dice" title="Бросок кубика при розыгрыше">${icon('dice')}<b>${tot.dice.length}</b></span>` : ''}${tot.fixedDraw != null ? '<span class="bloodnote">Решающий удар: в конце хода — 0 карт</span>' : ''}${free ? '<span style="color:#9ccff0">Пурга: последняя карта без связки</span>' : ''}${tot.blood ? `<span class="bloodnote">Старшая Кровь: ${esc(COLOR_SHORT[tot.blood.color])} связь${tot.blood.off ? ' (подавлена)' : ''}</span>` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта — любого цвета</span>' : ''}` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта после первой — любого цвета</span>' : ''}</div>
         ${myStage ? `<div style="display:flex;gap:8px">${btn({ id: 'fPlay', label: combo.length ? `Разыграть (${combo.length})` : (p.hand.length ? 'Разыграть' : 'Пропустить (рука пуста)'), primary: true, why: cErr, key: 'Enter' })}${combo.length ? btn({ id: 'fClear', label: 'Сбросить выбор', key: 'Backspace' }) : ''}</div>` : ''}
         ${lastCombo}
     </div>
@@ -113,6 +116,7 @@ export function renderFight() {
             <div style="font-size:12px;color:var(--dim);text-align:center">Жизнь ведьмака = колода + рука: ${ps.deckCount + ps.handCount}</div>
         </div>
         <div class="fbtns">${fbtns.join('')}</div>
+        ${mutagensHtml(ps, f, tot, mine)}
         <div class="flog panel">${flog}</div>
     </div>
     <div class="fhand">${hand}</div>`;
@@ -123,12 +127,37 @@ export function renderFight() {
     for (const b of el.querySelectorAll('[data-blood]')) b.onclick = () => { toggleBlood(); };
     for (const b of el.querySelectorAll('[data-el]')) b.onclick = () => { sfx('elixir'); cmd({ t: 'elixir', id: b.dataset.el }, 'эликсир'); };
     for (const b of el.querySelectorAll('[data-bomb]')) b.onclick = () => { sfx('hit'); cmd({ t: 'bomb', id: b.dataset.bomb }, 'бомба'); };
+    for (const c of el.querySelectorAll('.fmuts [data-mut]')) c.onclick = () => toggleMut(c.dataset.mut, tot);
     for (const b of el.querySelectorAll('[data-spec]')) b.onclick = () => cmd({ t: 'spec' }, 'специализация');
     for (const b of el.querySelectorAll('[data-act]')) b.onclick = () => cmd({ t: 'active', key: b.dataset.act }, 'трофей');
     const play = $('fPlay'); if (play) play.onclick = () => playCombo();
     const clr = $('fClear'); if (clr) clr.onclick = () => { S.ui.combo = []; S.ui.blood = null; renderFight(); };
 }
 
+/** Mutagens of the fighter: used ones greyed, the ones the current combo triggers glow; a click
+ *  switches a triggered mutagen off (or, for MUT-08, between «урон 1» and «+2 карты»). */
+function mutagensHtml(ps, f, tot, mine) {
+    const list = ps.mutagens || [];
+    if (!list.length) return '';
+    const st = Object.fromEntries(((tot && tot.muts) || []).map(m => [m.id, m]));
+    const cards = list.map(id => {
+        const used = !!f.once['m' + id];
+        const m = st[id];
+        const cls = used ? 'used' : m && m.on ? 'on' : m && m.ok ? 'off' : '';
+        const cap = used ? 'использован' : m && m.on ? (id === 'MUT-08' ? (S.ui.mut8 === 'draw' ? 'сработает: +2 карты' : 'сработает: урон 1') : 'сработает') : m && m.ok ? 'выключен' : MUTAGEN[id].when === 'end' ? 'в конце хода' : 'условие не выполнено';
+        return `<div class="fmut ${cls}" ${mine && m && m.ok ? `data-mut="${id}"` : ''}>${mutagenCard(id, { cls: 'small', used })}<small>${cap}</small></div>`;
+    }).join('');
+    return `<div class="fmuts panel"><div class="ttl">Мутагены — раз за битву</div><div class="row2">${cards}</div></div>`;
+}
+function toggleMut(id, tot) {
+    const off = S.ui.mutOff = S.ui.mutOff || [];
+    if (id === 'MUT-08' && !off.includes(id)) {
+        if ((S.ui.mut8 || 'dmg') === 'dmg') S.ui.mut8 = 'draw'; else { S.ui.mut8 = 'dmg'; off.push(id); }
+    } else if (off.includes(id)) off.splice(off.indexOf(id), 1);
+    else off.push(id);
+    sfx('card');
+    renderFight();
+}
 function toggleBlood() {
     const o = S.options && S.options.fight;
     if (S.ui.blood != null) { S.ui.blood = null; renderFight(); return; }
@@ -153,7 +182,7 @@ export function playCombo() {
     const e = comboError(v, p, combo, { free, blood });
     if (e) { toast(e); return; }
     sfx('sword');
-    cmd(blood != null ? { t: 'combo', ids: combo.slice(), free, blood } : { t: 'combo', ids: combo.slice(), free }, 'комбинация');
+    cmd({ t: 'combo', ids: combo.slice(), free, ...(blood != null ? { blood } : {}), ...mutOpts() }, 'комбинация');
     S.ui.combo = []; S.ui.blood = null;
 }
 export function fightKey(e) {
