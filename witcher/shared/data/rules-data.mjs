@@ -11,6 +11,8 @@ export const SCHOOLS = {
     bear: { name: 'Медведь', school: 'Школа Медведя', hero: 'Ауфар', home: 10, color: '#a8382f', spec: 'Доспехи', model: 'Witcher/Ведьмаки/Медведь.obj', base: true },
     viper: { name: 'Змея', school: 'Школа Змеи', hero: 'Джаспер', home: 15, color: '#3f7f4a', spec: 'Отравленный клинок', model: 'Witcher/Ведьмаки/Змея.obj', base: true },
     griffin: { name: 'Грифон', school: 'Школа Грифона', hero: 'Годрик', home: 1, color: '#c9a640', spec: 'Магия', model: 'Witcher/Ведьмаки/Грифон.obj', base: true },
+    // «Цири и доп. события», p. 4: home school is Каэр Морхен (3), shared with the Wolf.
+    ciri: { name: 'Цири', school: 'Дитя Старшей Крови', hero: 'Цири', home: 3, color: '#d9dde6', spec: 'Старшая Кровь', model: 'Witcher/Ведьмаки/Цири.obj', exp: 'ciri' },
 };
 export const SCHOOL_ORDER = ['wolf', 'cat', 'bear', 'viper', 'griffin'];
 
@@ -21,6 +23,7 @@ export const SPEC_TABLE = {
     cat: [[1, 1], [3, 1], [3, 2], [3, 3], [3, 3]],       // look, take — first fight turn
     bear: [[0, 1], [1, 1], [1, 2], [2, 2], [2, 2]],      // shield+, draw — automatic at shield 0
     griffin: [['top', 2], ['top', 1], ['top', 0], ['any', 0], ['any', 0]], // take from discard, then discard
+    ciri: [[0, -1], [0, 1], [1, 1], [2, 1], [2, 1]],     // «Старшая Кровь» link: damage, draw at the end of the fight turn
 };
 
 /** Skill value -> effect (Планшеты.md «Общие значения навыков»): combat draw, defence max shield, alchemy elixirs per fight. */

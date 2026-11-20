@@ -252,14 +252,21 @@ export function eventCard(id, opts = {}) {
     let body = para(ev.intro);
     if (ev.a) {
         const line = (k) => `<div class="evopt ${opts.pick === k ? 'on' : ''}" ${opts.choose ? `data-c="${k}"` : ''}>${disc(k)}<span>${esc(ev[k].label)}</span></div>`;
-        const flavour = (k) => st === 'full' || (st === 'outcome' && opts.pick === k);
-        const res = (k) => {
-            if (st === 'outcome' && opts.pick !== k && !opts.open) return '';
-            const off = st === 'outcome' && opts.pick !== k;
-            return `<div class="evres ${off ? 'off' : ''} ${opts.pick === k && st === 'outcome' ? 'on' : ''} ${flavour(k) ? '' : 'bare'}">${disc(k)}${flavour(k) ? `<span>${esc(ev[k].outcome)}</span>` : ''}${effectHtml(ev[k])}</div>`;
-        };
-        body += line('a') + line('b') + `<img class="evdiv" src="${A}event-div.webp" alt="">`;
-        body += st === 'choose' ? `<div class="evhide"><span>Последствия откроются после выбора</span></div>` : res('a') + res('b');
+        if (st === 'choose') {
+            body += line('a') + line('b') + `<img class="evdiv" src="${A}event-div.webp" alt="">` + `<div class="evhide"><span>Последствия откроются после выбора</span></div>`;
+        } else {
+            // Each option with its consequences right under it (А + последствия, divider, Б + …).
+            // Flavour only on a fully shown card or for the picked option; the unpicked one keeps
+            // its bold effects only under the open-outcomes rule.
+            const flavour = (k) => st === 'full' || (st === 'outcome' && opts.pick === k);
+            const shown = (k) => st === 'full' || st === 'open' || opts.pick === k || (st === 'outcome' && opts.open);
+            const block = (k) => {
+                const off = st === 'outcome' && opts.pick !== k;
+                const res = shown(k) ? `<div class="evres">${flavour(k) && ev[k].outcome ? `<p class="evflav">${br(ev[k].outcome)}</p>` : ''}${effectHtml(ev[k])}</div>` : '';
+                return `<div class="evpair ${off ? 'off' : ''} ${st === 'outcome' && opts.pick === k ? 'on' : ''}">${line(k)}${res}</div>`;
+            };
+            body += block('a') + `<img class="evdiv" src="${A}event-div.webp" alt="">` + block('b');
+        }
     } else if (ev.fx && ev.fx.some(e => e.roll)) {
         const r = ev.fx.find(e => e.roll);
         const head = !r.by ? 'Бросьте кубик:' : r.by === 'combo' ? esc(ev.effect.split('\n').find(l => /разыграйте комбинацию/.test(l)) || '') : r.x2 ? `Умножьте уровень своего навыка ${SKILL_GEN_C[r.by]} на 2. Затем бросьте кубик и прибавьте выпавшее значение к результату. Выполните эффект согласно получившейся сумме:` : r.by === 'level' ? 'По уровню ведьмака:' : `По навыку ${SKILL_GEN_C[r.by]}:`;

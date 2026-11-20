@@ -111,6 +111,26 @@ export function ciriScenario(seed = 12) {
     st.eventsUsed.push('CONT80-37', 'CONT80-39', 'CONT80-01', 'CONT80-26');
     return st;
 }
+/**
+ * Цири (playable hero): standing on a monster with «Старшая Кровь» at level 3 and a track token
+ * (she strikes first). Her starter cards have no links at all — the blood link is what lets her
+ * build a combo: e.g. «Аард» (У1 Д+1) → blood link (У1 Д+1) → «Рубящий удар» (У2 Д−2).
+ */
+export function ciriHeroScenario(seed = 13) {
+    const st = createGame({ seed, exp: ['ciri'], players: [{ name: 'Игрок', school: 'ciri' }, { name: 'Эскель', school: 'wolf', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    const slot = st.slots.find(s => s.mon);
+    p.loc = slot.token;
+    st.turn.moved = true;
+    const all = [...p.hand, ...p.deck];
+    const want = ['W-START-67', 'W-START-64', 'W-START-63', 'W-START-70', 'W-START-65'];
+    p.hand = want.slice();
+    p.deck = all.filter(id => !want.includes(id));
+    p.skills.spec = 3; p.skills.defense = 2; p.shield = 1; p.gold = 3;
+    if (state_locPop(st, slot.terrain) != null) p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -144,7 +164,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

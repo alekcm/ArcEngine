@@ -379,6 +379,7 @@ export function specError(state, p) {
     if (p.school === 'wolf') return 'Владение мечом срабатывает само после комбинации из 3+ карт';
     if (p.school === 'bear') return 'Доспехи срабатывают сами при щите 0';
     if (p.school === 'viper') return 'Отравленный клинок срабатывает сам, когда монстр теряет карты от вашей атаки';
+    if (p.school === 'ciri') return 'Старшая Кровь включается при сборке комбинации';
     return 'Нет ручной специализации';
 }
 STEPS.useSpec = (state) => {
@@ -538,7 +539,22 @@ export function linkIndex(prev, next, prefer) {
     const score = (fx) => (fx.dmg || 0) * 3 + (fx.shield || 0) * 2 + (fx.draw || 0) + (fx.top ? 2 : 0) + (fx.ret ? 2 : 0);
     return cands.sort((a, b) => score(b.l.fx) - score(a.l.fx))[0].i;
 }
-/** Validate a combo. Returns an error string or null. `free` marks the Пурга extra card. */
+/** Цири, «Старшая Кровь» (once per fight): one card of the combo gets a link of any colour. */
+export function bloodError(state, p) {
+    const f = state.fight;
+    if (!p || p.school !== 'ciri') return 'Только у Цири';
+    if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Только в свой ход битвы';
+    if (f.once.spec) return 'Старшая Кровь уже использована в этой битве';
+    if (f.cur && f.cur.onlyOne) return 'Чёрная кровь: комбинация только из 1 карты';
+    return null;
+}
+/** The «Старшая Кровь» link effect for the current specialization level: { dmg, draw }. */
+export function bloodFx(p) {
+    const [dmg, draw] = SPEC_TABLE.ciri[Math.max(0, Math.min(4, (p.skills.spec || 1) - 1))];
+    return { dmg, draw };
+}
+/** Validate a combo. Returns an error string or null. `free` marks the Пурга extra card,
+ *  `blood` = index i of the card joined to card i-1 by Цири's «Старшая Кровь» link. */
 export function comboError(state, p, ids, opts = {}) {
     const f = state.fight;
     if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Сейчас не ваш ход битвы';
@@ -548,7 +564,14 @@ export function comboError(state, p, ids, opts = {}) {
     const chain = opts.free ? ids.slice(0, -1) : ids;
     if (opts.free && !f.cur.blizzard) return 'Дополнительная карта — только с Пургой';
     if (f.cur.onlyOne && chain.length > 1) return 'Чёрная кровь: комбинация только из 1 карты';
+    const blood = opts.blood == null ? null : opts.blood;
+    if (blood != null) {
+        const be = bloodError(state, p);
+        if (be) return be;
+        if (!Number.isInteger(blood) || blood < 1 || blood >= chain.length) return 'Связь Старшей Крови должна соединять две карты комбинации';
+    }
     for (let i = 1; i < chain.length; i++) {
+        if (i === blood) continue;
         const prev = CARDS[chain[i - 1]], next = CARDS[chain[i]];
         if (linkIndex(prev, next) < 0) return `«${next.name}» (${COLOR_SHORT[next.color]}) не соединяется с «${prev.name}»`;
     }
@@ -565,7 +588,14 @@ export function comboTotals(state, p, ids, opts = {}) {
         t.colors.add(c.color);
         const cornerOff = purpleBlocked && c.color === 'purple';
         if (!cornerOff) addFx(t, c.fx, id);
-        if (i > 0 && i < chainLen) {
+        if (i > 0 && i < chainLen && i === opts.blood && p && p.school === 'ciri') {
+            // «Старшая Кровь»: a link of the next card's colour, its effect set by the spec level.
+            const prev = CARDS[ids[i - 1]];
+            const off = (f && f.mon === 'MON-08' && prev.color === 'purple') || (f && f.mon === 'MON-29' && c.color === 'purple');
+            const bf = bloodFx(p);
+            if (!off) addFx(t, bf, ids[i - 1]);
+            t.blood = { at: i, color: c.color, ...bf, off };
+        } else if (i > 0 && i < chainLen) {
             const prev = CARDS[ids[i - 1]];
             const li = linkIndex(prev, c, opts.links ? opts.links[i] : null);
             if (li >= 0) {
@@ -604,13 +634,19 @@ STEPS.playCombo = (state, step) => {
     const ids = step.ids;
     for (const id of ids) removeFrom(p.hand, id);
     f.cur.combo = ids.slice();
-    const t = comboTotals(state, p, ids, { free: step.free, links: step.links });
+    const t = comboTotals(state, p, ids, { free: step.free, links: step.links, blood: step.blood });
     f.lastCombo = { ids: ids.slice(), dmg: t.dmg, shield: t.shield, draw: t.draw, free: !!step.free };
     if (t.bracers) { f.once.g28 = true; log(state, `${p.name}: наручи — щит +1`); }
     if (t.edgar) { f.once.g50 = true; log(state, `${p.name}: Эдгар де Спота — первая комбинация +3 урона`); }
     if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')}`, { kind: 'combo' });
     else log(state, `${p.name}: в руке нет карт — комбинации нет`);
     fx(state, { k: 'combo', seat: p.seat, ids });
+    if (t.blood) {
+        f.once.spec = true;
+        const b = t.blood;
+        log(state, `${p.name}: «Старшая Кровь» — «${CARDS[ids[b.at - 1]].name}» получает ${COLOR_SHORT[b.color]} связь${b.off ? ' (эффект подавлен монстром)' : `: ${b.dmg ? `урон ${b.dmg}, ` : ''}${b.draw >= 0 ? '+' : ''}${b.draw} карт(а) в конце хода`}`);
+        fx(state, { k: 'spec', seat: p.seat });
+    }
     let dmg = t.dmg;
     const chainLen = step.free ? ids.length - 1 : ids.length;
     const wolf3 = chainLen >= 3;
@@ -625,7 +661,7 @@ STEPS.playCombo = (state, step) => {
     if (wolf3 && hasWitcherTrophy(p, 'wolf') && !f.once.wWolf) { f.once.wWolf = true; dmg += 1; log(state, `${p.name}: трофей Волка — +1 урон`); }
     push(state,
         F('comboDamage', { n: dmg }),
-        F('comboAfterDamage', { wolfDraw, shield: t.shield, top: t.top, ret: t.ret, draw: t.draw, ids, wasSpec: wolfDraw > 0 || (wolf3 && p.school === 'wolf') }),
+        F('comboAfterDamage', { wolfDraw, shield: t.shield, top: t.top, ret: t.ret, draw: t.draw, ids, wasSpec: wolfDraw > 0 || (wolf3 && p.school === 'wolf') || !!t.blood }),
     );
 };
 STEPS.comboDamage = (state, step) => {

@@ -23,7 +23,7 @@ import { botCommand } from './shared/bots.mjs';
 import { SCHOOLS, SCHOOL_ORDER, BOT_NAMES, normalizeRules, normalizeExp } from './shared/data/rules-data.mjs';
 import { MONSTERS } from './shared/data/gen-data.mjs';
 import { objToMesh } from './tools/obj.mjs';
-import { writeScenarios } from './tools/scenarios.mjs';
+import { writeScenarios, SCENARIO_NAMES } from './tools/scenarios.mjs';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -182,7 +182,9 @@ const cleanName = (s) => String(s || '').replace(/[<>]/g, '').trim().slice(0, 20
 const seatOf = (sock) => room.seats.findIndex(s => s.socket === sock);
 const hostIndex = () => { const i = room.seats.findIndex(s => s.socket && !s.bot); return i; };
 const isHost = (sock) => { const i = seatOf(sock); return i >= 0 && i === hostIndex(); };
-const freeSchool = () => SCHOOL_ORDER.find(k => !room.seats.some(s => s.school === k)) || 'wolf';
+// Expansion heroes (Цири) can be picked only while their expansion is switched on.
+const schoolAllowed = (k) => !!SCHOOLS[k] && (!SCHOOLS[k].exp || (room.settings.exp || []).includes(SCHOOLS[k].exp));
+const freeSchool = () => [...SCHOOL_ORDER, ...Object.keys(SCHOOLS).filter(k => !SCHOOL_ORDER.includes(k))].find(k => schoolAllowed(k) && !room.seats.some(s => s.school === k)) || 'wolf';
 
 function lanAddresses() {
     const out = [];
@@ -317,12 +319,15 @@ function onMessage(sock, m) {
             if (idx < 0 || room.phase !== 'lobby') return;
             const s = room.seats[idx];
             if (typeof m.name === 'string') s.name = cleanName(m.name) || s.name;
-            if (typeof m.school === 'string' && SCHOOLS[m.school] && !room.seats.some((o, i) => i !== idx && o.school === m.school)) s.school = m.school;
+            if (typeof m.school === 'string' && schoolAllowed(m.school) && !room.seats.some((o, i) => i !== idx && o.school === m.school)) s.school = m.school;
             if (isHost(sock)) {
                 if (m.settings) {
                     if (typeof m.settings.randomFirst === 'boolean') room.settings.randomFirst = m.settings.randomFirst;
                     if (typeof m.settings.seed === 'string') room.settings.seed = m.settings.seed.slice(0, 20);
-                    if (m.settings.exp) room.settings.exp = normalizeExp(m.settings.exp);
+                    if (m.settings.exp) {
+                        room.settings.exp = normalizeExp(m.settings.exp);
+                        for (const o of room.seats) if (!schoolAllowed(o.school)) { o.school = '-'; o.school = freeSchool(); }
+                    }
                     if (typeof m.settings.mode === 'string' || (m.settings.rules && typeof m.settings.rules === 'object')) {
                         // The custom choice is remembered separately: MMR forces everything on, and switching back restores it.
                         const mode = typeof m.settings.mode === 'string' ? m.settings.mode : room.settings.mode;
@@ -335,7 +340,7 @@ function onMessage(sock, m) {
                     room.seats.push({ token: crypto.randomBytes(12).toString('hex'), name: BOT_NAMES[room.seats.length % BOT_NAMES.length], school, bot: 1, socket: null });
                 }
                 if (m.kick != null) { const k = room.seats[m.kick]; if (k && m.kick !== idx) { if (k.socket) k.socket.close(); room.seats.splice(m.kick, 1); } }
-                if (m.botSchool && room.seats[m.botSchool.id]?.bot && SCHOOLS[m.botSchool.school] && !room.seats.some(o => o.school === m.botSchool.school)) room.seats[m.botSchool.id].school = m.botSchool.school;
+                if (m.botSchool && room.seats[m.botSchool.id]?.bot && schoolAllowed(m.botSchool.school) && !room.seats.some(o => o.school === m.botSchool.school)) room.seats[m.botSchool.id].school = m.botSchool.school;
             }
             broadcastLobby();
             break;
@@ -460,5 +465,5 @@ function listen(port, tries = 0) {
     });
 }
 // Sandbox positions (fight test, poker test, mid-game) are always available in the lobby.
-try { if (!listSaves().includes('Песочница — Цири и доп. события')) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
+try { if (SCENARIO_NAMES.some(n => !listSaves().includes(n))) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
 listen(PORT_BASE);

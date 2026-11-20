@@ -14,12 +14,13 @@ const SCHOOL_TEXT = {
     bear: 'Ауфар. «Доспехи»: когда щит падает до 0 — щит и добор.',
     viper: 'Джаспер. «Отравленный клинок»: когда противник сбрасывает карты — сбросить ещё.',
     griffin: 'Годрик. «Магия»: Знак любого цвета продолжает комбинацию.',
+    ciri: 'Цири. «Старшая Кровь»: раз за битву одна карта комбинации получает связь любого цвета. Родная школа — Каэр Морхен.',
 };
 const EXPANSIONS = [
     ['legendary', 'Легендарная охота', 'легендарные монстры и снаряжение'],
     ['skellige', 'Скеллиге', 'острова 19–21, корабли и новые события'],
     ['mages', 'Чародеи', 'играбельные чародеи'],
-    ['ciri', 'Цири и доп. события', 'новые события исследования, тайные карты и жетоны заданий'],
+    ['ciri', 'Цири и доп. события', 'Цири, новые события исследования, тайные карты и жетоны заданий'],
     ['trail', 'По следу монстра', 'выслеживание монстров'],
     ['extra', 'Дополнительный монстр', 'новый монстр'],
 ];
@@ -33,9 +34,10 @@ export function renderLobby() {
     const mySchool = mySeat ? mySeat.school : 'wolf';
     const taken = new Set(L.seats.filter((s, i) => i !== S.you).map(s => s.school));
     const schools = Object.entries(SCHOOLS).map(([k, sc]) => {
-        const base = sc.base;
-        const cls = k === mySchool ? 'sel' : (taken.has(k) || !base) ? 'taken' : '';
-        return `<div class="school ${cls}" data-school="${k}" style="--sc:${sc.color}" ${!base ? 'title="Школа из дополнения — появится вместе с ним"' : ''}><b>${esc(sc.school)}</b><small>${esc(SCHOOL_TEXT[k] || (base ? '' : 'Дополнение — скоро'))}</small></div>`;
+        const open = sc.base || (L.settings.exp || []).includes(sc.exp);
+        const cls = k === mySchool ? 'sel' : (taken.has(k) || !open) ? 'taken' : '';
+        const why = !open ? 'Включите дополнение «Цири и доп. события»' : taken.has(k) ? 'Уже выбрано другим игроком' : '';
+        return `<div class="school ${cls}" data-school="${k}" style="--sc:${sc.color}" ${why ? `title="${esc(why)}"` : ''}><b>${esc(sc.school)}</b><small>${esc(SCHOOL_TEXT[k] || '')}${!open ? '<em> · нужно дополнение</em>' : ''}</small></div>`;
     }).join('');
     const seats = L.seats.map(s => `<div class="seat" style="--sc:${SCHOOLS[s.school].color}"><span class="dot"></span><span class="nm">${s.bot ? icon('bot') + ' ' : ''}${esc(s.name)}</span><span class="tag ${s.host ? 'host' : ''}">${s.host ? 'хозяин' : s.bot ? 'бот' : s.online ? 'в сети' : 'не в сети'} · ${esc(SCHOOLS[s.school].name)}</span>${isHost && s.id !== S.you ? btn({ label: '', icon: icon('close'), small: true, data: `data-kick="${s.id}"` }) : ''}</div>`).join('');
     const solo = L.seats.length === 1;
@@ -61,8 +63,8 @@ export function renderLobby() {
                 const why = !ready ? 'Подключается на следующем этапе' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
                 return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>`;
             }).join('')}
-            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — новые карты исследования, тайные события и жетоны заданий.</div></div>
-            ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 8).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
+            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий.</div></div>
+            ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 12).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
             <div class="lobby-actions">${isHost ? btn({ id: 'lStart', label: 'Начать партию', primary: true, key: 'Enter' }) : '<span style="color:var(--dim)">Ждём, пока хозяин начнёт партию…</span>'}</div>
             <div class="lan">Друзья в той же сети подключаются по адресу: ${(L.addresses || []).map(a => `<code>http://${a}:${L.port}/</code>`).join(' ') || '<code>' + location.host + '</code>'}</div>
         </div></div></div>`;

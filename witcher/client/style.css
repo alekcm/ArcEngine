@@ -240,6 +240,9 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 #fight .combo { display: flex; gap: 8px; align-items: center; min-height: calc(var(--ch) + 10px); padding: 8px 14px; border-radius: 12px; border: 1px dashed var(--line2); background: #0004; }
 #fight .combo .empty { color: var(--dim); }
 #fight .arrow { color: var(--gold); font-size: 22px; }
+#fight .arrow.blood { color: #e05a5a; display: inline-flex; align-items: center; filter: drop-shadow(0 0 6px #e05a5a88); }
+#fight .arrow.blood svg { width: 24px; height: 24px; }
+#fight .bloodnote { color: #f08a8a; font-size: 13px; }
 #fight .totals { display: flex; gap: 16px; font-size: 16px; align-items: center; }
 #fight .totals .fx { font-size: 20px; }
 #fight .totals .fx .ic { width: 22px; height: 22px; }
@@ -401,15 +404,14 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .evopt.on { background: rgba(160, 110, 40, .22); }
 .evopt.dis { opacity: .45; cursor: not-allowed; }
 .evdiv { display: block; width: 92%; margin: 6px auto 10px; }
-.evres { margin: 0 0 10px; transition: opacity .3s; }
-.evres > span { display: inline; }
-.evres > .evd { display: inline-flex; vertical-align: -3px; }
-.evres .eff { margin-top: 4px; }
-.evres.bare { display: flex; gap: 8px; align-items: flex-start; }
-.evres.bare > .evd { flex: none; margin-top: 1px; }
-.evres.bare .eff { margin-top: 0; }
-.evres.off { opacity: .42; }
-.evres.on { background: rgba(160, 110, 40, .14); border-radius: 6px; box-shadow: 0 0 0 4px rgba(160, 110, 40, .14); }
+.evpair { margin: 0 0 4px; border-radius: 6px; transition: opacity .3s; }
+.evpair .evopt { margin-bottom: 2px; }
+.evpair .evres { padding-left: 27px; }
+#modal .evpair .evres p, .evpair .evres p { margin: 2px 0 4px; }
+.evpair .evres .evquest { margin: 2px 0 4px; }
+.evpair.off { opacity: .42; }
+.evpair.on { background: rgba(160, 110, 40, .14); box-shadow: 0 0 0 4px rgba(160, 110, 40, .14); }
+.evpair.on .evopt.on { background: none; }
 .evquest { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .evq { width: 26px; height: 26px; flex: none; }
 .evb { width: 19px; height: 15px; vertical-align: -2px; }

@@ -5,7 +5,7 @@ import { STEPS, push, run, ask } from './flow.mjs';
 import { CARDS, LOC, ADJ, MONSTER, log, fx, removeFrom, potionOf, d6 } from './util.mjs';
 import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from '../data/rules-data.mjs';
 import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
-import { monsterFightError, elixirError, specError, activeEffectError, comboError } from './fight.mjs';
+import { monsterFightError, elixirError, specError, activeEffectError, comboError, bloodError } from './fight.mjs';
 import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy, hasGear, trainCost, GEAR_MOVES } from './effects.mjs';
 import { exploreError, questError, eventComboError, effectSteps } from './explore.mjs';
 import { questLabel } from '../data/events-data.mjs';
@@ -44,7 +44,7 @@ export function locActionInfo(state, p) {
             break;
         }
         case 'school': {
-            const home = LOC[p.loc].school === p.school;
+            const home = p.loc === SCHOOLS[p.school].home;
             for (const s of ['combat', 'defense', 'alchemy', 'spec']) {
                 const cost = trainCost(p, s);
                 let e = null;
@@ -91,6 +91,7 @@ export function options(state, seat) {
         o.fight = {
             elixirs: p.elixirs.map(id => ({ id, err: elixirError(state, p, id) })),
             spec: specError(state, p),
+            blood: p.school === 'ciri' ? bloodError(state, p) : undefined,
             active: Object.keys(ACTIVE_EFFECTS).filter(k => k === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : ACTIVE_EFFECTS[k].src === 'gear' ? p.gear.includes(k) : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
             mustPlay: p.hand.length > 0,
         };
@@ -298,9 +299,10 @@ function fightCmd(state, p, cmd) {
         case 'active': { const e = activeEffectError(state, p, cmd.key); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'useActive', fight: 1, key: cmd.key }); return ok(); }
         case 'combo': {
             const ids = Array.isArray(cmd.ids) ? cmd.ids : [];
-            const e = comboError(state, p, ids, { free: !!cmd.free });
+            const blood = cmd.blood == null ? null : Number(cmd.blood);
+            const e = comboError(state, p, ids, { free: !!cmd.free, blood });
             if (e) return err(e);
-            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null });
+            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood });
             return ok();
         }
     }

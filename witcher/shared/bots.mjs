@@ -13,30 +13,33 @@ export const cardValue = (id) => {
     return (f.dmg || 0) * 3 + (f.shield || 0) * 2 + (f.draw || 0) + (f.top ? 2 : 0) + c.links.length * 1.5 + c.cost;
 };
 
-/** Best combo by DFS over the hand (at most ~7 cards, cheap). */
-export function bestCombo(view, p) {
+/** Best combo by DFS over the hand (at most ~7 cards, cheap). With Цири's «Старшая Кровь»
+ *  available, one link of the chain may be the any-colour blood link: returns { ids, blood }. */
+export function bestCombo(view, p, useBlood = false) {
     const hand = p.hand;
     const f = view.fight;
     const forced = f.cur && f.cur.forcedFirst && hand.includes(f.cur.forcedFirst) ? f.cur.forcedFirst : null;
-    let best = { ids: hand.length ? [forced || hand[0]] : [], score: -1 };
-    const score = (ids) => {
-        const t = comboTotals(view, p, ids);
-        return t.dmg * 3 + Math.min(t.shield, 4 - p.shield) * 2 + t.draw * 1.2 + t.top + t.ret.length * 2;
+    let best = { ids: hand.length ? [forced || hand[0]] : [], blood: null, score: -1 };
+    const score = (ids, blood) => {
+        const t = comboTotals(view, p, ids, { blood });
+        // Blood is once per fight: only spend it for a real gain.
+        return t.dmg * 3 + Math.min(t.shield, 4 - p.shield) * 2 + t.draw * 1.2 + t.top + t.ret.length * 2 - (blood != null ? 2.5 : 0);
     };
-    const dfs = (chain, rest) => {
+    const dfs = (chain, rest, blood) => {
         if (chain.length) {
             if (forced && chain[0] !== forced) return;
-            const s = score(chain);
-            if (s > best.score) best = { ids: chain.slice(), score: s };
+            const s = score(chain, blood);
+            if (s > best.score) best = { ids: chain.slice(), blood, score: s };
             if (f.cur && f.cur.onlyOne) return;
         }
         for (const id of rest) {
-            if (chain.length && linkIndex(CARDS[chain[chain.length - 1]], CARDS[id]) < 0) continue;
-            dfs([...chain, id], rest.filter(x => x !== id));
+            const linked = !chain.length || linkIndex(CARDS[chain[chain.length - 1]], CARDS[id]) >= 0;
+            if (linked) dfs([...chain, id], rest.filter(x => x !== id), blood);
+            if (chain.length && useBlood && blood == null) dfs([...chain, id], rest.filter(x => x !== id), chain.length);
         }
     };
-    dfs([], hand);
-    return best.ids;
+    dfs([], hand, null);
+    return useBlood ? { ids: best.ids, blood: best.blood } : best.ids;
 }
 
 let R = Math.random;
@@ -64,8 +67,10 @@ export function botCommand(view, opts = {}) {
         const gear = act.find(a => a.key === 'CONT79-14' || a.key === 'CONT79-20' || a.key === 'CONT79-56'
             || ((a.key === 'CONT79-15' || a.key === 'CONT79-01') && p.hand.length >= 3));
         if (gear) return { t: 'active', key: gear.key };
-        const ids = bestCombo(view, p);
-        return { t: 'combo', ids };
+        const canBlood = !!(opts.options && opts.options.fight && opts.options.fight.blood === null);
+        const best = bestCombo(view, p, canBlood);
+        const ids = canBlood ? best.ids : best, blood = canBlood ? best.blood : null;
+        return blood != null ? { t: 'combo', ids, blood } : { t: 'combo', ids };
     }
     const t = view.turn;
     if (!t || t.seat !== me || t.phase !== 1 || f) return null;
