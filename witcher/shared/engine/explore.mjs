@@ -192,7 +192,11 @@ STEPS.eventFx = (state, step) => {
         else push(state, { op: 'eventSkillPick', seat: p.seat, mode: e.skill === 'any' ? 'any' : 'lowest', left: e.skill === 'lowest2' ? 2 : 1, done: [] });
     }
     if (e.skillDown) push(state, { op: 'lowerSkill', seat: p.seat, skill: e.skillDown });
-    if (e.draw && t) {
+    if (e.draw && t && t.seat !== p.seat) {
+        // Not this player's turn (event 133 read to the opponent after witcher poker): its next phase III.
+        p.drawLater = (p.drawLater || 0) + e.draw;
+        log(state, `${p.name}: в свою следующую фазу III ${e.draw > 0 ? 'на ' + e.draw + ' карт(у) больше' : 'на ' + -e.draw + ' карт(у) меньше'}`);
+    } else if (e.draw && t) {
         t.drawDelta += e.draw;
         log(state, `${p.name}: в фазе III ${e.draw > 0 ? 'на ' + e.draw + ' карт(у) больше' : 'на ' + -e.draw + ' карт(у) меньше'}`);
     }
@@ -274,7 +278,7 @@ STEPS.eventFx = (state, step) => {
         const okc = (c.goldMax == null || p.gold <= c.goldMax) && (c.elixirMax == null || p.elixirs.length <= c.elixirMax)
             && (c.shieldMax == null || p.shield <= c.shieldMax) && (c.trophiesMax == null || p.trophies.length <= c.trophiesMax)
             && (c.ownSchool == null || (p.loc === SCHOOLS[p.school].home) === c.ownSchool)
-            && (c.pokerVs == null || ((state.lastPoker && state.lastPoker.seat === p.seat ? state.lastPoker.vs : 'town') === c.pokerVs));
+            && (c.pokerVs == null || ((state.lastPoker && state.lastPoker.seat === p.seat ? state.lastPoker.vs : state.lastPokerB && state.lastPokerB.seat === p.seat ? state.lastPokerB.vs : 'town') === c.pokerVs));
         log(state, `${p.name}: условие ${okc ? 'выполнено' : 'не выполнено'}`);
         push(state, ...effectSteps(p.seat, okc ? e.fx : e.else, { card: step.card }));
     }

@@ -53,6 +53,12 @@ export const TRACK_GOLD = [1, 2, 3, 3];
 export const EXHAUST = [0, 1, 2, 3];
 export const TROPHIES_TO_WIN = 4;
 
+/** Witcher trophies (Ведьмаки/Трофеи.md): 4 cards per school, WITCHER-TROPHY-01..28 in this order.
+ *  The effect is the same on all four cards of a school (texts: gen-data WITCHERTROPHIES). */
+export const WTROPHY_ORDER = ['wolf', 'cat', 'bear', 'viper', 'griffin', 'manticore', 'ciri'];
+/** The 4 trophy card ids of a school (or Цири). */
+export const wtrophyCards = (school) => { const i = WTROPHY_ORDER.indexOf(school); return i < 0 ? [] : [1, 2, 3, 4].map(k => `WITCHER-TROPHY-${String(i * 4 + k).padStart(2, '0')}`); };
+
 export const HAND_LIMIT = 7;
 export const ELIXIR_LIMIT = 4;
 export const PHASE3_HAND = 3;

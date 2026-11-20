@@ -77,7 +77,7 @@ function onState(m) {
     const events = v.events || [];
     // Fight bookkeeping (the engine clears state.fight at the end; keep a result screen).
     if (v.fight && (!prev || !prev.fight)) fightStarted(v);
-    for (const e of events) if (e.k === 'fightEnd') S.ui.fightResult = { result: e.result, mon: e.mon, seat: e.seat };
+    for (const e of events) if (e.k === 'fightEnd') S.ui.fightResult = e.vs != null ? { kind: 'duel', result: e.result, seat: e.seat, vs: e.vs, winner: e.winner } : { result: e.result, mon: e.mon, seat: e.seat };
     if (S.ui.pay && (!S.options || !S.options.moves.some(x => x.to === S.ui.pay.to))) S.ui.pay = null;
 
     b.syncWitchers(v.players);
@@ -114,7 +114,7 @@ function feedback(events, prev) {
             case 'gain': sfx('card'); break;
             case 'skill': sfx('shield'); break;
             case 'level': if (e.seat === S.you) banner('Новый уровень', `Уровень ведьмака ${e.v}`); break;
-            case 'fightStart': banner('Битва', `${v.players[e.seat].name} против: ${MONSTER[e.mon].name}`, 1800); sfx('roar'); break;
+            case 'fightStart': banner(e.vs != null ? 'Битва ведьмаков' : 'Битва', `${v.players[e.seat].name} против: ${e.vs != null ? v.players[e.vs].name : MONSTER[e.mon].name}`, 1800); sfx(e.vs != null ? 'sword' : 'roar'); break;
             case 'fightEnd': sfx(e.result === 'lose' ? 'lose' : 'win'); break;
             case 'trophy': sfx('trophy'); if (e.seat !== S.you) toast(`${v.players[e.seat].name} получает трофей (${e.track}/4)`, 'info'); break;
             case 'spawn': if (board && prev) setTimeout(() => board.focus(e.loc, 9), 400); break;

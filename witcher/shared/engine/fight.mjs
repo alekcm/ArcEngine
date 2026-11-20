@@ -5,7 +5,7 @@ import { STEPS, push, ask } from './flow.mjs';
 import {
     CARDS, MONSTER, ATTACK, LOC, card, log, fx, drawCards, removeFrom, shuffle, randInt, d6, skillVal, maxShield, clampShield, potionOf,
 } from './util.mjs';
-import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT } from '../data/rules-data.mjs';
+import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT, SCHOOLS } from '../data/rules-data.mjs';
 import { hasTrophy, hasWitcherTrophy, hasSkillTrophy, ACTIVE_EFFECTS, hasGear, keepOf } from './effects.mjs';
 import { SKILL_GEN } from './turn.mjs';
 import { bombsOn } from './bombs.mjs';
@@ -14,6 +14,7 @@ import { MUTAGEN } from '../data/trail-data.mjs';
 import { BIG } from '../data/vuln-data.mjs';
 import { SKILL_VALUE } from '../data/rules-data.mjs';
 import { isSpecial, freshAttackDeck, onMonsterAppears, restrictError, endOfTurnDiscards, afterCombo25, vulnOn, specialName } from './vuln.mjs';
+import { isDuel, otherSeat, onceOf, duelKo } from './duel.mjs';
 import { vtFirstWitcherTurn, vtBeforeMonster, vtAfterMonster, vtM1, vtComboBonus, vtDrawBonus, vtLife, vulnReset } from './vtoken.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
@@ -160,17 +161,20 @@ STEPS.drownerDo = (state, step) => {
 };
 
 STEPS.discardFromHandAsk = (state, step) => {
-    const p = fp(state);
+    if (!alive(state)) return;
+    const p = step.seat != null ? state.players[step.seat] : fp(state);
     const n = Math.min(step.n, p.hand.length);
     if (!n) return;
-    if (n === p.hand.length && !step.choice) { push(state, F('discardFromHandDo', { ids: p.hand.slice(), why: step.why, attack: step.attack })); return; }
-    ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: n, max: n, title: 'Сброс', text: step.why, op: 'discardFromHandDo', args: { fight: 1, why: step.why, attack: step.attack } });
+    if (n === p.hand.length && !step.choice) { push(state, F('discardFromHandDo', { ids: p.hand.slice(), why: step.why, attack: step.attack, seat: step.seat })); return; }
+    if ((p.bot || p.away) && step.seat != null) { push(state, F('discardFromHandDo', { ids: p.hand.slice().sort((x, y) => cardScore(x) - cardScore(y)).slice(0, n), why: step.why, attack: step.attack, seat: step.seat })); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: n, max: n, title: 'Сброс', text: step.why, op: 'discardFromHandDo', args: { fight: 1, why: step.why, attack: step.attack, seat: step.seat } });
 };
 STEPS.discardFromHandDo = (state, step) => {
-    const p = fp(state);
+    const p = step.seat != null ? state.players[step.seat] : fp(state);
     for (const id of step.ids) { removeFrom(p.hand, id); p.discard.push(id); }
     fx(state, { k: 'discard', seat: p.seat, ids: step.ids });
     log(state, `${p.name} сбрасывает из руки: ${step.ids.map(id => '«' + CARDS[id].name + '»').join(', ')}`);
+    if (isDuel(state) && !p.hand.length && !p.deck.length) { duelKo(state, p.seat); return; }
     if (step.attack) onAttackDiscard(state, p, step.ids, false);
 };
 
@@ -188,11 +192,12 @@ STEPS.firstTurn = (state) => {
 /** Deal damage to the monster: discard that many cards from the top of its life pool. */
 STEPS.dealDamage = (state, step) => {
     if (!alive(state)) return;
-    hitMonster(state, step.n, step.src);
+    hitMonster(state, step.n, step.src, { by: step.by });
 };
 function hitMonster(state, n, src, opts = {}) {
     const f = state.fight, p = fp(state);
     if (n <= 0) return 0;
+    if (f.kind === 'duel') return hitWitcher(state, n, src, opts);
     const cur = f.cur;
     if (cur && f.wTurns === 1 && f.turn === 'witcher') {
         if (ab(f) === 'MON-19' && !f.track) { log(state, `Покаянник: в первый ход без жетона следа урон игнорируется (${n})`); return 0; }
@@ -222,6 +227,38 @@ function hitMonster(state, n, src, opts = {}) {
     if (special) push(state, F('discAbility', { id: special }), ...(n > 0 ? [F('dealDamage', { n, src })] : []));
     return k;
 }
+/** Witcher fight (База.md p. 23): damage to the other witcher — shield, then the top of the deck,
+ *  then cards of the hand chosen by the victim. `opts.by` — the seat dealing it (default: on turn). */
+function hitWitcher(state, n, src, opts = {}) {
+    const f = state.fight;
+    const by = opts.by != null ? opts.by : f.seat;
+    const a = state.players[by], v = state.players[otherSeat(f, by)];
+    log(state, `${a.name} наносит ${n} урона${src ? ' (' + src + ')' : ''}: ${v.name}`);
+    fx(state, { k: 'witcherHit', seat: v.seat, n });
+    const fromShield = Math.min(n, v.shield); v.shield -= fromShield; n -= fromShield;
+    if (fromShield) log(state, `${v.name}: щит −${fromShield} (осталось ${v.shield})`);
+    const deckIds = [];
+    while (n > 0 && v.deck.length) { const id = v.deck.shift(); v.discard.push(id); deckIds.push(id); n--; }
+    if (deckIds.length) {
+        log(state, `${v.name} сбрасывает ${deckIds.length} карт(ы) с верха колоды`);
+        fx(state, { k: 'deckLoss', seat: v.seat, n: deckIds.length });
+        if (by === f.seat) f.oppDeckLoss = (f.oppDeckLoss || 0) + deckIds.length;
+    }
+    const handN = Math.min(n, v.hand.length);
+    if (handN && handN >= v.hand.length) {
+        const ids = v.hand.splice(0); v.discard.push(...ids);
+        log(state, `${v.name} сбрасывает из руки: ${ids.map(id => '«' + CARDS[id].name + '»').join(', ')}`);
+        fx(state, { k: 'discard', seat: v.seat, ids });
+    }
+    if (!v.hand.length && !v.deck.length) { duelKo(state, v.seat); return deckIds.length + handN; }
+    if (deckIds.length) onAttackDiscard(state, v, deckIds, true);
+    if (handN && v.hand.length) push(state, F('discardFromHandAsk', { seat: v.seat, n: handN, why: `Урон от ${a.name}: сбросьте ${handN} карт(ы) из руки на выбор`, choice: true, attack: true }));
+    if ((deckIds.length || handN) && !opts.noTrigger) onOpponentDiscarded(state, a);
+    return deckIds.length + handN;
+}
+/** The pile the opponent's cards are looked at / sent from: the monster's life pool or the other witcher's deck. */
+const oppPile = (state) => isDuel(state) ? state.players[otherSeat(state.fight)].deck : state.fight.life;
+const oppDiscard = (state) => isDuel(state) ? state.players[otherSeat(state.fight)].discard : state.fight.monDiscard;
 /** One point of damage ignored? `ign` = { all, n, half, hc } of the current witcher turn. */
 function ignorePoint(ign) {
     if (ign.all) return true;
@@ -232,30 +269,44 @@ function ignorePoint(ign) {
 /** "When your opponent discards at least 1 card because of your attack" — Viper. */
 function onOpponentDiscarded(state, p) {
     const f = state.fight;
-    if (p.school === 'viper' && !f.once.spec && f.life.length) {
-        f.once.spec = true;
+    if (!f || f.over) return;
+    const once = onceOf(f, p.seat), mine = p.seat === f.seat;
+    const pile = isDuel(state) ? state.players[otherSeat(f, p.seat)].deck : f.life;
+    if (p.school === 'viper' && !once.spec && pile.length && mine) {
+        once.spec = true;
         const [look, send] = SPEC_TABLE.viper[p.skills.spec - 1];
-        const top = f.life.slice(0, look);
-        log(state, `${p.name}: «Отравленный клинок» — смотрит ${top.length} верхних карт монстра`);
+        const top = pile.slice(0, look);
+        log(state, `${p.name}: «Отравленный клинок» — смотрит ${top.length} верхних карт ${isDuel(state) ? 'колоды противника' : 'монстра'}`);
         if (send > 0 && top.length) {
             push(state, F('viperAsk', { n: Math.min(send, top.length), ids: top }));
         }
     }
-    if (hasWitcherTrophy(p, 'viper') && !f.once.wViper) {
-        f.once.wViper = true;
-        if (f.cur) f.cur.drawMod -= 1;
-        push(state, F('dealDamage', { n: 1, src: 'трофей Змеи (−1 карта в конце хода)' }));
+    if (hasWitcherTrophy(p, 'viper') && !once.wViper) {
+        once.wViper = true;
+        if (f.cur && mine) f.cur.drawMod -= 1;
+        push(state, F('dealDamage', { n: 1, src: 'трофей Змеи (−1 карта в конце хода)', by: p.seat }));
     }
 }
 STEPS.viperAsk = (state, step) => {
     const p = fp(state);
-    const f = state.fight;
-    const ids = step.ids.filter(id => f.life.includes(id));
+    const pile = oppPile(state);
+    const ids = step.ids.filter(id => pile.includes(id));
     if (!ids.length) return;
+    const duel = isDuel(state);
+    if (duel && (p.bot || p.away)) { push(state, F('viperDo', { ids: ids.slice().sort((x, y) => cardScore(y) - cardScore(x)).slice(0, Math.min(step.n, ids.length)) })); return; }
+    if (duel) { ask(state, { seat: p.seat, kind: 'cards', from: 'oppDeck', ids, min: Math.min(step.n, ids.length), max: Math.min(step.n, ids.length), title: 'Отравленный клинок', text: `Отправьте ${step.n} из просмотренных карт колоды противника в его сброс. Остальные вернутся на верх в прежнем порядке.`, op: 'viperDo', args: { fight: 1 } }); return; }
     ask(state, { seat: p.seat, kind: 'cards', from: 'monsterTop', ids, min: Math.min(step.n, ids.length), max: Math.min(step.n, ids.length), title: 'Отравленный клинок', text: `Отправьте ${step.n} из просмотренных карт монстра в его сброс. Остальные вернутся на верх в прежнем порядке.`, op: 'viperDo', args: { fight: 1 } });
 };
 STEPS.viperDo = (state, step) => {
     const f = state.fight;
+    if (isDuel(state)) {
+        const v = state.players[otherSeat(f)];
+        for (const id of step.ids) if (removeFrom(v.deck, id)) v.discard.push(id);
+        log(state, `Отравленный клинок: в сброс ${v.name} отправлено ${step.ids.length}, в колоде осталось ${v.deck.length}`);
+        fx(state, { k: 'deckLoss', seat: v.seat, n: step.ids.length });
+        if (!v.deck.length && !v.hand.length) duelKo(state, v.seat);
+        return;
+    }
     for (const id of step.ids) { removeFrom(f.life, id); f.monDiscard.push(id); }
     log(state, `Отравленный клинок: в сброс монстра отправлено ${step.ids.length}, осталось ${f.life.length}`);
     fx(state, { k: 'monsterHit', n: step.ids.length, left: f.life.length });
@@ -445,6 +496,7 @@ export function bombError(state, p, inst) {
     if (id === 'BOMB-07') return vulnOn(state) ? 'Только когда срабатывает способность сброса монстра (предлагается сама)' : 'Нужно дополнение «Уязвимости и особые атаки»';
     if (f.elixirsUsed >= skillVal(p, 'alchemy')) return alchemyLimitText(state, p);
     if (id === 'BOMB-01' && !p.discard.length) return 'Сброс пуст';
+    if ((id === 'BOMB-04' || id === 'BOMB-05') && f.kind === 'duel') return 'Только в битве с монстром';
     if (id === 'BOMB-04' && !f.life.length) return 'Запас жизни монстра пуст';
     if (id === 'BOMB-05' && f.moonDust) return 'Лунная пыль уже действует';
     return null;
@@ -468,7 +520,7 @@ STEPS.useBomb = (state, step) => {
         }
         case 'BOMB-02': f.cur.dragon = true; seq.push(F('dealDamage', { n: 1, src: 'Сон дракона' })); break;
         case 'BOMB-03': {
-            const nest = /Гнездо/.test(MONSTER[f.mon].name);
+            const nest = !!f.mon && /Гнездо/.test(MONSTER[f.mon].name);
             const n = nest ? 2 : 1;
             const g = drawCards(state, p, n);
             log(state, `${p.name}: Танцующая звезда — +${g} карт(ы)${nest ? ' (гнездо: 2 урона и 2 карты)' : ''}`);
@@ -529,7 +581,8 @@ STEPS.mushroomAsk = (state) => {
     if (p.bot) { push(state, F('mushroomDo', { choice: 'use', id: inst })); return; }
     ask(state, {
         seat: p.seat, kind: 'choice', ui: 'bomb', title: 'Чёртов гриб', card: inst,
-        text: `До формирования запасов жизней можно бросить «Чёртов гриб»: возьмите 2 карты из колоды, особая способность монстра (${MONSTER[f.mon].name}) не действует до конца битвы. Бомба займёт 1 место в лимите алхимии.`,
+        text: f.mon ? `До формирования запасов жизней можно бросить «Чёртов гриб»: возьмите 2 карты из колоды, особая способность монстра (${MONSTER[f.mon].name}) не действует до конца битвы. Бомба займёт 1 место в лимите алхимии.`
+            : 'До формирования запасов жизней можно бросить «Чёртов гриб»: возьмите 2 карты из колоды (особой способности монстра в битве ведьмаков нет). Бомба займёт 1 место в лимите алхимии.',
         options: [{ id: 'use', label: 'Бросить «Чёртов гриб»' }, { id: 'skip', label: 'Не сейчас' }], op: 'mushroomDo', args: { fight: 1, id: inst },
     });
 };
@@ -542,7 +595,7 @@ STEPS.mushroomDo = (state, step) => {
     f.elixirsUsed++;
     f.noAbility = true;
     const g = drawCards(state, p, 2);
-    log(state, `${p.name} бросает бомбу «Чёртов гриб»: +${g} карт(ы), особая способность монстра не действует до конца битвы`, { kind: 'elixir' });
+    log(state, `${p.name} бросает бомбу «Чёртов гриб»: +${g} карт(ы)${f.mon ? ', особая способность монстра не действует до конца битвы' : ''}`, { kind: 'elixir' });
     fx(state, { k: 'useBomb', seat: p.seat, id: step.id });
 };
 
@@ -627,7 +680,7 @@ export function activeEffectError(state, p, key) {
     const f = state.fight;
     if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Только на этапе 1 своего хода битвы';
     if (f.once['a' + key]) return 'Уже использовано в этой битве';
-    const own = key === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : ACTIVE_EFFECTS[key]?.src === 'gear' ? p.gear.includes(key) : hasTrophy(p, key);
+    const own = key.startsWith('W-') ? hasWitcherTrophy(p, key.slice(2)) : ACTIVE_EFFECTS[key]?.src === 'gear' ? p.gear.includes(key) : hasTrophy(p, key);
     if (!own) return 'Нет такого трофея';
     switch (key) {
         case 'MON-06': case 'MON-26': return p.deck.length ? 'Только если колода пуста' : null;
@@ -643,6 +696,7 @@ export function activeEffectError(state, p, key) {
         case 'MON-21': return p.gold >= 2 && p.discard.length ? null : 'Нужно 2 золота и карта в сбросе';
         case 'MON-28': return p.discard.length ? null : 'Сброс пуст';
         case 'W-griffin': return p.discard.length ? null : 'Сброс пуст';
+        case 'W-manticore': return p.elixirs.length ? null : 'Нужен неиспользованный эликсир';
         case 'MON-18': return null;
     }
     return 'Неизвестный эффект';
@@ -675,6 +729,11 @@ STEPS.useActive = (state, step) => {
         case 'CONT79-56': ask(state, { seat: p.seat, kind: 'cards', from: 'discard', ids: p.discard.slice(), min: 1, max: 1, title: 'Лекарство', text: 'Возьмите 1 любую карту из своего сброса и замешайте её в свою колоду.', op: 'gearMedicine', args: { fight: 1 } }); break;
         case 'MON-21': p.gold -= 2; askDiscardPick('Трофей «Мантикора»', 'trTakeDiscard'); break;
         case 'MON-28': askDiscardPick('Трофей «Сколопендроморф»', 'trTakeDiscard'); break;
+        case 'W-manticore': {
+            if (p.elixirs.length === 1 || p.bot) { push(state, F('trManticoreW', { ids: [p.elixirs[0]] })); break; }
+            ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: 1, max: 1, title: 'Трофей Мантикоры', text: 'Сбросьте 1 неиспользованный эликсир, чтобы нанести 1 урон.', op: 'trManticoreW', args: { fight: 1 } });
+            break;
+        }
         case 'W-griffin': {
             const id = p.discard.pop(); p.hand.push(id);
             log(state, `${p.name}: трофей Грифона — «${CARDS[id].name}» из сброса`);
@@ -695,6 +754,13 @@ STEPS.trBarghest = (state, step) => {
     for (const id of step.ids) { removeFrom(p.elixirs, id); state.elixirDiscard.push(id); }
     drawCards(state, p, 1);
     push(state, F('dealDamage', { n: 1, src: 'трофей «Баргест»' }));
+};
+STEPS.trManticoreW = (state, step) => {
+    const p = fp(state);
+    if (!removeFrom(p.elixirs, step.ids[0])) return;
+    state.elixirDiscard.push(step.ids[0]);
+    log(state, `${p.name}: трофей Мантикоры — сброшен эликсир «${potionOf(step.ids[0]).name}»`);
+    push(state, F('dealDamage', { n: 1, src: 'трофей Мантикоры' }));
 };
 STEPS.trNoonwraith = (state, step) => {
     const p = fp(state);
@@ -754,6 +820,21 @@ export function bloodError(state, p) {
     if (f.cur && f.cur.onlyOne) return 'Чёрная кровь: комбинация только из 1 карты';
     return null;
 }
+/** Трофей Цири (WITCHER-TROPHY-25..28, once per fight): one link of one card counts as any colour. */
+export function wlinkError(state, p) {
+    const f = state.fight;
+    if (!p || !hasWitcherTrophy(p, 'ciri')) return 'Нужен трофей Цири';
+    if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Только в свой ход битвы';
+    if (f.once.wCiri) return 'Трофей Цири уже использован в этой битве';
+    if (f.cur && f.cur.onlyOne) return 'Чёрная кровь: комбинация только из 1 карты';
+    return null;
+}
+/** The link of `prev` used by the Ciri trophy: the chosen one, else the strongest. */
+export function wlinkIndex(prev, prefer) {
+    if (!prev.links.length) return -1;
+    if (prefer != null && prev.links[prefer]) return prefer;
+    return prev.links.map((l, i) => ({ l, i })).sort((a, b) => fxScore(b.l.fx) - fxScore(a.l.fx))[0].i;
+}
 /** The «Старшая Кровь» link effect for the current specialization level: { dmg, draw }. */
 export function bloodFx(p) {
     const [dmg, draw] = SPEC_TABLE.ciri[Math.max(0, Math.min(4, (p.skills.spec || 1) - 1))];
@@ -788,8 +869,15 @@ export function comboError(state, p, ids, opts = {}) {
         if (be) return be;
         if (!Number.isInteger(blood) || blood < 1 || blood >= chain.length) return 'Связь Старшей Крови должна соединять две карты комбинации';
     }
+    const wlink = opts.wlink == null ? null : opts.wlink;
+    if (wlink != null) {
+        const we = wlinkError(state, p);
+        if (we) return we;
+        if (!Number.isInteger(wlink) || wlink < 1 || wlink >= chain.length || wlink === blood) return 'Связь трофея Цири должна соединять две карты комбинации';
+        if (!CARDS[chain[wlink - 1]].links.length) return `У «${CARDS[chain[wlink - 1]].name}» нет связей`;
+    }
     for (let i = 1; i < chain.length; i++) {
-        if (i === blood) continue;
+        if (i === blood || i === wlink) continue;
         const prev = CARDS[chain[i - 1]], next = CARDS[chain[i]];
         if (linkIndex(prev, next) < 0) return `«${next.name}» (${COLOR_SHORT[next.color]}) не соединяется с «${prev.name}»`;
     }
@@ -820,6 +908,16 @@ export function comboTotals(state, p, ids, opts = {}) {
             const bf = bloodFx(p);
             if (!off) linkFx(bf, ids[i - 1]);
             t.blood = { at: i, color: c.color, ...bf, off };
+        } else if (i > 0 && i < chainLen && i === opts.wlink) {
+            // Трофей Цири: a printed link of the previous card takes the colour of this one.
+            const prev = CARDS[ids[i - 1]];
+            const li = wlinkIndex(prev, opts.links ? opts.links[i] : null);
+            if (li >= 0) {
+                const link = prev.links[li];
+                const off = (f && ab(f) === 'MON-08' && prev.color === 'purple') || (f && ab(f) === 'MON-29' && c.color === 'purple');
+                if (!off) linkFx(link.fx, ids[i - 1]);
+                t.wlink = { at: i, li, from: link.color, color: c.color, off };
+            }
         } else if (i > 0 && i < chainLen) {
             const prev = CARDS[ids[i - 1]];
             const li = linkIndex(prev, c, opts.links ? opts.links[i] : null);
@@ -920,7 +1018,7 @@ STEPS.playCombo = (state, step) => {
     const ids = step.ids;
     for (const id of ids) removeFrom(p.hand, id);
     f.cur.combo = ids.slice();
-    const t = comboTotals(state, p, ids, { free: step.free, links: step.links, blood: step.blood, mutOff: step.mutOff, mut8: step.mut8 });
+    const t = comboTotals(state, p, ids, { free: step.free, links: step.links, blood: step.blood, wlink: step.wlink, mutOff: step.mutOff, mut8: step.mut8 });
     // Dice of the master actions (Сметающий Аард on a link, Засада on the card).
     for (const d of t.dice) {
         const r = d6(state);
@@ -944,6 +1042,10 @@ STEPS.playCombo = (state, step) => {
         const b = t.blood;
         log(state, `${p.name}: «Старшая Кровь» — «${CARDS[ids[b.at - 1]].name}» получает ${COLOR_SHORT[b.color]} связь${b.off ? ' (эффект подавлен монстром)' : `: ${b.dmg ? `урон ${b.dmg}, ` : ''}${b.draw >= 0 ? '+' : ''}${b.draw} карт(а) в конце хода`}`);
         fx(state, { k: 'spec', seat: p.seat });
+    }
+    if (t.wlink) {
+        f.once.wCiri = true;
+        log(state, `${p.name}: трофей Цири — ${COLOR_SHORT[t.wlink.from]} связь «${CARDS[ids[t.wlink.at - 1]].name}» считается ${COLOR_SHORT[t.wlink.color]}${t.wlink.off ? ' (эффект подавлен монстром)' : ''}`);
     }
     let dmg = t.dmg;
     const chainLen = step.free ? ids.length - 1 : ids.length;
@@ -1060,6 +1162,11 @@ STEPS.afterWitcherTurn = (state) => {
     // Discard abilities resolved at the end of the turn (Гарпия, Туманник, Кладбищенская баба).
     const endSeq = endOfTurnDiscards(state);
     if (endSeq.length) { push(state, ...endSeq, F('afterWitcherTurn')); return; }
+    if (state.fight.kind === 'duel') {
+        if (!p.hand.length && !p.deck.length) { duelKo(state, p.seat); return; }
+        push(state, F('duelNext'));
+        return;
+    }
     if (!p.hand.length && !p.deck.length) { endFight(state, 'ko'); return; }
     push(state, F('monsterTurn'));
 };
@@ -1309,10 +1416,11 @@ function onAttackDiscard(state, p, ids, fromDeck) {
         const od = CARDS[id] && CARDS[id].onDiscard;
         if (!od || (od.deckOnly && !fromDeck)) continue;
         if (od.shield) { gainShield(state, p, od.shield, `«${CARDS[id].name}» сброшена атакой`); }
-        if (od.dmg) push(state, F('dealDamage', { n: od.dmg, src: `«${CARDS[id].name}» сброшена атакой` }));
-        if (od.fromDiscard) push(state, F('paralysisAsk', { id }));
+        if (od.dmg) push(state, F('dealDamage', { n: od.dmg, src: `«${CARDS[id].name}» сброшена атакой`, by: p.seat }));
+        if (od.fromDiscard) push(state, F('paralysisAsk', { id, seat: p.seat }));
     }
-    if (hasSkillTrophy(p, 'defense') && !f.once.sDef) { f.once.sDef = true; p.shield = Math.min(maxShield(state, p), p.shield + 2); log(state, `${p.name}: трофей защиты — щит +2`); }
+    const once = onceOf(f, p.seat);
+    if (hasSkillTrophy(p, 'defense') && !once.sDef) { once.sDef = true; p.shield = Math.min(maxShield(state, p), p.shield + 2); log(state, `${p.name}: трофей защиты — щит +2`); }
 }
 STEPS.randomDiscard = (state, step) => {
     if (!alive(state)) return;
@@ -1333,14 +1441,14 @@ STEPS.randomDiscard = (state, step) => {
 /** Чары паралича: discarded from the deck by an attack — any card of the discard (not itself) to the hand. */
 STEPS.paralysisAsk = (state, step) => {
     if (!alive(state)) return;
-    const p = fp(state);
+    const p = step.seat != null ? state.players[step.seat] : fp(state);
     const ids = p.discard.filter(id => id !== step.id);
     if (!ids.length) return;
-    if (p.bot) { push(state, F('paralysisDo', { ids: [ids.slice().sort((a, b) => cardScore(b) - cardScore(a))[0]] })); return; }
-    ask(state, { seat: p.seat, kind: 'cards', from: 'discard', ids, min: 1, max: 1, title: 'Чары паралича', text: 'Карта сброшена из колоды атакой: возьмите 1 любую карту из своего сброса (кроме неё).', op: 'paralysisDo', args: { fight: 1 } });
+    if (p.bot) { push(state, F('paralysisDo', { ids: [ids.slice().sort((a, b) => cardScore(b) - cardScore(a))[0]], seat: step.seat })); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'discard', ids, min: 1, max: 1, title: 'Чары паралича', text: 'Карта сброшена из колоды атакой: возьмите 1 любую карту из своего сброса (кроме неё).', op: 'paralysisDo', args: { fight: 1, seat: step.seat } });
 };
 STEPS.paralysisDo = (state, step) => {
-    const p = fp(state);
+    const p = step.seat != null ? state.players[step.seat] : fp(state);
     if (!removeFrom(p.discard, step.ids[0])) return;
     p.hand.push(step.ids[0]);
     log(state, `${p.name}: «Чары паралича» — «${CARDS[step.ids[0]].name}» из сброса в руку`);
@@ -1391,6 +1499,7 @@ function endFight(state, how) {
     push(state, { op: 'fightConsequences' });
 }
 STEPS.fightConsequences = (state) => {
+    if (isDuel(state)) { push(state, { op: 'duelConsequences' }); return; }
     const f = state.fight, p = fp(state);
     const mon = MONSTER[f.mon];
     const slot = state.slots[f.slot];

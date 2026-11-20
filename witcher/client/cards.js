@@ -270,19 +270,24 @@ export function bombCard(inst, opts = {}) {
         <div class="name">${esc(b.name)}</div><div class="txt">${esc(b.text)}</div></div>`;
 }
 
+const SCHOOL_GEN = { wolf: 'Волка', cat: 'Кота', bear: 'Медведя', viper: 'Змеи', griffin: 'Грифона', manticore: 'Мантикоры' };
 export function trophyCard(t) {
     if (t.kind === 'monster') return monsterCard(t.id, { trophy: true, cls: 'trophy-card' });
     if (t.kind === 'skill') {
         const sk = SKILLTROPHIES.find(s => s.id === String(t.id).split('#')[0]);
         return `<div class="card skilltrophy" title="${esc(sk ? sk.text : '')}"><div class="art" style="background-image:${artCss(String(t.id).split('#')[0], '#3a3a5a', 'spec')}"></div><div class="name">${esc(sk ? sk.title : t.id)}</div><div class="txt">${esc(sk ? sk.text : '')}</div></div>`;
     }
-    if (t.kind === 'witcher') return `<div class="card skilltrophy"><div class="name">Трофей ведьмака</div><div class="txt">${esc(WITCHERTROPHIES[t.id] || '')}</div></div>`;
+    if (t.kind === 'witcher') {
+        // The printed card (Ведьмаки/Трофеи.md) when cut; otherwise a text card.
+        if (t.card && ART[t.card]) return `<div class="card mutagen" title="${esc(trophyLabel(t) + ': ' + (WITCHERTROPHIES[t.id] || ''))}"><div class="art" style="background-image:${artCss(t.card)}"></div></div>`;
+        return `<div class="card skilltrophy"><div class="name">${esc(trophyLabel(t))}</div><div class="txt">${esc(WITCHERTROPHIES[t.id] || '')}</div></div>`;
+    }
     return '';
 }
 export function trophyLabel(t) {
     if (t.kind === 'monster') return MONSTER[t.id] ? MONSTER[t.id].name : t.id;
     if (t.kind === 'skill') { const sk = SKILLTROPHIES.find(s => s.id === String(t.id).split('#')[0]); return sk ? sk.title : 'Навык'; }
-    if (t.kind === 'witcher') return 'Трофей ведьмака';
+    if (t.kind === 'witcher') return t.id === 'ciri' ? 'Трофей Цири' : `Трофей школы ${SCHOOL_GEN[t.id] || t.id}`;
     return '?';
 }
 

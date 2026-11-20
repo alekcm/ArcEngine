@@ -3,7 +3,7 @@
 import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { icon, TERRAIN_COLOR } from './icons.js';
-import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, artCss, esc, fxText, bigMonsterCard, bigMonsterBack } from './cards.js';
+import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, trophyCard, artCss, esc, fxText, bigMonsterCard, bigMonsterBack } from './cards.js';
 import { BIG, ROMAN as VROMAN, vulnText } from '/shared/data/vuln-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
@@ -165,9 +165,12 @@ function renderActions(v) {
     // Kept cards that move the witcher (Лошадь, гильдия купцов): once per turn, in phase I.
     for (const g of o.gearMoves || []) parts.push(btn({ label: esc(g.label), icon: icon('move'), why: g.err, data: `data-gmove="${esc(g.key)}"` }));
     if ((o.gearMoves || []).length) parts.push('<span class="sep"></span>');
+    // Poker with witchers met here (pp. 13–14): phase I, after moving in.
+    for (const k of o.pokers || []) parts.push(btn({ label: esc(k.label), icon: icon('poker'), why: k.err, data: `data-wpoker="${k.seat}"` }));
+    if ((o.pokers || []).length) parts.push('<span class="sep"></span>');
     for (const a of o.phase2) {
         if (a.id === 'meditate' && a.err) continue;
-        const ic = a.id === 'fight' ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
+        const ic = a.id === 'fight' || a.id.startsWith('duel-') ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
         const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'E' : '';   // exploring: mouse only
         let why = a.err;
         if (!why && a.id !== 'fight' && !t.moved && o.moves.length) why = null;
@@ -180,6 +183,7 @@ function renderActions(v) {
     for (const b of box.querySelectorAll('[data-loc-skill]')) b.onclick = () => cmd({ t: 'loc', skill: b.dataset.locSkill }, 'тренировка');
     for (const b of box.querySelectorAll('[data-loc-slot]')) b.onclick = () => cmd({ t: 'loc', slot: b.dataset.locSlot === '' ? undefined : Number(b.dataset.locSlot) }, 'выслеживание');
     for (const b of box.querySelectorAll('[data-p2]')) b.onclick = () => phase2(b.dataset.p2);
+    for (const b of box.querySelectorAll('[data-wpoker]')) b.onclick = () => cmd({ t: 'wpoker', seat: Number(b.dataset.wpoker) }, 'покер');
     for (const b of box.querySelectorAll('[data-gmove]')) b.onclick = () => cmd({ t: 'gearMove', key: b.dataset.gmove }, 'перемещение');
     for (const b of box.querySelectorAll('[data-quest]')) b.onclick = () => cmd({ t: 'quest', i: Number(b.dataset.quest) }, 'задание');
 }
@@ -189,6 +193,7 @@ export function phase2(id) {
     if (!a) return;
     if (a.err) { toast(a.err); return; }
     if (id === 'fight') cmd({ t: 'fight' }, 'битва');
+    else if (id.startsWith('duel-')) cmd({ t: 'duel', seat: a.seat }, 'битва ведьмаков');
     else if (id === 'endExplore') cmd({ t: 'endExplore' }, 'фаза III');
     else if (id === 'skipPhase2') cmd({ t: 'skipPhase2' }, 'фаза III');
     else if (id === 'meditate') {
@@ -365,7 +370,7 @@ export function openViewer(title, html) {
 function openPlayer(seat) {
     const p = S.view.players[seat];
     const sc = SCHOOLS[p.school];
-    const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
+    const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : t.kind === 'witcher' ? trophyCard(t) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
     openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${SKILL_NAME[s]} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
         ${(p.mutagens || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Мутагены (${p.mutagens.length})</h3>${p.mutagens.map(id => mutagenCard(id)).join('')}` : ''}

@@ -116,6 +116,14 @@ export function botCommand(view, opts = {}) {
         } else if (o.loc.kind !== 'swap' && o.loc.kind !== 'poor') return { t: 'loc' };
     }
     if (fightOpt && !fightOpt.err && strong && (t.moved || !o.moves.length)) return { t: 'fight' };
+    // Poker with a witcher met here: with spare gold, now and then (pp. 13–14).
+    const wp = (o.pokers || []).find(x => !x.err);
+    if (wp && p.gold >= 2 && R() < 0.5) return { t: 'wpoker', seat: wp.seat };
+    // A witcher fight: only clearly stronger than the opponent (more cards and shield).
+    const power = (q) => (q.hand ? q.hand.length : q.handCount) + q.deckCount + q.discard.length + q.shield * 2;
+    const duel = o.phase2.filter(x => x.id.startsWith('duel-') && !x.err).map(x => view.players[x.seat])
+        .filter(q => p.hand.length >= 4 && power(p) >= power(q) + 2)[0];
+    if (duel && (t.moved || !o.moves.length) && R() < 0.6) return { t: 'duel', seat: duel.seat };
     if (!t.moved && o.moves.length) {
         // Move: prefer a monster we can fight, then an action we can use; pay as cheaply as possible.
         const targets = o.moves.filter(m => m.via == null).map(m => {
@@ -136,6 +144,9 @@ export function botCommand(view, opts = {}) {
     const ex = o.phase2.filter(x => x.id.startsWith('explore-') && !x.err);
     if (ex.length) return { t: 'explore', deck: ex[Math.floor(R() * ex.length)].id === 'explore-city' ? 'city' : 'wild' };
     if (fightOpt && !fightOpt.err) return { t: 'fight' };
+    // Phase II is obligatory: when a witcher fight is the only action left, it is fought.
+    const anyDuel = o.phase2.find(x => x.id.startsWith('duel-') && !x.err);
+    if (anyDuel) return { t: 'duel', seat: anyDuel.seat };
     const skip = o.phase2.find(x => x.id === 'skipPhase2' && !x.err);
     if (skip) return { t: 'skipPhase2' };
     return null;
@@ -154,7 +165,7 @@ export function cheapestPayment(view, p, to) {
 
 function answerPrompt(view, p, pr) {
     if (pr.kind === 'dice') {
-        const dice = view.poker ? view.poker.a : [1, 2, 3, 4, 5];
+        const dice = view.poker ? (pr.side === 'b' ? view.poker.b : view.poker.a) : [1, 2, 3, 4, 5];
         return { t: 'answer', ids: autoReroll(dice) };
     }
     if (pr.kind === 'choice') {

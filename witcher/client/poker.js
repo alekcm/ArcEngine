@@ -37,21 +37,24 @@ export function renderPoker(events = []) {
     const p = v.players[pk.seat];
     const mine = pk.seat === S.you;
     const myPrompt = v.prompt && !v.prompt.foreign && v.prompt.kind === 'dice';
+    // Poker with a witcher: the opponent rerolls first — its dice are the top row.
+    const side = myPrompt && v.prompt.side === 'b' ? 'b' : 'a';
     if (!myPrompt) sel = [];
+    const waitName = v.prompt && v.prompt.foreign && v.players[v.prompt.seat] ? v.players[v.prompt.seat].name : p.name;
     const va = pokerValue(pk.a)[0];
     const vb = pk.b ? pokerValue(pk.b)[0] : null;
     const result = pk.done
         ? pk.res ? pk.res : (v.solo ? `${POKER_NAMES[va]}: +${pk.reward ?? SOLO_POKER[va]} золота` : pk.winner === 'a' ? `${p.name} выигрывает ${pk.pot} золота` : 'Горожане забирают ставку')
-        : myPrompt ? 'Выберите кубики для переброса' : `${p.name} думает…`;
+        : myPrompt ? 'Выберите кубики для переброса' : `${waitName} думает…`;
     el.classList.remove('hidden');
     el.innerHTML = `<div class="tbl"><h2>Покер на костях</h2>
-        ${pk.b ? `<div class="side"><div class="who">${esc(pk.opp || 'Горожане')}<small>${POKER_NAMES[vb]}</small></div><div class="dice">${pk.b.map((d, i) => die('b', i, d, false, false, true)).join('')}</div></div>` : ''}
-        <div class="side"><div class="who">${esc(p.name)}<small>${POKER_NAMES[va]}</small></div><div class="dice" id="pkA">${pk.a.map((d, i) => die('a', i, d, myPrompt, sel.includes(i), false)).join('')}</div></div>
+        ${pk.b ? `<div class="side"><div class="who">${esc(pk.opp || 'Горожане')}<small>${POKER_NAMES[vb]}</small></div><div class="dice" id="pkB">${pk.b.map((d, i) => die('b', i, d, side === 'b', side === 'b' && sel.includes(i), true)).join('')}</div></div>` : ''}
+        <div class="side"><div class="who">${esc(p.name)}<small>${POKER_NAMES[va]}</small></div><div class="dice" id="pkA">${pk.a.map((d, i) => die('a', i, d, myPrompt && side === 'a', side === 'a' && sel.includes(i), false)).join('')}</div></div>
         <div class="res">${esc(result)}</div>
         <div class="foot">${myPrompt ? btn({ id: 'pkGo', label: sel.length ? `Перебросить ${sel.length}` : 'Оставить как есть', primary: true, key: 'Enter' }) : ''}
             ${pk.done ? btn({ id: 'pkClose', label: 'Закрыть', primary: true, key: 'Enter' }) : ''}</div>
-        <div class="ranks">Пара &lt; две пары &lt; тройка &lt; малый стрит 1–5 &lt; большой стрит 2–6 &lt; фул-хаус &lt; каре &lt; покер. ${pk.vs === 'fixed' ? 'Нужна комбинация строго лучше.' : v.solo ? 'Одиночная игра: выплата по комбинации.' : 'Ничья — в пользу игрока.'}</div></div>`;
-    if (myPrompt) for (const d of el.querySelectorAll('#pkA .die')) d.onclick = () => {
+        <div class="ranks">Пара &lt; две пары &lt; тройка &lt; малый стрит 1–5 &lt; большой стрит 2–6 &lt; фул-хаус &lt; каре &lt; покер. ${pk.vs === 'fixed' ? 'Нужна комбинация строго лучше.' : pk.vs === 'witcher' ? 'Банк: по 1 золоту от игроков и 1 из запаса. Первым перебрасывает соперник; при полной ничьей побеждает активный игрок.' : v.solo ? 'Одиночная игра: выплата по комбинации.' : 'Ничья — в пользу игрока.'}</div></div>`;
+    if (myPrompt) for (const d of el.querySelectorAll(side === 'b' ? '#pkB .die' : '#pkA .die')) d.onclick = () => {
         const i = Number(d.dataset.i);
         if (sel.includes(i)) sel.splice(sel.indexOf(i), 1); else sel.push(i);
         sfx('click');

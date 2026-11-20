@@ -214,6 +214,20 @@ export function pokerScenario(seed = 8) {
     p.loc = 6; p.gold = 6; st.turn.moved = true;
     return st;
 }
+/** Битва ведьмаков и покер с ведьмаком: three witchers in one location (not a school, no closed
+ *  tavern); the player already holds the Ciri and Manticore witcher trophies and an elixir. */
+export function duelScenario(seed = 12) {
+    const st = createGame({ seed, players: [{ name: 'Игрок', school: 'wolf' }, { name: 'Ламберт', school: 'cat', bot: 1 }, { name: 'Эскель', school: 'bear', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    for (const q of st.players) q.loc = 5;
+    const p = st.players[0];
+    p.gold = 5; st.players[1].gold = 3; st.players[2].gold = 3;
+    p.trophies.push({ kind: 'witcher', id: 'ciri', card: 'WITCHER-TROPHY-25' }, { kind: 'witcher', id: 'manticore', card: 'WITCHER-TROPHY-21' });
+    p.track = 2;
+    p.elixirs.push(st.elixirDeck.shift());
+    st.turn.moved = true;
+    return st;
+}
 export function midGameScenario(seed = 11, steps = 260) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'viper' }, { name: 'Весемир', school: 'wolf', bot: 1 }, { name: 'Койон', school: 'cat', bot: 1 }] });
     let n = 0;
@@ -240,8 +254,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

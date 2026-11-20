@@ -98,7 +98,16 @@ async function gear() {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
+/** Witcher trophies (Ведьмаки/Трофеи.md): the printed card, columns 2–5 of the atlas, 4 per school. */
+async function witcherTrophies() {
+    for (let r = 1; r <= 7; r++) for (let c = 2; c <= 5; c++) {
+        const n = (r - 1) * 4 + (c - 1);
+        await cut('U', `r${r}c${c}`, { x: 0, y: 0, w: W, h: H }, `WITCHER-TROPHY-${String(n).padStart(2, '0')}.webp`, 420);
+    }
+    console.log('трофеи ведьмаков: 28');
+}
 const only = process.argv[2];
+if (only === 'wtrophies') await witcherTrophies();
 if (!only || only === 'actions') await actions();
 if (!only || only === 'monsters') await monsters();
 if (!only || only === 'potions') await potions();

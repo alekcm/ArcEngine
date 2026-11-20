@@ -6,7 +6,8 @@ import { vtElixirTopError } from './vtoken.mjs';
 import { CARDS, LOC, ADJ, MONSTER, log, fx, removeFrom, potionOf, d6 } from './util.mjs';
 import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from '../data/rules-data.mjs';
 import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
-import { monsterFightError, elixirError, specError, activeEffectError, comboError, bloodError, bombError } from './fight.mjs';
+import { monsterFightError, elixirError, specError, activeEffectError, comboError, bloodError, wlinkError, bombError } from './fight.mjs';
+import { duelError } from './duel.mjs';
 import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy, hasGear, trainCost, GEAR_MOVES } from './effects.mjs';
 import { exploreError, questError, eventComboError, effectSteps } from './explore.mjs';
 import { questLabel } from '../data/events-data.mjs';
@@ -93,10 +94,11 @@ export function options(state, seat) {
             elixirs: p.elixirs.map(id => ({ id, err: elixirError(state, p, id) })),
             spec: specError(state, p),
             blood: p.school === 'ciri' ? bloodError(state, p) : undefined,
+            wlink: hasWitcherTrophy(p, 'ciri') ? wlinkError(state, p) : undefined,
             bombs: (p.bombs || []).map(id => ({ id, err: bombError(state, p, id) })),
             // Главоглаз II (vulnerability): an elixir for the top card of the discard.
             vulnElixir: state.fight.vt && state.fight.vt.elixirTop ? p.elixirs.map(id => ({ id, err: vtElixirTopError(state, p, id) })) : undefined,
-            active: Object.keys(ACTIVE_EFFECTS).filter(k => k === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : ACTIVE_EFFECTS[k].src === 'gear' ? p.gear.includes(k) : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
+            active: Object.keys(ACTIVE_EFFECTS).filter(k => k.startsWith('W-') ? hasWitcherTrophy(p, k.slice(2)) : ACTIVE_EFFECTS[k].src === 'gear' ? p.gear.includes(k) : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
             mustPlay: p.hand.length > 0,
         };
         return o;
@@ -129,6 +131,13 @@ export function options(state, seat) {
     const fe = monsterFightError(state, p);
     const slot = state.slots.find(s => s.mon && s.token === p.loc);
     o.phase2.push({ id: 'fight', label: slot ? `Битва: ${MONSTER[slot.mon].name}` : 'Битва с монстром', err: fe });
+    // Битва ведьмаков (p. 20): every other witcher in the location is a possible target.
+    if (!state.solo) for (const q of state.players) {
+        if (q.seat === p.seat || q.loc !== p.loc) continue;
+        o.phase2.push({ id: 'duel-' + q.seat, seat: q.seat, label: `Битва с ведьмаком: ${q.name}`, err: duelError(state, p, q.seat) });
+    }
+    // Покер с ведьмаком (pp. 13–14): in phase I, after moving into the location.
+    o.pokers = state.solo ? [] : state.players.filter(q => q.seat !== p.seat && q.loc === p.loc).map(q => ({ seat: q.seat, label: `Покер с ведьмаком: ${q.name}`, err: witcherPokerError(state, p, q.seat) }));
     const med = meditationOptions(state, p);
     o.phase2.push({ id: 'meditate', label: 'Медитация', err: med.length ? null : 'Нужен навык 5 и свободный трофей за него', trophies: med.map(m => m.id) });
     for (const d of ['city', 'wild']) o.phase2.push({ id: 'explore-' + d, label: d === 'city' ? 'Исследовать город' : 'Исследовать окрестности', err: exploreError(state, p, d) });
@@ -286,6 +295,22 @@ function turnCmd(state, p, cmd) {
             push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
             return ok();
         }
+        case 'duel': {
+            const target = Number(cmd.seat);
+            const e = duelError(state, p, target);
+            if (e) return err(e);
+            push(state, { op: 'duelStart', seat: p.seat, target });
+            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+            return ok();
+        }
+        case 'wpoker': {
+            const target = Number(cmd.seat);
+            const e = witcherPokerError(state, p, target);
+            if (e) return err(e);
+            (t.pokered = t.pokered || []).push(target);
+            push(state, { op: 'pokerStart', seat: p.seat, vs: 'witcher', opp: target });
+            return ok();
+        }
         case 'meditate': {
             const med = meditationOptions(state, p);
             const tr = med.find(m => m.id === cmd.trophy) || (med.length === 1 ? med[0] : null);
@@ -320,10 +345,11 @@ function fightCmd(state, p, cmd) {
         case 'combo': {
             const ids = Array.isArray(cmd.ids) ? cmd.ids : [];
             const blood = cmd.blood == null ? null : Number(cmd.blood);
-            const e = comboError(state, p, ids, { free: !!cmd.free, blood });
+            const wlink = cmd.wlink == null ? null : Number(cmd.wlink);
+            const e = comboError(state, p, ids, { free: !!cmd.free, blood, wlink });
             if (e) return err(e);
             const mutOff = Array.isArray(cmd.mutOff) ? cmd.mutOff.filter(x => typeof x === 'string') : [];
-            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood, mutOff, mut8: cmd.mut8 === 'draw' ? 'draw' : 'dmg' });
+            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood, wlink, mutOff, mut8: cmd.mut8 === 'draw' ? 'draw' : 'dmg' });
             return ok();
         }
     }
@@ -338,7 +364,34 @@ const roll5 = (state) => [d6(state), d6(state), d6(state), d6(state), d6(state)]
 //         dice?, opp?, win?, lose?, card? } — the location action, or an event («Цири и доп.
 // события»): poker without the own stake, with an extra townsfolk reroll, against dice printed
 // on the card (win only if strictly better; then the event's win/lose effects).
+/** Why `p` can't play poker with the witcher at `target` now (pp. 13–14). */
+export function witcherPokerError(state, p, target) {
+    const q = state.players[target], t = state.turn;
+    if (!q || q === p || state.solo) return 'Нет такого ведьмака';
+    if (!t || t.seat !== p.seat || t.phase !== 1 || t.afterExplore) return 'Только в фазе I своего хода';
+    if (q.loc !== p.loc) return `${q.name} не в вашей локации`;
+    if (!t.moved) return 'Сначала переместитесь в локацию (в стартовой — уйдите и вернитесь)';
+    if ((t.pokered || []).includes(target)) return `Вы уже играли с ${q.name} в этом ходу`;
+    if (p.gold < 1) return 'Нужно хотя бы 1 золото';
+    if (q.gold < 1) return `У ${q.name} нет золота`;
+    return null;
+}
+/** Poker with another witcher: both put 1 gold, the bank 1; the opponent rerolls first. */
+function witcherPokerStart(state, step) {
+    const p = state.players[step.seat], q = state.players[step.opp];
+    if (p.gold < 1 || q.gold < 1) { log(state, 'Покер: у кого-то из игроков нет золота', { kind: 'poker' }); return; }
+    p.gold -= 1; q.gold -= 1;
+    const magic = (x) => !!(x.keeps || []).find(k => k.kind === 'pokerDice');
+    state.poker = {
+        seat: p.seat, vs: 'witcher', vsSeat: q.seat, opp: q.name, a: roll5(state), b: roll5(state), pot: 3, stake: 1, bonus: 0, done: false, winner: null,
+        rerolledB: [], rerolledA: [], rerolls: magic(p) ? 2 : 1, rerollsB: magic(q) ? 2 : 1, magicUsed: false, magicUsedB: false, phase: 'b', card: null, win: null, lose: null, res: '',
+    };
+    log(state, `${p.name} играет в покер с ведьмаком ${q.name}: по 1 золоту и 1 из запаса`, { kind: 'poker' });
+    fx(state, { k: 'pokerRoll', who: 'both' });
+    push(state, { op: 'pokerAsk' });
+}
 STEPS.pokerStart = (state, step) => {
+    if (step.vs === 'witcher') { witcherPokerStart(state, step); return; }
     const p = state.players[step.seat];
     const t = state.turn;
     const fixed = step.vs === 'fixed';
@@ -376,13 +429,43 @@ STEPS.pokerStart = (state, step) => {
 };
 STEPS.pokerAsk = (state) => {
     const poker = state.poker;
+    if (poker.vs === 'witcher' && poker.phase === 'b') {
+        // The opponent of the active player rerolls first (p. 14, step 4).
+        const q = state.players[poker.vsSeat];
+        if (!poker.rerollsB) { poker.phase = 'a'; push(state, { op: 'pokerAsk' }); return; }
+        if (q.bot || q.away) {
+            const rr = poker.rerolledB.length ? [] : autoReroll(poker.b);
+            push(state, { op: 'pokerReroll', side: 'b', ids: rr });
+            return;
+        }
+        const second = poker.rerollsB === 1 && poker.rerolledB.length;
+        ask(state, { seat: q.seat, kind: 'dice', ui: 'poker', side: 'b', ids: [0, 1, 2, 3, 4], min: 0, max: 5, title: 'Покер на костях', text: second ? 'Магические кости: можно перебросить ещё раз.' : `Вы перебрасываете первым: выберите кубики (один раз) или оставьте как есть. Затем перебросит ${state.players[poker.seat].name}.`, op: 'pokerReroll', args: { side: 'b' } });
+        return;
+    }
     if (!poker.rerolls) { push(state, { op: 'pokerEnd' }); return; }
+    const pa = state.players[poker.seat];
+    if (poker.vs === 'witcher' && (pa.bot || pa.away)) {
+        const rr = poker.rerolledA.length ? [] : autoReroll(poker.a);
+        push(state, { op: 'pokerReroll', ids: rr });
+        return;
+    }
     const second = poker.rerolls === 1 && poker.rerolledA.length && (state.players[poker.seat].keeps || []).some(k => k.kind === 'pokerDice');
     ask(state, { seat: poker.seat, kind: 'dice', ui: 'poker', ids: [0, 1, 2, 3, 4], min: 0, max: 5, title: 'Покер на костях', text: second ? 'Магические кости: можно перебросить ещё раз.' : 'Выберите кубики для переброса (один раз) или оставьте как есть.', op: 'pokerReroll', args: {} });
 };
 STEPS.pokerReroll = (state, step) => {
     const poker = state.poker;
-    const ids = step.ids || [];
+    const ids = (step.ids || []).filter(i => Number.isInteger(i) && i >= 0 && i < 5);
+    if (step.side === 'b') {
+        if (!ids.length) { poker.rerollsB = 0; push(state, { op: 'pokerAsk' }); return; }
+        for (const i of ids) poker.b[i] = d6(state);
+        fx(state, { k: 'pokerReroll', who: 'b', idx: ids });
+        if (poker.rerolledB.length) poker.magicUsedB = true;
+        poker.rerolledB = ids;
+        poker.rerollsB -= 1;
+        log(state, `${poker.opp} перебрасывает ${ids.length} куб.: ${POKER_NAMES[pokerValue(poker.b)[0]]}`, { kind: 'poker' });
+        push(state, { op: 'pokerAsk' });
+        return;
+    }
     if (!ids.length) { poker.rerolls = 0; push(state, { op: 'pokerAsk' }); return; }
     for (const i of ids) poker.a[i] = d6(state);
     fx(state, { k: 'pokerReroll', who: 'a', idx: ids });
@@ -402,6 +485,23 @@ STEPS.pokerEnd = (state) => {
         log(state, `Покер: ${p.name} — ${POKER_NAMES[va]}, ${poker.opp.toLowerCase()} — ${POKER_NAMES[pokerValue(poker.b)[0]]}. ${poker.winner === 'a' ? 'Победа' : 'Поражение'}`, { kind: 'poker' });
         const br = poker.winner === 'a' ? poker.win : poker.lose;
         if (br && br.length) steps.push(...effectSteps(p.seat, br, { card: poker.card }));
+    } else if (poker.vs === 'witcher') {
+        const q = state.players[poker.vsSeat];
+        const c = comparePoker(poker.a, poker.b);
+        poker.winner = c >= 0 ? 'a' : 'b';
+        const w = poker.winner === 'a' ? p : q;
+        w.gold += poker.pot;
+        poker.res = `${w.name} выигрывает ${poker.pot} золота`;
+        log(state, `Покер: ${p.name} — ${POKER_NAMES[va]}, ${q.name} — ${POKER_NAMES[pokerValue(poker.b)[0]]}. ${w.name} забирает ${poker.pot} золота${c === 0 ? ' (полная ничья — в пользу активного игрока)' : ''}`, { kind: 'poker' });
+        // Магические кости of the opponent: its extra reroll used and won.
+        if (poker.magicUsedB && poker.winner === 'b') {
+            const k = (q.keeps || []).find(x => x.kind === 'pokerDice');
+            if (k) {
+                removeFrom(q.keeps, k);
+                log(state, `${q.name}: «${k.name}» сброшены`, { kind: 'explore' });
+                if (k.event) steps.push({ op: 'takeEvent', seat: q.seat, id: k.event });
+            }
+        }
     } else if (state.solo) {
         const g = SOLO_POKER[va];
         p.gold += g;
@@ -428,7 +528,8 @@ STEPS.pokerEnd = (state) => {
         }
     }
     poker.done = true;
-    state.lastPoker = { seat: p.seat, vs: poker.vs === 'fixed' ? 'event' : 'town' };
+    state.lastPoker = { seat: p.seat, vs: poker.vs === 'fixed' ? 'event' : poker.vs === 'witcher' ? 'witcher' : 'town' };
+    if (poker.vs === 'witcher') state.lastPokerB = { seat: poker.vsSeat, vs: 'witcher' };
     fx(state, { k: 'pokerEnd', winner: poker.winner });
     if (steps.length) push(state, ...steps);
 };

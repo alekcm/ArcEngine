@@ -21,6 +21,7 @@ export const SKILL_GEN = { combat: 'сражения', defense: 'защиты', 
 STEPS.startTurn = (state, step) => {
     const p = state.players[step.seat];
     state.turn = { seat: p.seat, phase: 1, moved: false, startLoc: p.loc, usedLoc: [], pokered: [], drawDelta: 0, p3fixed: null, doubleMoveUsed: false };
+    if (p.drawLater) { state.turn.drawDelta += p.drawLater; p.drawLater = 0; }
     p.turns++;
     log(state, `Ход: ${p.name}`, { kind: 'turn', seat: p.seat });
     fx(state, { k: 'turn', seat: p.seat });
@@ -159,7 +160,7 @@ STEPS.elixirDiscard = (state, step) => {
 /** A trophy moves the marker up and causes exhaustion (База.md p. 29). */
 STEPS.gainTrophy = (state, step) => {
     const p = state.players[step.seat];
-    p.trophies.push({ kind: step.kind, id: step.id });
+    p.trophies.push({ kind: step.kind, id: step.id, ...(step.card ? { card: step.card } : {}) });
     const meditation = step.kind === 'skill';
     if (meditation && p.track + 1 >= TROPHIES_TO_WIN && !state.solo) {
         log(state, `${p.name} получает трофей за медитацию, но победить медитацией нельзя: жетон трофеев не двигается`);
