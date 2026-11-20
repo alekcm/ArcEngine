@@ -37,7 +37,7 @@ export const player = (state, seat) => state.players[seat];
 export const skillVal = (p, s) => SKILL_VALUE[Math.max(0, Math.min(5, p.skills[s]))];
 export const maxShield = (state, p) => {
     let d = p.skills.defense;
-    if (state.fight && state.fight.seat === p.seat && state.fight.mon === 'MON-15' && d < 5) d = Math.max(1, d - 1);
+    if (state.fight && state.fight.seat === p.seat && state.fight.mon === 'MON-15' && !state.fight.noAbility && d < 5) d = Math.max(1, d - 1);
     return SKILL_VALUE[d];
 };
 

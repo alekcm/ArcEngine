@@ -62,6 +62,14 @@ export function botCommand(view, opts = {}) {
             if (id === 'POTION-04' && p.shield >= 1 && p.deckCount >= 4) return { t: 'elixir', id: e };
         }
         if (opts.options && opts.options.fight && !opts.options.fight.spec) return { t: 'spec' };
+        // Bombs: damage ones at once, «Самум» with a short hand, «Лунная пыль» when the shield is low.
+        for (const b of (opts.options && opts.options.fight && opts.options.fight.bombs) || []) {
+            if (b.err) continue;
+            const id = b.id.split('#')[0];
+            if (id === 'BOMB-02' || id === 'BOMB-03' || id === 'BOMB-04') return { t: 'bomb', id: b.id };
+            if (id === 'BOMB-01' && p.hand.length <= 3) return { t: 'bomb', id: b.id };
+            if (id === 'BOMB-05' && p.shield <= 1) return { t: 'bomb', id: b.id };
+        }
         // Equipment / companions: free damage at once, «discard 1 → 2 damage» with a full hand.
         const act = (opts.options && opts.options.fight && opts.options.fight.active || []).filter(a => !a.err);
         const gear = act.find(a => a.key === 'CONT79-14' || a.key === 'CONT79-20' || a.key === 'CONT79-56'
@@ -153,6 +161,7 @@ function answerPrompt(view, p, pr) {
     if (pr.ui === 'combo') return { t: 'answer', ids: pr.ids.slice().sort((a, b) => (CARDS[b].fx.dmg || 0) - (CARDS[a].fx.dmg || 0)).slice(0, 1) };
     // House rule: buy back drunk elixirs while keeping 2 gold for training/movement.
     if (pr.ui === 'elixirReturn') return { t: 'answer', ids: pr.ids.slice(0, Math.max(0, Math.min(pr.max, p.gold - 2))) };
+    if (pr.ui === 'bombReturn') return { t: 'answer', ids: pr.ids.slice(0, Math.max(0, Math.min(pr.max, Math.floor((p.gold - 2) / 2)))) };
     // cards: discard/remove -> weakest; take -> strongest
     const takeLike = ['deckTop', 'discard', 'row', 'elixirs'].includes(pr.from) && !/Сброс|сбрось|убер/i.test(pr.text || '');
     const sorted = pr.ids.slice().sort((a, b) => takeLike ? value(b) - value(a) : value(a) - value(b));

@@ -1,8 +1,9 @@
 // Table HUD: participants, phase bar, monsters, card row, actions with reasons, hand, own
 // tableau, log/chat, move payment and the map tooltip.
 import { S, $, cmd, send, me, btn, toast } from './ctx.js';
+import { bombOf } from '/shared/data/bombs-data.mjs';
 import { icon, TERRAIN_COLOR } from './icons.js';
-import { actionCard, monsterCard, elixirCard, eventCard, trophyLabel, artCss, esc, fxText } from './cards.js';
+import { actionCard, monsterCard, elixirCard, bombCard, eventCard, trophyLabel, artCss, esc, fxText } from './cards.js';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
 import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
@@ -48,6 +49,7 @@ function renderPlayers(v) {
                 <span title="Колода">${icon('deck')}${p.deckCount}</span>
                 <span class="c-shield" title="Щит">${icon('shield')}${p.shield}</span>
                 <span title="Эликсиры" style="color:#7fd0b4">${icon('elixir')}${p.elixirs.length}</span>
+                ${(p.bombs || []).length ? `<span title="Бомбы: ${esc(p.bombs.map(b => bombOf(b).name).join(', '))}" class="c-bomb">${icon('bomb')}${p.bombs.length}</span>` : ''}
                 ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
@@ -237,7 +239,7 @@ function renderMine(v) {
     const sc = SCHOOLS[p.school];
     el.innerHTML = `<div class="r" style="font-family:var(--serif);font-size:15px;color:${sc.color}"><b style="color:var(--gold2)">${esc(sc.school)}</b> · ${esc(LOC[p.loc].name)}</div>
         <div class="r" style="margin-top:4px;color:var(--dim)">Специализация: ${esc(sc.spec)} (${p.skills.spec})</div>
-        <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}</div>
+        <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}${(p.bombs || []).map(b => { const bd = bombOf(b); return `<span class="el bomb" data-bombcard="${esc(b)}" title="${esc(bd.name + ': ' + bd.text)}">${icon('bomb', 'c-bomb')}${esc(bd.name)}</span>`; }).join('')}</div>
         ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].kind + ': ' + EVENTS[id].text)}">${icon(EVENTS[id].kind === 'Спутник' ? 'meditate' : 'combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
         ${(p.keeps || []).length ? `<div class="gear keeps">${p.keeps.map(k => `<span class="el" data-keep="${esc(k.card)}" data-pick="${k.id.slice(-1) === 'A' ? 'a' : 'b'}" title="${esc(k.text)}">${icon('card')}${esc(k.name)}</span>`).join('')}</div>` : ''}
         ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" data-pick="${questPick(q.id)}" title="Задание — ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}">${icon('explore')}${esc(questLabel(q))} → ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span>`).join('')}</div>` : ''}
@@ -253,6 +255,7 @@ function renderMine(v) {
     $('zRemoved').onclick = () => openViewer('Убраны из игры', p.removed.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zTroph').onclick = () => openPlayer(p.seat);
     for (const g of el.querySelectorAll('[data-secret]')) g.onclick = () => openViewer(`Событие ${EVENTS[g.dataset.secret].num} — зачитаете другому игроку`, `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.secret, { stage: 'full' })}</div>`);
+    for (const g of el.querySelectorAll('[data-bombcard]')) g.onclick = () => openViewer('Бомба', `<div style="display:flex;gap:14px;justify-content:center">${bombCard(g.dataset.bombcard, { cls: 'big' })}</div>`);
     for (const g of el.querySelectorAll('[data-gear],[data-qcard],[data-keep]')) g.onclick = () => openViewer(g.dataset.gear ? EVENTS[g.dataset.gear].kind : g.dataset.keep ? 'Карта перед вами' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard || g.dataset.keep, g.dataset.pick ? { stage: 'outcome', pick: g.dataset.pick } : { stage: 'full' })}</div>`);
 }
 

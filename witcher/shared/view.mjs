@@ -6,6 +6,7 @@ export function viewFor(state, seat) {
     delete s.rng; delete s.queue; delete s.seed; delete s.pendingMons; delete s.elixirLook;
     s.actionDeck = s.actionDeck.length;
     s.elixirDeck = s.elixirDeck.length;
+    s.bombDeck = (s.bombDeck || []).length;
     s.attackDeck = s.attackDeck.length;
     for (const k of Object.keys(s.locPiles)) s.locPiles[k] = s.locPiles[k].length;
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;

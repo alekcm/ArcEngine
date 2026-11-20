@@ -36,6 +36,8 @@ tools/modes.test.mjs    режимы партии и правила стола
 tools/gear.test.mjs     снаряжение, спутники, карты «перед собой», «навык × 2», комбинация из события
 tools/events-gen.mjs    md → events-gen.mjs; -v — неподдержанные карты; --check — свежесть (в воротах)
 tools/ciri.test.mjs     «Цири и доп. события»: жетоны заданий, тайные события, стоимости, покер-события, Гроббо/Гертруда, боты
+tools/ciri-hero.test.mjs Цири: планшет, школа, «Старшая Кровь», боты
+tools/bombs.test.mjs    бомбы: получение, лимиты, эффекты, Чёртов гриб, восстановление, боты
 tools/art.mjs           арт карт из фото в Witcher/ → client/art/*.webp (нужен sharp: SHARP=путь)
 tools/frames.mjs        разовая нарезка лиц карт из сканов (нужен sharp, не зависимость игры)
 tools/sim.mjs           партии ботов: node witcher/tools/sim.mjs [игр] [игроков] (MODE=mmr — все правила стола)

@@ -4,6 +4,7 @@
 import { S, $, cmd, me, btn, toast } from './ctx.js';
 import { icon } from './icons.js';
 import { actionCard, monsterCard, attackCard, esc } from './cards.js';
+import { bombOf } from '/shared/data/bombs-data.mjs';
 import { CARDS, MONSTER, POTION } from '/shared/engine/util.mjs';
 import { SCHOOLS, SPEC_TABLE } from '/shared/data/rules-data.mjs';
 import { linkIndex, comboTotals, comboError, bloodFx } from '/shared/engine/fight.mjs';
@@ -54,6 +55,7 @@ export function renderFight() {
     const fbtns = [];
     if (myStage && o) {
         for (const e of o.elixirs) { const po = POTION[e.id.split('#')[0]]; fbtns.push(btn({ label: `${esc(po.name)}`, icon: icon('elixir', 'c-forest'), why: e.err, data: `data-el="${esc(e.id)}"`, small: true }).replace('<button', `<button title="${esc(po.text)}"`)); }
+        for (const b of o.bombs || []) { const bd = bombOf(b.id); fbtns.push(btn({ label: `Бомба: ${esc(bd.name)}`, icon: icon('bomb', 'c-bomb'), why: b.err, data: `data-bomb="${esc(b.id)}"`, small: true }).replace('<button', `<button title="${esc(bd.text)}"`)); }
         const sc = SCHOOLS[p.school];
         if (p.school === 'cat' || p.school === 'griffin') fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
         if (bOpt !== undefined) {
@@ -88,7 +90,8 @@ export function renderFight() {
     <div class="ftop"><b>${esc(fighter.name)} против: ${esc(m.name)}</b>
         <span class="turnbadge ${f.stage === 'witcher' ? 'me' : ''}">${f.stage === 'witcher' ? `Ход ведьмака ${Math.max(1, f.wTurns)}` : 'Ход монстра'}</span>
         ${f.track ? `<span class="turnbadge">${icon('track')} жетон следа: ведьмак ходит первым</span>` : ''}
-        <span class="turnbadge">Эликсиры: ${f.elixirsUsed}</span></div>
+        <span class="turnbadge" title="Лимит по навыку алхимии">${(v.exp || []).includes('trail') ? 'Эликсиры и бомбы' : 'Эликсиры'}: ${f.elixirsUsed}</span>
+        ${f.noAbility ? '<span class="turnbadge">Чёртов гриб: способность монстра не действует</span>' : ''}${f.moonDust ? '<span class="turnbadge">Лунная пыль: тип следующей атаки можно сменить</span>' : ''}</div>
     <div class="mon">
         <div id="fMonCard">${monsterCard(f.mon, { big: true, life: f.lifeCount })}</div>
         <div class="pool"><div class="stack" id="fPool">${f.lifeCount}</div><div>Запас жизни монстра<div class="lifebar"><i style="width:${lifePct}%"></i></div><small style="color:var(--dim)">сброс атак: ${f.monDiscard.length}</small></div></div>
@@ -119,6 +122,7 @@ export function renderFight() {
     for (const c of el.querySelectorAll('#fCombo .card')) c.onclick = () => { const i = S.ui.combo.indexOf(c.dataset.id); S.ui.combo = S.ui.combo.slice(0, i); if (typeof S.ui.blood === 'number' && S.ui.blood >= i) S.ui.blood = null; sfx('card'); renderFight(); };
     for (const b of el.querySelectorAll('[data-blood]')) b.onclick = () => { toggleBlood(); };
     for (const b of el.querySelectorAll('[data-el]')) b.onclick = () => { sfx('elixir'); cmd({ t: 'elixir', id: b.dataset.el }, 'эликсир'); };
+    for (const b of el.querySelectorAll('[data-bomb]')) b.onclick = () => { sfx('hit'); cmd({ t: 'bomb', id: b.dataset.bomb }, 'бомба'); };
     for (const b of el.querySelectorAll('[data-spec]')) b.onclick = () => cmd({ t: 'spec' }, 'специализация');
     for (const b of el.querySelectorAll('[data-act]')) b.onclick = () => cmd({ t: 'active', key: b.dataset.act }, 'трофей');
     const play = $('fPlay'); if (play) play.onclick = () => playCombo();

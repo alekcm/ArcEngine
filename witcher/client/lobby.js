@@ -21,7 +21,7 @@ const EXPANSIONS = [
     ['skellige', 'Скеллиге', 'острова 19–21, корабли и новые события'],
     ['mages', 'Чародеи', 'играбельные чародеи'],
     ['ciri', 'Цири и доп. события', 'Цири, новые события исследования, тайные карты и жетоны заданий'],
-    ['trail', 'По следу монстра', 'выслеживание монстров'],
+    ['trail', 'По следу монстра', 'пока что бомбы — альтернатива эликсирам; Мантикора, мутагены, мастерские действия и уязвимости — следующими'],
     ['extra', 'Дополнительный монстр', 'новый монстр'],
 ];
 
@@ -63,7 +63,7 @@ export function renderLobby() {
                 const why = !ready ? 'Подключается на следующем этапе' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
                 return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>`;
             }).join('')}
-            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий.</div></div>
+            <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий; «По следу монстра» — бомбы.</div></div>
             ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 12).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
             <div class="lobby-actions">${isHost ? btn({ id: 'lStart', label: 'Начать партию', primary: true, key: 'Enter' }) : '<span style="color:var(--dim)">Ждём, пока хозяин начнёт партию…</span>'}</div>
             <div class="lan">Друзья в той же сети подключаются по адресу: ${(L.addresses || []).map(a => `<code>http://${a}:${L.port}/</code>`).join(' ') || '<code>' + location.host + '</code>'}</div>

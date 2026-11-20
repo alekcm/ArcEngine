@@ -2,7 +2,7 @@
 // everyone else sees who is deciding.
 import { S, $, cmd, btn } from './ctx.js';
 import { icon } from './icons.js';
-import { actionCard, elixirCard, attackCard, monsterCard, eventCard, esc } from './cards.js';
+import { actionCard, elixirCard, bombCard, attackCard, monsterCard, eventCard, esc } from './cards.js';
 import { CARDS, ATTACK, MONSTER } from '/shared/engine/util.mjs';
 import { ROW_MODS } from '/shared/data/rules-data.mjs';
 import { sfx } from './sound.js';
@@ -31,14 +31,16 @@ export function renderPrompt() {
         const opts = pr.options.map((o, i) => {
             let extra = '';
             if (pr.ui === 'row' && v.row[Number(o.id)]) extra = actionCard(v.row[Number(o.id)], { small: true, cost: Math.max(0, CARDS[v.row[Number(o.id)]].cost + ROW_MODS[Number(o.id)]) });
+            if (pr.ui === 'bombType') extra = bombCard(o.id, { cls: 'big' });
             const ic = o.id === 'strike' ? icon('strike') : o.id === 'bite' ? icon('bite') : '';
-            return pr.ui === 'row'
+            return pr.ui === 'row' || pr.ui === 'bombType'
                 ? `<div style="display:flex;flex-direction:column;gap:6px;align-items:center">${extra}${btn({ label: esc(o.label), why: o.disabled ? (o.hint || 'Недоступно') : null, data: `data-c="${esc(o.id)}"`, small: true, key: String(i + 1) })}</div>`
                 : btn({ label: esc(o.label), icon: ic, why: o.disabled ? (o.hint || 'Недоступно') : null, data: `data-c="${esc(o.id)}"`, key: String(i + 1) });
         }).join('');
-        const fightMon = v.fight && pr.ui === 'attack' ? `<div style="display:flex;justify-content:center;margin-bottom:10px">${monsterCard(v.fight.mon, {})}</div>` : '';
+        const fightMon = v.fight && pr.ui === 'attack' ? `<div style="display:flex;justify-content:center;margin-bottom:10px">${monsterCard(v.fight.mon, {})}</div>`
+            : pr.ui === 'bomb' && pr.card ? `<div style="display:flex;justify-content:center;gap:14px;margin-bottom:10px">${bombCard(pr.card, { cls: 'big' })}${v.fight ? monsterCard(v.fight.mon, {}) : ''}</div>` : '';
         el.innerHTML = `<div class="box"><h2>${esc(pr.title || 'Выбор')}</h2>${pr.text ? `<p>${esc(pr.text)}</p>` : ''}${fightMon}
-            <div class="${pr.ui === 'row' ? 'cards' : 'opts'}">${opts}</div></div>`;
+            <div class="${pr.ui === 'row' || pr.ui === 'bombType' ? 'cards' : 'opts'}">${opts}</div></div>`;
         for (const b of el.querySelectorAll('[data-c]')) b.onclick = () => cmd({ t: 'answer', choice: b.dataset.c }, pr.title);
         return;
     }
@@ -48,6 +50,7 @@ export function renderPrompt() {
         const s = sel.includes(id);
         const o = { sel: s, cls: 'pick' + (pr.from === 'row' ? ' buy' : ''), small: pr.ids.length > 8 };
         if (String(id).startsWith('POTION')) return elixirCard(id, o);
+        if (String(id).startsWith('BOMB')) return bombCard(id, { ...o, cls: o.cls });
         if (ATTACK[id]) return `<div class="pick ${s ? 'sel' : ''}" data-id="${esc(id)}" style="border-radius:9px">${attackCard(id)}</div>`;
         if (MONSTER[id]) return monsterCard(id, {});
         if (CARDS[id]) {

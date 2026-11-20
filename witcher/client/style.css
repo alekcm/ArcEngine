@@ -109,7 +109,7 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .pl .tracks { display: inline-flex; gap: 2px; }
 .pl .tracks .ic { width: 14px; height: 14px; opacity: .25; }
 .pl .tracks .ic.on { opacity: 1; }
-.c-forest { color: #5fb35a; } .c-mountain { color: #aeb4bd; } .c-water { color: #4ea3e6; }
+.c-bomb { color: #e0844a; } .c-forest { color: #5fb35a; } .c-mountain { color: #aeb4bd; } .c-water { color: #4ea3e6; }
 .c-gold { color: var(--gold2); } .c-red { color: #e06a5c; } .c-shield { color: #8ec4f0; }
 
 #monsters { position: absolute; right: 10px; top: 56px; display: flex; flex-direction: column; gap: 8px; width: 262px; }
@@ -198,6 +198,10 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .card.elixir { --cw: 112px; --ch: 160px; border-color: #2e6b5c; }
 .card.elixir .name { top: 50%; }
 .card.elixir .txt { top: 63%; font-size: 10px; }
+.card.bomb { border-color: #8a4a2a; }
+.card.elixir.big { --cw: 196px; --ch: 320px; }
+.card.elixir.big .name { font-size: 16px; top: 44%; }
+.card.elixir.big .txt { font-size: 12px; top: 53%; line-height: 1.28; }
 .card.skilltrophy { border-color: #5a5a8a; }
 .card.skilltrophy .txt { top: 60%; }
 

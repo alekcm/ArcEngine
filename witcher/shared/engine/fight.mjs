@@ -8,6 +8,8 @@ import {
 import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT } from '../data/rules-data.mjs';
 import { hasTrophy, hasWitcherTrophy, hasSkillTrophy, ACTIVE_EFFECTS, hasGear, keepOf } from './effects.mjs';
 import { SKILL_GEN } from './turn.mjs';
+import { bombsOn } from './bombs.mjs';
+import { bombOf } from '../data/bombs-data.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
 const fp = (state) => state.players[state.fight.seat];
@@ -28,6 +30,9 @@ function soloLastMonsterLocked(state, p, slot) {
     return left === 1 && p.monstersDefeated === 2 && !p.trophies.some(t => t.kind === 'skill');
 }
 
+/** The monster whose special ability is in force: null once «Чёртов гриб» switched it off. */
+export const ab = (f) => (f && !f.noAbility ? f.mon : null);
+
 STEPS.fightStart = (state, step) => {
     const p = state.players[step.seat];
     const slotIdx = state.slots.findIndex(s => s.mon && s.token === p.loc);
@@ -39,7 +44,7 @@ STEPS.fightStart = (state, step) => {
     state.fight = {
         kind: 'monster', seat: p.seat, slot: slotIdx, mon: mon.id, level: mon.level, terrain: slot.terrain,
         controller, chooser: controller, life: [], monDiscard: [], turn: null, wTurns: 0, mTurns: 0,
-        elixirsUsed: 0, usedElixirs: [], once: {}, cur: null, lastCombo: null, lastAttack: null, stage: 'busy', over: null,
+        elixirsUsed: 0, usedElixirs: [], usedBombs: [], once: {}, cur: null, lastCombo: null, lastAttack: null, stage: 'busy', over: null,
         track: !!p.trackTokens[slot.terrain], pendingHarpy: false,
     };
     log(state, `${p.name} вступает в битву: ${mon.name} (уровень ${mon.level}, жизнь ${mon.life})`, { kind: 'fight' });
@@ -47,7 +52,7 @@ STEPS.fightStart = (state, step) => {
     push(state,
         ...(mon.id === 'MON-06' ? [F('archesporeAsk')] : []),
         { op: 'trapCheck', seat: p.seat, on: 'fightStart' },
-        F('preLife'), F('formLife'), F('postLife'), F('firstTurn'));
+        F('mushroomAsk'), F('preLife'), F('formLife'), F('postLife'), F('firstTurn'));
 };
 
 STEPS.archesporeAsk = (state) => {
@@ -65,7 +70,7 @@ STEPS.archesporeDo = (state, step) => {
 /** "Before life pools are formed": monster abilities, then the player's trophies. */
 STEPS.preLife = (state) => {
     const f = state.fight, p = fp(state);
-    switch (f.mon) {
+    switch (ab(f)) {
         case 'MON-01': if (p.hand.length) push(state, F('discardFromHandAsk', { n: 1, why: 'Главоглаз: сбросьте 1 карту из руки' })); break;
         case 'MON-07': loseShield(state, p, 1, 'Баргест'); break;
         case 'MON-12': loseShield(state, p, 2, 'Волколак'); break;
@@ -127,7 +132,7 @@ STEPS.formLife = (state) => {
 
 STEPS.postLife = (state) => {
     const f = state.fight, p = fp(state);
-    switch (f.mon) {
+    switch (ab(f)) {
         case 'MON-16': if (p.deck.length) push(state, F('drownerAsk')); break;
         case 'MON-17': if (!f.track && p.hand.length) push(state, F('discardFromHandAsk', { n: 1, why: 'Экимма: нет жетона следа — сбросьте 1 карту из руки' })); break;
         case 'MON-31': if (p.hand.length > 3) push(state, F('discardFromHandAsk', { n: p.hand.length - 3, why: 'Сирена: в руке не больше 3 карт' })); break;
@@ -181,9 +186,9 @@ function hitMonster(state, n, src, opts = {}) {
     if (n <= 0) return 0;
     const cur = f.cur;
     if (cur && f.wTurns === 1 && f.turn === 'witcher') {
-        if (f.mon === 'MON-19' && !f.track) { log(state, `Покаянник: в первый ход без жетона следа урон игнорируется (${n})`); return 0; }
-        if (f.mon === 'MON-27') { const room = Math.max(0, 1 - cur.dmgDealt); if (n > room) { log(state, `Жагница: в первый ход можно нанести только 1 урон`); n = room; } }
-        if (f.mon === 'MON-03') { const room = Math.max(0, 2 - cur.dmgDealt); if (n > room) { log(state, `Гнездо гулей: в первый ход сбрасывается не больше 2 карт`); n = room; } }
+        if (ab(f) === 'MON-19' && !f.track) { log(state, `Покаянник: в первый ход без жетона следа урон игнорируется (${n})`); return 0; }
+        if (ab(f) === 'MON-27') { const room = Math.max(0, 1 - cur.dmgDealt); if (n > room) { log(state, `Жагница: в первый ход можно нанести только 1 урон`); n = room; } }
+        if (ab(f) === 'MON-03') { const room = Math.max(0, 2 - cur.dmgDealt); if (n > room) { log(state, `Гнездо гулей: в первый ход сбрасывается не больше 2 карт`); n = room; } }
     }
     const k = Math.min(n, f.life.length);
     const gone = f.life.splice(0, k);
@@ -242,7 +247,7 @@ STEPS.witcherTurn = (state) => {
     fx(state, { k: 'fightTurn', who: 'witcher', n: f.wTurns });
     const first = f.wTurns === 1;
     if (first) {
-        if (f.mon === 'MON-02') f.cur.combatZero = true;
+        if (ab(f) === 'MON-02') f.cur.combatZero = true;
         if (hasWitcherTrophy(p, 'cat') && !f.once.wCat) { f.once.wCat = true; drawCards(state, p, 1); log(state, `${p.name}: трофей Кота — +1 карта`); }
         if (hasSkillTrophy(p, 'alchemy') && !f.once.sAlch) { f.once.sAlch = true; push(state, { op: 'gainElixir', seat: p.seat, n: 2, why: 'трофей алхимии', fight: 1 }); }
         if (hasTrophy(p, 'MON-27') && !f.once.t27) { f.once.t27 = true; drawCards(state, p, 1); push(state, F('dealDamage', { n: 1, src: 'трофей «Жагница»' })); }
@@ -258,7 +263,7 @@ STEPS.witcherTurn = (state) => {
             if (n) drawCards(state, p, n);
             log(state, `${p.name}: трофей «Полуночница» — бросок ${r}${n ? `, +${n} карт(ы)` : ', нет эффекта'}`);
         }
-        if (f.mon === 'MON-22' && p.hand.length) {
+        if (ab(f) === 'MON-22' && p.hand.length) {
             f.cur.forcedFirst = p.hand[randInt(state, p.hand.length)];
             log(state, `Полуночница: первой картой комбинации будет случайная карта — «${CARDS[f.cur.forcedFirst].name}»`);
         }
@@ -308,7 +313,7 @@ STEPS.specTrophyDo = (state, step) => {
 function gainShield(state, p, n, why) {
     const f = state.fight;
     if (n <= 0) return;
-    if (f && f.mon === 'MON-11' && f.cur) {
+    if (f && ab(f) === 'MON-11' && f.cur) {
         const room = Math.max(0, 1 - f.cur.shieldGain);
         if (n > room) { log(state, 'Полуденница: щит растёт не больше чем на 1 за ход'); n = room; }
     }
@@ -322,15 +327,17 @@ function gainShield(state, p, n, why) {
 export function elixirLimit(state, p) {
     const f = state.fight;
     let lim = skillVal(p, 'alchemy');
-    if (f && f.mon === 'MON-20') lim = Math.min(lim, 1);
+    if (f && ab(f) === 'MON-20') lim = Math.min(lim, 1);
     return lim;
 }
+const alchemyLimitText = (state, p) => `Лимит алхимии: ${skillVal(p, 'alchemy')} ${bombsOn(state) ? 'эликсира(ов) и бомб' : 'эликсира(ов)'} за битву`;
 /** Why an elixir can't be used now (null if it can). */
 export function elixirError(state, p, inst) {
     const f = state.fight;
     if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Только на этапе 1 своего хода битвы';
     if (!p.elixirs.includes(inst)) return 'Нет такого эликсира';
-    if (f.elixirsUsed >= elixirLimit(state, p)) return f.mon === 'MON-20' ? 'Водная баба: не больше 1 эликсира за битву' : `Лимит алхимии: ${elixirLimit(state, p)} за битву`;
+    if (f.elixirsUsed >= skillVal(p, 'alchemy')) return alchemyLimitText(state, p);
+    if (ab(f) === 'MON-20' && f.usedElixirs.length >= 1) return 'Водная баба: не больше 1 эликсира за битву';
     const id = inst.split('#')[0];
     if (id === 'POTION-02' && !p.hand.length) return 'Нужна карта в руке, чтобы сбросить';
     if (id === 'POTION-04' && p.shield < 1) return 'Щит уже 0';
@@ -367,6 +374,118 @@ STEPS.petriDo = (state, step) => {
     const p = fp(state);
     removeFrom(p.hand, step.ids[0]); p.discard.push(step.ids[0]);
     push(state, F('dealDamage', { n: 2, src: 'Зелье Петри' }));
+};
+
+// ---- bombs («По следу монстра», p. 4): stage 1 of your fight turn, like elixirs; elixirs and
+// bombs share the alchemy limit; bombs are not elixirs. ---------------------------------------
+export function bombError(state, p, inst) {
+    const f = state.fight;
+    if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Только на этапе 1 своего хода битвы';
+    if (!(p.bombs || []).includes(inst)) return 'Нет такой бомбы';
+    const id = String(inst).split('#')[0];
+    if (id === 'BOMB-06') return 'Только перед формированием запасов жизней (предлагается в начале битвы)';
+    if (id === 'BOMB-07') return 'Нужно дополнение «Уязвимости и особые атаки»';
+    if (f.elixirsUsed >= skillVal(p, 'alchemy')) return alchemyLimitText(state, p);
+    if (id === 'BOMB-01' && !p.discard.length) return 'Сброс пуст';
+    if (id === 'BOMB-04' && !f.life.length) return 'Запас жизни монстра пуст';
+    if (id === 'BOMB-05' && f.moonDust) return 'Лунная пыль уже действует';
+    return null;
+}
+STEPS.useBomb = (state, step) => {
+    const f = state.fight, p = fp(state);
+    const inst = step.id;
+    removeFrom(p.bombs, inst);
+    f.usedBombs.push(inst);
+    f.elixirsUsed++;
+    const b = bombOf(inst);
+    log(state, `${p.name} бросает бомбу «${b.name}»`, { kind: 'elixir' });
+    fx(state, { k: 'useBomb', seat: p.seat, id: inst });
+    const seq = [];
+    switch (b.id) {
+        case 'BOMB-01': {
+            const top = p.discard.slice(-2).reverse();
+            if (top.length === 1) seq.push(F('samumDo', { ids: top }));
+            else seq.push(F('samumAsk', { ids: top }));
+            break;
+        }
+        case 'BOMB-02': f.cur.dragon = true; seq.push(F('dealDamage', { n: 1, src: 'Сон дракона' })); break;
+        case 'BOMB-03': {
+            const nest = /Гнездо/.test(MONSTER[f.mon].name);
+            const n = nest ? 2 : 1;
+            const g = drawCards(state, p, n);
+            log(state, `${p.name}: Танцующая звезда — +${g} карт(ы)${nest ? ' (гнездо: 2 урона и 2 карты)' : ''}`);
+            seq.push(F('dealDamage', { n, src: 'Танцующая звезда' }));
+            break;
+        }
+        case 'BOMB-04': seq.push(F('northWindAsk')); break;
+        case 'BOMB-05': f.moonDust = true; log(state, `${p.name}: Лунная пыль — в следующий ход монстра можно сменить тип атаки`); break;
+    }
+    push(state, ...seq, F('awaitWitcher'));
+};
+STEPS.samumAsk = (state, step) => {
+    const p = fp(state);
+    ask(state, { seat: p.seat, kind: 'cards', from: 'discard', ids: step.ids, min: 1, max: 1, title: 'Самум', text: 'Возьмите в руку 1 из 2 верхних карт своего сброса.', op: 'samumDo', args: { fight: 1 } });
+};
+STEPS.samumDo = (state, step) => {
+    const p = fp(state);
+    const id = step.ids[0];
+    if (!p.discard.includes(id)) return;
+    removeFrom(p.discard, id); p.hand.push(id);
+    log(state, `${p.name}: Самум — «${CARDS[id].name}» из сброса в руку`);
+};
+STEPS.northWindAsk = (state) => {
+    const f = state.fight, p = fp(state);
+    const top = f.life.slice(0, 3);
+    if (!top.length) return;
+    log(state, `${p.name}: Северный ветер — смотрит ${top.length} верхние карты монстра`);
+    if (top.length === 1 || p.bot) { push(state, F('northWindDo', { ids: [top.length === 1 ? top[0] : worstAttack(state, top)], top })); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'monsterTop', ids: top, min: 1, max: 1, title: 'Северный ветер', text: 'Отправьте 1 карту в сброс монстра. Остальные вернутся на верх его запаса жизни — порядок выберете следующим шагом.', op: 'northWindDo', args: { fight: 1, top } });
+};
+STEPS.northWindDo = (state, step) => {
+    const f = state.fight;
+    const id = step.ids[0];
+    if (!f.life.includes(id)) return;
+    removeFrom(f.life, id); f.monDiscard.push(id);
+    log(state, `Северный ветер: карта монстра отправлена в сброс, осталось ${f.life.length}`);
+    fx(state, { k: 'monsterHit', n: 1, left: f.life.length });
+    if (!f.life.length) { endFight(state, 'win'); return; }
+    // «…а остальные верните назад в любом порядке»: with 2 left, the player picks the top one.
+    const rest = (step.top || []).filter(x => x !== id && f.life.indexOf(x) >= 0 && f.life.indexOf(x) < 2);
+    if (rest.length === 2) {
+        const p = fp(state);
+        if (p.bot) { const keep = worstAttack(state, rest); push(state, F('northWindOrder', { ids: [rest.find(x => x !== keep)] })); return; }
+        ask(state, { seat: p.seat, kind: 'cards', from: 'monsterTop', ids: rest, min: 1, max: 1, title: 'Северный ветер', text: 'Какая из оставшихся карт ляжет сверху (её атака будет следующей)?', op: 'northWindOrder', args: { fight: 1 } });
+    }
+};
+STEPS.northWindOrder = (state, step) => {
+    const f = state.fight;
+    const id = step.ids[0];
+    const i = f.life.indexOf(id);
+    if (i === 1) { f.life.splice(1, 1); f.life.unshift(id); }
+};
+/** «Чёртов гриб»: only before the life pools are formed — offered at the start of the fight. */
+STEPS.mushroomAsk = (state) => {
+    const f = state.fight, p = fp(state);
+    const inst = (p.bombs || []).find(x => x.startsWith('BOMB-06#'));
+    if (!inst || f.elixirsUsed >= skillVal(p, 'alchemy')) return;
+    if (p.bot) { push(state, F('mushroomDo', { choice: 'use', id: inst })); return; }
+    ask(state, {
+        seat: p.seat, kind: 'choice', ui: 'bomb', title: 'Чёртов гриб', card: inst,
+        text: `До формирования запасов жизней можно бросить «Чёртов гриб»: возьмите 2 карты из колоды, особая способность монстра (${MONSTER[f.mon].name}) не действует до конца битвы. Бомба займёт 1 место в лимите алхимии.`,
+        options: [{ id: 'use', label: 'Бросить «Чёртов гриб»' }, { id: 'skip', label: 'Не сейчас' }], op: 'mushroomDo', args: { fight: 1, id: inst },
+    });
+};
+STEPS.mushroomDo = (state, step) => {
+    if (step.choice !== 'use') return;
+    const f = state.fight, p = fp(state);
+    if (!p.bombs.includes(step.id)) return;
+    removeFrom(p.bombs, step.id);
+    f.usedBombs.push(step.id);
+    f.elixirsUsed++;
+    f.noAbility = true;
+    const g = drawCards(state, p, 2);
+    log(state, `${p.name} бросает бомбу «Чёртов гриб»: +${g} карт(ы), особая способность монстра не действует до конца битвы`, { kind: 'elixir' });
+    fx(state, { k: 'useBomb', seat: p.seat, id: step.id });
 };
 
 // ---- specializations (manual ones: Cat, Griffin) -------------------------------------------
@@ -581,7 +700,7 @@ export function comboError(state, p, ids, opts = {}) {
 export function comboTotals(state, p, ids, opts = {}) {
     const f = state.fight;
     const t = { dmg: 0, shield: 0, draw: 0, top: 0, ret: [], colors: new Set(), parts: [] };
-    const purpleBlocked = f && (f.mon === 'MON-08' || f.mon === 'MON-29');
+    const purpleBlocked = f && (ab(f) === 'MON-08' || ab(f) === 'MON-29');
     const chainLen = opts.free ? ids.length - 1 : ids.length;
     ids.forEach((id, i) => {
         const c = CARDS[id];
@@ -591,7 +710,7 @@ export function comboTotals(state, p, ids, opts = {}) {
         if (i > 0 && i < chainLen && i === opts.blood && p && p.school === 'ciri') {
             // «Старшая Кровь»: a link of the next card's colour, its effect set by the spec level.
             const prev = CARDS[ids[i - 1]];
-            const off = (f && f.mon === 'MON-08' && prev.color === 'purple') || (f && f.mon === 'MON-29' && c.color === 'purple');
+            const off = (f && ab(f) === 'MON-08' && prev.color === 'purple') || (f && ab(f) === 'MON-29' && c.color === 'purple');
             const bf = bloodFx(p);
             if (!off) addFx(t, bf, ids[i - 1]);
             t.blood = { at: i, color: c.color, ...bf, off };
@@ -600,7 +719,7 @@ export function comboTotals(state, p, ids, opts = {}) {
             const li = linkIndex(prev, c, opts.links ? opts.links[i] : null);
             if (li >= 0) {
                 const link = prev.links[li];
-                const off = (f && f.mon === 'MON-08' && prev.color === 'purple') || (f && f.mon === 'MON-29' && link.color === 'purple');
+                const off = (f && ab(f) === 'MON-08' && prev.color === 'purple') || (f && ab(f) === 'MON-29' && link.color === 'purple');
                 if (!off) addFx(t, link.fx, ids[i - 1]);
             }
         }
@@ -615,8 +734,9 @@ export function comboTotals(state, p, ids, opts = {}) {
         if (hasGear(p, 'CONT79-50') && !f.once.g50 && f.kind === 'monster') { t.dmg += 3; t.edgar = true; }
     }
     if (f) {
-        if (f.mon === 'MON-26' && (t.colors.has('green') || t.colors.has('yellow')) && t.dmg > 0) t.dmg -= 1;
-        if (f.mon === 'MON-28' && t.colors.has('blue') && t.dmg > 0) t.dmg -= 1;
+        if (f.cur && f.cur.dragon && t.colors.has('purple')) { t.dmg += 1; t.dragon = true; }   // Сон дракона
+        if (ab(f) === 'MON-26' && (t.colors.has('green') || t.colors.has('yellow')) && t.dmg > 0) t.dmg -= 1;
+        if (ab(f) === 'MON-28' && t.colors.has('blue') && t.dmg > 0) t.dmg -= 1;
     }
     return t;
 }
@@ -684,12 +804,12 @@ STEPS.comboAfterDamage = (state, step) => {
     for (const id of step.ret) { if (!returned.includes(id)) { p.hand.push(id); returned.push(id); log(state, `«${CARDS[id].name}» возвращается в руку`); } }
     // MON-24: after the combo's effects, a yellow card costs 2 shield.
     const colors = new Set(step.ids.map(id => CARDS[id].color));
-    if (f.mon === 'MON-24' && colors.has('yellow')) loseShield(state, p, 2, 'Шептуха');
+    if (ab(f) === 'MON-24' && colors.has('yellow')) loseShield(state, p, 2, 'Шептуха');
     // 4. draw
     let n = (f.cur.combatZero ? 0 : skillVal(p, 'combat')) + step.draw + f.cur.drawMod;
     if (hasTrophy(p, 'MON-08') && colors.has('yellow')) n += 2;
-    if (f.mon === 'MON-05' && !colors.has('green')) n -= 1;
-    if (f.mon === 'MON-09' && n > 1) n -= 1;
+    if (ab(f) === 'MON-05' && !colors.has('green')) n -= 1;
+    if (ab(f) === 'MON-09' && n > 1) n -= 1;
     if (hasGear(p, 'CONT79-31') && f.wTurns === 1 && !f.once.g31) { f.once.g31 = true; n += 2; log(state, `${p.name}: кожаные сапоги — +2 карты`); }
     const g = drawCards(state, p, Math.max(0, n));
     log(state, `${p.name} берёт ${g} карт(ы) в конце хода битвы`);
@@ -725,7 +845,7 @@ STEPS.monsterTurn = (state) => {
     f.poolAtStart = f.life.length;
     fx(state, { k: 'fightTurn', who: 'monster', n: f.mTurns });
     if (!f.life.length) { endFight(state, 'win'); return; }
-    if (f.mTurns === 1 && f.mon === 'MON-04') { push(state, F('monsterAttack', { type: 'auto' })); return; }
+    if (f.mTurns === 1 && ab(f) === 'MON-04') { push(state, F('monsterAttack', { type: 'auto' })); return; }
     if (state.solo) {
         const r = d6(state);
         fx(state, { k: 'd6', v: r, seat: p.seat });
@@ -796,6 +916,21 @@ STEPS.monsterAttack = (state, step) => {
     log(state, `${MONSTER[f.mon].name}: ${type === 'strike' ? 'удар' : 'укус'} — ${type === 'strike' ? card.strikeText : card.biteText}`, { kind: 'attack' });
     fx(state, { k: 'monsterAttack', id: top, type, left: f.life.length });
     // Trophy Кащей... (expansion) / Гнилец etc. not here. Trophy «Пряха»? no. Trophy MON-15: may change the type once.
+    if (f.moonDust) {
+        f.moonDust = false;
+        const other = type === 'strike' ? 'bite' : 'strike';
+        if (p.bot) {
+            if (cardLoss(state, p, card[other], f.level) < cardLoss(state, p, card[type], f.level)) { type = other; f.lastAttack.type = type; log(state, 'Лунная пыль: тип атаки сменён'); }
+            push(state, F('applyAttack', { type }));
+            return;
+        }
+        ask(state, {
+            seat: p.seat, kind: 'choice', title: 'Лунная пыль', text: `Открыта карта: удар — ${card.strikeText}; укус — ${card.biteText}. Можно сменить тип атаки.`,
+            options: [{ id: 'keep', label: `Оставить: ${type === 'strike' ? 'удар' : 'укус'}` }, { id: 'switch', label: `Сменить на ${type === 'strike' ? 'укус' : 'удар'}` }],
+            op: 'leshenSwitch', args: { fight: 1, type, moon: true },
+        });
+        return;
+    }
     if (hasTrophy(p, 'MON-15') && !f.once.t15 && !p.bot) {
         ask(state, {
             seat: p.seat, kind: 'choice', title: 'Трофей «Леший»', text: `Открыта карта: удар — ${card.strikeText}; укус — ${card.biteText}. Один раз за битву можно сменить тип атаки.`,
@@ -808,7 +943,7 @@ STEPS.monsterAttack = (state, step) => {
 };
 STEPS.leshenSwitch = (state, step) => {
     let type = step.type;
-    if (step.choice === 'switch') { state.fight.once.t15 = true; type = type === 'strike' ? 'bite' : 'strike'; state.fight.lastAttack.type = type; log(state, `Трофей «Леший»: тип атаки сменён`); }
+    if (step.choice === 'switch') { if (!step.moon) state.fight.once.t15 = true; type = type === 'strike' ? 'bite' : 'strike'; state.fight.lastAttack.type = type; log(state, step.moon ? 'Лунная пыль: тип атаки сменён' : `Трофей «Леший»: тип атаки сменён`); }
     push(state, F('applyAttack', { type }));
 };
 STEPS.applyAttack = (state, step) => {
@@ -820,16 +955,16 @@ STEPS.applyAttack = (state, step) => {
     if (a.k === 'skill') seq.push({ op: 'lowerSkill', seat: p.seat, skill: a.skill, fight: 1 });
     let manticore = false;
     if (a.k === 'dmg' || a.k === 'dmgSkill' || a.k === 'skill') {
-        if (f.mon === 'MON-14' && f.poolAtStart <= 2) { dmg += 2; log(state, 'Брукса: в запасе 2 карты или меньше — +2 урона'); }
-        if (f.mon === 'MON-30' && f.mTurns === 1) { dmg += 3; log(state, 'Тролль: первая атака +3 урона'); }
+        if (ab(f) === 'MON-14' && f.poolAtStart <= 2) { dmg += 2; log(state, 'Брукса: в запасе 2 карты или меньше — +2 урона'); }
+        if (ab(f) === 'MON-30' && f.mTurns === 1) { dmg += 3; log(state, 'Тролль: первая атака +3 урона'); }
         if (f.mTurns === 1 && hasGear(p, 'CONT79-05') && !f.once.g05 && dmg > 0) { f.once.g05 = true; const was = dmg; dmg = Math.max(0, dmg - 2); log(state, `Ярдель: урон первой атаки снижен на 2 (${was} → ${dmg})`); }
-        if (f.mon === 'MON-21' && dmg > 0) { dmg -= 1; manticore = true; log(state, 'Мантикора: урон −1, но случайная карта из руки сбрасывается'); }
+        if (ab(f) === 'MON-21' && dmg > 0) { dmg -= 1; manticore = true; log(state, 'Мантикора: урон −1, но случайная карта из руки сбрасывается'); }
     }
-    if (dmg > 0) seq.push(F('hurtWitcher', { n: dmg, handFirst: f.mon === 'MON-25' && f.mTurns === 1 }));
+    if (dmg > 0) seq.push(F('hurtWitcher', { n: dmg, handFirst: ab(f) === 'MON-25' && f.mTurns === 1 }));
     if (manticore) seq.push(F('randomDiscard', { n: 1, why: 'Мантикора', noDeck: true }));
     if (a.k === 'remove') seq.push(F('removeAsk'));
     if (a.k === 'randDiscard') seq.push(F('randomDiscard', { n: a.lvl[f.level - 1], why: 'атака' }));
-    if (f.mon === 'MON-10' && f.mTurns === 1) seq.push(F('randomDiscard', { n: 1, why: 'Виверна', noDeck: true }));
+    if (ab(f) === 'MON-10' && f.mTurns === 1) seq.push(F('randomDiscard', { n: 1, why: 'Виверна', noDeck: true }));
     seq.push(F('afterMonsterTurn'));
     push(state, ...seq);
 };
@@ -931,7 +1066,7 @@ STEPS.fightConsequences = (state) => {
         p.monstersDefeated++;
         log(state, `${p.name} побеждает: ${mon.name}! +2 золота и трофей`, { kind: 'victory' });
         slot.mon = null;
-        if (f.mon === 'MON-18') state.turn.p3fixed = 1;
+        if (ab(f) === 'MON-18') state.turn.p3fixed = 1;
         steps.push({ op: 'gainTrophy', seat: p.seat, kind: 'monster', id: mon.id });
         if (!state.solo) steps.push({ op: 'spawnMonster', slot: f.slot, level: Math.min(3, mon.level + 1), fromLevel: mon.level, defeated: true });
         else steps.push({ op: 'returnSlotTokens', slot: f.slot });
@@ -976,11 +1111,16 @@ STEPS.fightCleanup = (state) => {
     state.fight = null;
     p.shield = maxShield(state, p);
     state.elixirDiscard.push(...f.usedElixirs);
+    if (f.usedBombs && f.usedBombs.length) { if (!state.bombDiscard) state.bombDiscard = []; state.bombDiscard.push(...f.usedBombs); }
     state.attackDeck = shuffle(state, Array.from({ length: 20 }, (_, i) => 'MON-ATK-' + String(i + 1).padStart(2, '0')));
     p.deck = shuffle(state, [...p.deck, ...p.discard.splice(0), ...p.hand.splice(0)]);
     log(state, `${p.name}: щит восстановлен до ${p.shield}, все карты перемешаны в колоду`);
     // House rule «Возврат эликсиров»: each elixir drunk in this fight may be bought back for 1 gold.
-    if (state.rules && state.rules.elixirReturn && f.usedElixirs.length && p.gold > 0) push(state, { op: 'elixirReturnAsk', seat: p.seat, ids: f.usedElixirs.slice() });
+    const back = [];
+    if (state.rules && state.rules.elixirReturn && f.usedElixirs.length && p.gold > 0) back.push({ op: 'elixirReturnAsk', seat: p.seat, ids: f.usedElixirs.slice() });
+    // House rule «Выбор бомбы и восстановление»: used bombs back for 2 gold each (after the elixirs).
+    if (state.rules && state.rules.bombs && f.usedBombs && f.usedBombs.length && p.gold >= 2) back.push({ op: 'bombReturnAsk', seat: p.seat, ids: f.usedBombs.slice() });
+    if (back.length) push(state, ...back);
 };
 STEPS.elixirReturnAsk = (state, step) => {
     const p = state.players[step.seat];

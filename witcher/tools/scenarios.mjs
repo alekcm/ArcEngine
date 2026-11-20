@@ -131,6 +131,28 @@ export function ciriHeroScenario(seed = 13) {
     if (state_locPop(st, slot.terrain) != null) p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
     return st;
 }
+/**
+ * Bombs («По следу монстра»): standing on a monster with one bomb of each type in play and
+ * alchemy 4 (four elixirs/bombs per fight). «Чёртов гриб» is offered when the fight starts;
+ * two elixirs and gold to try «эликсир или бомба» at the elixir location afterwards.
+ */
+export function bombScenario(seed = 14) {
+    const st = createGame({ seed, exp: ['trail'], players: [{ name: 'Игрок', school: 'bear' }, { name: 'Ламберт', school: 'cat', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    const slot = st.slots.find(s => s.mon);
+    p.loc = slot.token;
+    st.turn.moved = true;
+    for (const id of ['BOMB-02', 'BOMB-04', 'BOMB-05', 'BOMB-06']) {
+        const inst = st.bombDeck.find(x => x.startsWith(id + '#'));
+        st.bombDeck.splice(st.bombDeck.indexOf(inst), 1);
+        p.bombs.push(inst);
+    }
+    p.skills.alchemy = 4; p.skills.defense = 2; p.shield = 2; p.gold = 5; p.level = 4;
+    p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift());
+    if (state_locPop(st, slot.terrain) != null) p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -164,8 +186,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

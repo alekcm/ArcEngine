@@ -9,6 +9,7 @@ import {
 } from '../data/rules-data.mjs';
 import { SKILLTROPHIES } from '../data/gen-data.mjs';
 import { hasTrophy, hasGear, keepOf, elixirCap, trainCost, GEAR_MOVES } from './effects.mjs';
+import { bombOfferError, askElixirOrBomb } from './bombs.mjs';
 
 export const SKILL_GEN = { combat: 'сражения', defense: 'защиты', alchemy: 'алхимии', spec: 'специализации' };
 
@@ -76,16 +77,19 @@ STEPS.levelCheck = (state, step) => {
 
 STEPS.gainElixir = (state, step) => {
     const p = state.players[step.seat];
-    for (let i = 0; i < (step.n || 1); i++) {
-        if (hasTrophy(p, 'MON-25')) { push(state, { op: 'elixirLook3', seat: p.seat }); continue; }
-        const e = drawElixir(state);
-        if (!e) break;
-        p.elixirs.push(e);
-        log(state, `${p.name} берёт эликсир «${potionOf(e).name}»${step.why ? ' (' + step.why + ')' : ''}`);
-        fx(state, { k: 'elixir', seat: p.seat, id: e });
-    }
+    const n = step.n == null ? 1 : step.n;
     // «Возьмите до 5 эликсиров (игнорируя лимит)»: no limit check for this gain.
-    if (!step.noLimit) push(state, { op: 'elixirLimit', seat: p.seat });
+    if (n <= 0) { if (!step.noLimit) push(state, { op: 'elixirLimit', seat: p.seat, ...(step.fight ? { fight: 1 } : {}) }); return; }
+    const next = { ...step, n: n - 1, asked: false };
+    // «По следу монстра»: each elixir may be taken as a bomb instead (one question per elixir).
+    if (!step.asked && !bombOfferError(state, p)) { askElixirOrBomb(state, p, step); return; }
+    if (hasTrophy(p, 'MON-25')) { push(state, { op: 'elixirLook3', seat: p.seat, ...(step.fight ? { fight: 1 } : {}) }, next); return; }
+    const e = drawElixir(state);
+    if (!e) { push(state, { ...next, n: 0 }); return; }
+    p.elixirs.push(e);
+    log(state, `${p.name} берёт эликсир «${potionOf(e).name}»${step.why ? ' (' + step.why + ')' : ''}`);
+    fx(state, { k: 'elixir', seat: p.seat, id: e });
+    push(state, next);
 };
 export function drawElixir(state) {
     if (!state.elixirDeck.length) {

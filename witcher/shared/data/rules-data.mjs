@@ -95,12 +95,12 @@ export const GAME_MODES = {
 };
 export const HOUSE_RULES = [
     { id: 'elixirReturn', name: 'Возврат эликсиров', text: 'После битвы каждый выпитый в ней эликсир можно вернуть за 1 золото.' },
-    { id: 'bombs', name: 'Выбор бомбы и восстановление', text: 'Бомбу выбираете при получении; после битвы использованную бомбу можно восстановить за 2 золота.', needs: 'trail', needsText: 'Бомбы — из дополнения «По следу монстра»: правило заработает вместе с ним.' },
+    { id: 'bombs', name: 'Выбор бомбы и восстановление', text: 'Бомбу выбираете при получении; после битвы использованную бомбу можно восстановить за 2 золота.', needs: 'trail', needsText: 'Бомбы — из дополнения «По следу монстра»: правило работает, когда оно включено.' },
     { id: 'openEvents', name: 'Открытые последствия', text: 'Последствия обоих вариантов карты события видны до выбора.' },
 ];
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
 /** Expansions that can already be switched on in the lobby. */
-export const EXPANSIONS_READY = ['ciri'];
+export const EXPANSIONS_READY = ['ciri', 'trail'];
 export const normalizeExp = (exp) => Array.isArray(exp) ? EXPANSIONS_READY.filter(x => exp.includes(x)) : [];
 
 export function normalizeRules(mode, rules = {}) {

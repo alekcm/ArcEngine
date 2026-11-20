@@ -3,6 +3,7 @@
 // there are no 404 probes). Placeholders are deterministic vector compositions — every card
 // id gets its own sky, ridge line, emblem and pattern, so cards stay distinguishable.
 import { CARDS, MONSTER, ATTACK, POTION, LOC } from '/shared/engine/util.mjs';
+import { bombOf } from '/shared/data/bombs-data.mjs';
 import { COLOR_NAME, TERRAIN_NAME, SKILL_NAME } from '/shared/data/rules-data.mjs';
 import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
@@ -189,6 +190,16 @@ export function elixirCard(inst, opts = {}) {
     return `<div class="card elixir ${opts.sel ? 'sel' : ''} ${opts.dim ? 'dim' : ''}" data-id="${esc(inst)}" title="${esc(e.name + ': ' + e.text)}">
         <div class="art" style="background-image:${artCss(id, '#2c5a4a', 'potion')}"></div>
         <div class="name">${esc(e.name)}</div><div class="txt">${esc(e.text)}</div></div>`;
+}
+
+/** Bomb card («По следу монстра»): art cut from Бомбы.jpg, name and effect. */
+export function bombCard(inst, opts = {}) {
+    const b = bombOf(inst);
+    if (!b) return '';
+    const id = b.id;
+    return `<div class="card elixir bomb ${opts.cls || ''} ${opts.sel ? 'sel' : ''} ${opts.dim ? 'dim' : ''}" data-id="${esc(inst)}" title="${esc(b.name + ': ' + b.text)}">
+        <div class="art" style="background-image:${artCss(id, '#5a3a2a', 'bomb')}"></div>
+        <div class="name">${esc(b.name)}</div><div class="txt">${esc(b.text)}</div></div>`;
 }
 
 export function trophyCard(t) {

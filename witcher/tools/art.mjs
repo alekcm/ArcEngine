@@ -11,7 +11,7 @@
 //    the client (outcomes must stay covered until picked).
 //
 // Needs `sharp`, which is NOT a dependency of the game — run once on a developer machine:
-//   SHARP=/path/to/node_modules/sharp node witcher/tools/art.mjs [actions|monsters|potions]
+//   SHARP=/path/to/node_modules/sharp node witcher/tools/art.mjs [actions|monsters|potions|bombs|gear]
 // Output (committed): witcher/client/art/*.webp. A hand-made file with the same ID but another
 // extension (jpg/png) wins in the art index only if this one is deleted.
 import fs from 'node:fs';
@@ -21,6 +21,7 @@ import { createRequire } from 'node:module';
 import { CARDS } from '../shared/engine/util.mjs';
 import { MONSTERS, POTIONS } from '../shared/data/gen-data.mjs';
 import { EVENTS } from '../shared/data/events-data.mjs';
+import { BOMBS } from '../shared/data/bombs-data.mjs';
 
 const require = createRequire(import.meta.url);
 const sharp = require(process.env.SHARP || 'sharp');
@@ -34,6 +35,7 @@ const ATLAS = {
     S: 'Ведьмаки/Стартовые колоды.jpg',
     MON: 'Монстры/Упрощённые карты монстров.jpg',
     POT: 'Доп колоды/Зелья.jpg',
+    BOMB: 'Доп колоды/Бомбы.jpg',
     EV1: 'События/Ивенты 1.jpg',
     EV2: 'События/Ивенты 2.jpg',
 };
@@ -66,6 +68,10 @@ async function monsters() {
     for (const m of MONSTERS) await cut('MON', m.cell, { x: 0, y: 0, w: W, h: 600 }, `${m.id}.webp`, 420);
     console.log('монстры:', MONSTERS.length);
 }
+async function bombs() {
+    for (const b of BOMBS) await cut('BOMB', b.cell, { x: 60, y: 500, w: W - 120, h: 252 }, `${b.id}.webp`, 420);
+    console.log('бомбы:', BOMBS.length);
+}
 async function potions() {
     for (const p of POTIONS) await cut('POT', p.cell, { x: 0, y: 236, w: W, h: 510 }, `${p.id}.webp`, 420);
     console.log('эликсиры:', POTIONS.length);
@@ -85,4 +91,5 @@ const only = process.argv[2];
 if (!only || only === 'actions') await actions();
 if (!only || only === 'monsters') await monsters();
 if (!only || only === 'potions') await potions();
+if (!only || only === 'bombs') await bombs();
 if (!only || only === 'gear') await gear();

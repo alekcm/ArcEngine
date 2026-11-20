@@ -1,5 +1,6 @@
 // Game setup (База.md pp. 6–8, solo p. 33).
 import { STARTER, COMMON, POTIONS, SKILLTROPHIES } from '../data/gen-data.mjs';
+import { BOMBS_IN_PLAY, BOMB_COPIES } from '../data/bombs-data.mjs';
 import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp } from '../data/rules-data.mjs';
 import { MONSTER, LOC, shuffle, randInt, log, drawCards } from './util.mjs';
 import { push, run, ask } from './flow.mjs';
@@ -14,7 +15,7 @@ export function createGame(opts) {
         v: 1, rng: (opts.seed ?? Date.now()) | 0, seed: opts.seed ?? null,
         stage: 'setup', round: 1, solo: n === 1, sandbox: opts.sandbox || null,
         players: [], turn: null, fight: null, prompt: null, queue: [], log: [], events: [],
-        row: [], actionDeck: [], elixirDeck: [], elixirDiscard: [],
+        row: [], actionDeck: [], elixirDeck: [], elixirDiscard: [], bombDeck: [], bombDiscard: [],
         skillTrophies: [], locPiles: {}, slots: [], monsterStacks: { 1: [], 2: [], 3: [] }, chased: { 1: [], 2: [], 3: [] },
         extraStack: [], attackDeck: [], closedTavern: null, winner: null, removedRow: [],
         ...normalizeRules(opts.mode, opts.rules), exp: normalizeExp(opts.exp), eventsUsed: [],
@@ -37,6 +38,8 @@ export function createGame(opts) {
 
     // 3. Elixirs: 4 copies of each of 7.
     state.elixirDeck = shuffle(state, POTIONS.flatMap(p => [1, 2, 3, 4].map(k => p.id + '#' + k)));
+    // «По следу монстра»: the bomb deck lies next to the elixirs (4 copies of each bomb in play).
+    if (state.exp.includes('trail')) state.bombDeck = shuffle(state, BOMBS_IN_PLAY.flatMap(b => Array.from({ length: BOMB_COPIES }, (_, k) => b.id + '#' + (k + 1))));
 
     // 4. Skill trophies.
     if (n === 1) {
@@ -77,7 +80,7 @@ export function createGame(opts) {
         const [cards, gold] = n === 1 ? [5, 3] : START_RES[n][seat];
         const p = {
             seat, name: lp.name || SCHOOLS[school].hero, school, bot: lp.bot || 0, loc: SCHOOLS[school].home,
-            gold, hand: [], deck, discard: [], removed: [], elixirs: [],
+            gold, hand: [], deck, discard: [], removed: [], elixirs: [], bombs: [],
             skills: { combat: 1, defense: 1, alchemy: 1, spec: 1 }, level: 1, shield: 1,
             trophies: [], track: 0, witcherTrophies: n - 1, trackTokens: { forest: null, mountain: null, water: null },
             hunts: [], quests: [], gear: [], keeps: [], monstersDefeated: 0, turns: 0,
