@@ -145,10 +145,13 @@ function renderActions(v) {
     // Quests (База.md p. 17): optional, in phase I, before or after the location action.
     for (const q of o.quests || []) parts.push(btn({ label: `Задание: ${esc(q.label)}`, icon: icon('explore'), why: q.err, data: `data-quest="${q.i}"`, primary: !q.err, key: q.err ? '' : 'Q' }));
     if ((o.quests || []).length) parts.push('<span class="sep"></span>');
+    // Kept cards that move the witcher (Лошадь, гильдия купцов): once per turn, in phase I.
+    for (const g of o.gearMoves || []) parts.push(btn({ label: esc(g.label), icon: icon('move'), why: g.err, data: `data-gmove="${esc(g.key)}"` }));
+    if ((o.gearMoves || []).length) parts.push('<span class="sep"></span>');
     for (const a of o.phase2) {
         if (a.id === 'meditate' && a.err) continue;
         const ic = a.id === 'fight' ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
-        const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'explore-city' ? 'C' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'E' : 'V';
+        const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'E' : '';   // exploring: mouse only
         let why = a.err;
         if (!why && a.id !== 'fight' && !t.moved && o.moves.length) why = null;
         parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: a.id === 'fight' && !a.err, data: `data-p2="${a.id}"`, key }));
@@ -160,6 +163,7 @@ function renderActions(v) {
     for (const b of box.querySelectorAll('[data-loc-skill]')) b.onclick = () => cmd({ t: 'loc', skill: b.dataset.locSkill }, 'тренировка');
     for (const b of box.querySelectorAll('[data-loc-slot]')) b.onclick = () => cmd({ t: 'loc', slot: b.dataset.locSlot === '' ? undefined : Number(b.dataset.locSlot) }, 'выслеживание');
     for (const b of box.querySelectorAll('[data-p2]')) b.onclick = () => phase2(b.dataset.p2);
+    for (const b of box.querySelectorAll('[data-gmove]')) b.onclick = () => cmd({ t: 'gearMove', key: b.dataset.gmove }, 'перемещение');
     for (const b of box.querySelectorAll('[data-quest]')) b.onclick = () => cmd({ t: 'quest', i: Number(b.dataset.quest) }, 'задание');
 }
 export function phase2(id) {
@@ -227,7 +231,8 @@ function renderMine(v) {
     el.innerHTML = `<div class="r" style="font-family:var(--serif);font-size:15px;color:${sc.color}"><b style="color:var(--gold2)">${esc(sc.school)}</b> · ${esc(LOC[p.loc].name)}</div>
         <div class="r" style="margin-top:4px;color:var(--dim)">Специализация: ${esc(sc.spec)} (${p.skills.spec})</div>
         <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}</div>
-        ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].text)}">${icon('combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
+        ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].kind + ': ' + EVENTS[id].text)}">${icon(EVENTS[id].kind === 'Спутник' ? 'meditate' : 'combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
+        ${(p.keeps || []).length ? `<div class="gear keeps">${p.keeps.map(k => `<span class="el" data-keep="${esc(k.card)}" title="${esc(k.text)}">${icon('card')}${esc(k.name)}</span>`).join('')}</div>` : ''}
         ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" title="Задание — ${esc(LOC[q.loc].name)}">${icon('explore')}${esc(questLabel(q))} → ${esc(LOC[q.loc].name)}</span>`).join('')}</div>` : ''}
         ${p.hunts.length ? `<div class="r" style="margin-top:6px;font-size:12px;color:var(--dim)">Задания: ${p.hunts.map(h => `${TERRAIN_NAME[h.terrain]} → ${esc(LOC[h.loc].name)} (${h.gold} зол.)`).join(', ')}</div>` : ''}
         <div class="zones">
@@ -238,7 +243,7 @@ function renderMine(v) {
     $('zDiscard').onclick = () => openViewer('Ваш сброс', p.discard.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zRemoved').onclick = () => openViewer('Убраны из игры', p.removed.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zTroph').onclick = () => openPlayer(p.seat);
-    for (const g of el.querySelectorAll('[data-gear],[data-qcard]')) g.onclick = () => openViewer(g.dataset.gear ? 'Снаряжение' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard, { stage: 'full' })}</div>`);
+    for (const g of el.querySelectorAll('[data-gear],[data-qcard],[data-keep]')) g.onclick = () => openViewer(g.dataset.gear ? EVENTS[g.dataset.gear].kind : g.dataset.keep ? 'Карта перед вами' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard || g.dataset.keep, { stage: 'full' })}</div>`);
 }
 
 let logLen = 0;
@@ -336,7 +341,7 @@ function openPlayer(seat) {
     const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
     openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${SKILL_NAME[s]} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
-        ${p.gear.length || p.quests.length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'full' })}<span style="color:#d8ccb7;font-size:12px">→ ${esc(LOC[q.loc].name)}</span></div>`).join('')}` : ''}
+        ${p.gear.length || p.quests.length || (p.keeps || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение, спутники и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${(p.keeps || []).map(k => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(k.card, { small: true, stage: 'outcome', pick: k.id.slice(-1) === 'A' ? 'a' : 'b' })}<span style="color:#d8ccb7;font-size:12px">${esc(k.name)}</span></div>`).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'full' })}<span style="color:#d8ccb7;font-size:12px">→ ${esc(LOC[q.loc].name)}</span></div>`).join('')}` : ''}
         <h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Сброс (${p.discard.length})</h3>${p.discard.map(id => actionCard(id, { small: true })).join('') || '<span style="color:var(--dim)">Пусто</span>'}`);
 }
 export function openChoice(title, text, options, onPick) {
@@ -356,7 +361,7 @@ export function openHelp() {
     <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>сдвигать камеру по столу</td></tr>
     <tr><td><kbd>ПКМ</kbd> + тащить / колесо</td><td>сдвиг / масштаб карты; <kbd>Home</kbd> — общий вид, <kbd>Space</kbd> — к активному ведьмаку</td></tr>
     <tr><td><kbd>T</kbd></td><td>действие локации</td></tr>
-    <tr><td><kbd>F</kbd> / <kbd>M</kbd> / <kbd>C</kbd> / <kbd>V</kbd></td><td>битва / медитация / исследовать город / окрестности</td></tr>
+    <tr><td><kbd>F</kbd> / <kbd>M</kbd></td><td>битва / медитация (исследование — только мышью)</td></tr>
     <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>выполнить задание / после события — к фазе III</td></tr>
     <tr><td><kbd>R</kbd></td><td>показать ряд карт</td></tr>
     <tr><td><kbd>Enter</kbd></td><td>подтвердить (оплата, комбинация, выбор)</td></tr>

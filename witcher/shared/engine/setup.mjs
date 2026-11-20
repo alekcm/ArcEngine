@@ -80,7 +80,7 @@ export function createGame(opts) {
             gold, hand: [], deck, discard: [], removed: [], elixirs: [],
             skills: { combat: 1, defense: 1, alchemy: 1, spec: 1 }, level: 1, shield: 1,
             trophies: [], track: 0, witcherTrophies: n - 1, trackTokens: { forest: null, mountain: null, water: null },
-            hunts: [], quests: [], gear: [], monstersDefeated: 0, turns: 0,
+            hunts: [], quests: [], gear: [], keeps: [], monstersDefeated: 0, turns: 0,
         };
         state.players.push(p);
         drawCards(state, p, cards);

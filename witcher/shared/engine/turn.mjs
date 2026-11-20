@@ -8,7 +8,7 @@ import {
     SCHOOLS, ROW_MODS, LOC_ACTIONS, SKILL_NAME, LEVEL_DRAW, ELIXIR_LIMIT, PHASE3_HAND, TERRAIN_NAME, EXHAUST, TRACK_GOLD, TROPHIES_TO_WIN,
 } from '../data/rules-data.mjs';
 import { SKILLTROPHIES } from '../data/gen-data.mjs';
-import { hasTrophy } from './effects.mjs';
+import { hasTrophy, hasGear, keepOf, elixirCap, trainCost, GEAR_MOVES } from './effects.mjs';
 
 export const SKILL_GEN = { combat: 'сражения', defense: 'защиты', alchemy: 'алхимии', spec: 'специализации' };
 
@@ -112,9 +112,10 @@ STEPS.elixirLook3Done = (state, step) => {
 };
 STEPS.elixirLimit = (state, step) => {
     const p = state.players[step.seat];
-    if (p.elixirs.length <= ELIXIR_LIMIT) return;
-    const over = p.elixirs.length - ELIXIR_LIMIT;
-    ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: over, max: over, title: 'Лимит эликсиров', text: `Не больше 4 эликсиров: сбросьте ${over}.`, op: 'elixirDiscard', args: { seat: p.seat } });
+    const cap = elixirCap(p);
+    if (p.elixirs.length <= cap) return;
+    const over = p.elixirs.length - cap;
+    ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: over, max: over, title: 'Лимит эликсиров', text: `Не больше ${cap} эликсиров: сбросьте ${over}.`, op: 'elixirDiscard', args: { seat: p.seat } });
 };
 STEPS.elixirDiscard = (state, step) => {
     const p = state.players[step.seat];
@@ -231,6 +232,8 @@ export function canEnter(state, to) {
 }
 STEPS.arrive = (state, step) => {
     const p = state.players[step.seat];
+    // Мартин (companion): +1 gold on entering Хенфорс (2) or Лок Ихор (14).
+    if (hasGear(p, 'CONT79-11') && (p.loc === 2 || p.loc === 14)) { p.gold += 1; log(state, `${p.name}: +1 золото (Мартин поёт в ${LOC[p.loc].name})`); fx(state, { k: 'gold', seat: p.seat, n: 1 }); }
     // Hunting quests: arriving at the token's location turns it into a track token (База.md p. 36).
     for (const h of p.hunts.slice()) {
         if (h.loc === p.loc) {
@@ -244,14 +247,67 @@ STEPS.arrive = (state, step) => {
     }
 };
 
+/** Destinations of a kept-card move (Лошадь / гильдия купцов): adjacent locations of its terrain. */
+export function gearMoveDests(state, p, key) {
+    const g = GEAR_MOVES[key];
+    return (ADJ[p.loc] || []).filter(n => canEnter(state, n) && LOC[n].terrain === g.terrain);
+}
+/** Why the kept card `key` cannot move the witcher now, or null. Once per turn, in phase I. */
+export function gearMoveError(state, p, key) {
+    const g = GEAR_MOVES[key];
+    if (!g) return 'Нет такого эффекта';
+    const own = key === 'CONT79-16' ? hasGear(p, key) : (p.keeps || []).some(k => k.id === key);
+    if (!own) return 'Этой карты у вас нет';
+    const t = state.turn;
+    if (!t || t.seat !== p.seat || t.phase !== 1 || t.afterExplore) return 'Только в фазе I своего хода';
+    if ((t.gearMoved || []).includes(key)) return 'Уже использовано в этот ход';
+    if (g.cost && p.hand.length < g.cost) return 'Нужна карта в руке';
+    if (!gearMoveDests(state, p, key).length) return g.terrain === 'forest' ? 'Рядом нет лесной локации' : 'Рядом нет водной локации';
+    return null;
+}
+STEPS.gearMoveAsk = (state, step) => {
+    const p = state.players[step.seat];
+    const g = GEAR_MOVES[step.key];
+    const opts = gearMoveDests(state, p, step.key).map(n => ({ id: String(n), label: LOC[n].name, hint: TERRAIN_NAME[LOC[n].terrain] }));
+    ask(state, {
+        seat: p.seat, kind: 'choice', ui: 'move', title: g.label.split(':')[0],
+        text: g.cost ? 'Куда переместиться? Затем сбросьте 1 карту из руки.' : 'Куда переместиться (без сброса карт)?',
+        options: [...opts, { id: 'cancel', label: 'Отмена' }], op: 'gearMoveTo', args: { seat: p.seat, key: step.key },
+    });
+};
+STEPS.gearMoveTo = (state, step) => {
+    const p = state.players[step.seat];
+    if (step.choice === 'cancel') return;
+    const g = GEAR_MOVES[step.key];
+    if (g.cost) {
+        ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Гильдия купцов', text: `Сбросьте 1 карту из руки, чтобы переместиться в ${LOC[Number(step.choice)].name}.`, op: 'gearMoveDo', args: { seat: p.seat, key: step.key, to: Number(step.choice) } });
+        return;
+    }
+    push(state, { op: 'gearMoveDo', seat: p.seat, key: step.key, to: Number(step.choice), ids: [] });
+};
+STEPS.gearMoveDo = (state, step) => {
+    const p = state.players[step.seat];
+    const t = state.turn;
+    for (const id of step.ids || []) { removeFrom(p.hand, id); p.discard.push(id); }
+    (t.gearMoved || (t.gearMoved = [])).push(step.key);
+    const from = p.loc;
+    p.loc = step.to;
+    t.moved = true;
+    log(state, `${p.name}: ${LOC[from].name} → ${LOC[step.to].name} (${GEAR_MOVES[step.key].label.split(':')[0]})`, { kind: 'move' });
+    fx(state, { k: 'move', seat: p.seat, from, to: step.to, cards: step.ids || [] });
+    push(state, { op: 'arrive', seat: p.seat });
+};
+
 // ---------------------------------------------------------------------------------------------
 // Location actions
 // ---------------------------------------------------------------------------------------------
 STEPS.locSchool = (state, step) => {
     const p = state.players[step.seat];
-    const cost = p.skills[step.skill] + 1;
+    const cost = trainCost(p, step.skill);
     p.gold -= cost;
     log(state, `${p.name} тренируется в школе (${SKILL_NAME[step.skill]}) за ${cost} золота`);
+    const page = keepOf(p, 'train');
+    if (page) { removeFrom(p.keeps, page); log(state, `${p.name} сбрасывает карту «${page.name}» (скидка 3 золота)`); }
     push(state, { op: 'raiseSkill', seat: p.seat, skill: step.skill, why: 'тренировка' });
 };
 STEPS.locHunt = (state, step) => {
@@ -353,7 +409,7 @@ STEPS.p3draw = (state) => {
 export function buyOptions(state, p) {
     return state.row.map((id, slot) => {
         if (!id) return null;
-        const cost = rowCost(state, slot);
+        const cost = state.turn && state.turn.freeBuy ? 0 : rowCost(state, slot);
         const water = hasTrophy(p, 'MON-31') && p.hand.some(h => CARDS[h].terrain === 'water');
         return { slot, id, cost, ok: p.hand.length >= cost || water };
     }).filter(Boolean);
@@ -365,14 +421,14 @@ STEPS.p3buyAsk = (state) => {
     ask(state, {
         seat: p.seat, kind: 'choice', ui: 'row', title: 'Фаза III: новая карта',
         text: 'Обязательно возьмите 1 карту из ряда, сбросив из руки карты по её стоимости (с учётом ячейки).',
-        options: opts.map(o => ({ id: String(o.slot), label: `${CARDS[o.id].name} — ${o.cost}`, disabled: !o.ok, hint: o.ok ? '' : 'Мало карт в руке' })),
+        options: opts.map(o => ({ id: String(o.slot), label: `${CARDS[o.id].name} — ${o.cost}`, cost: o.cost, disabled: !o.ok, hint: o.ok ? '' : 'Мало карт в руке' })),
         op: 'p3buyPick', args: {},
     });
 };
 STEPS.p3buyPick = (state, step) => {
     const p = state.players[state.turn.seat];
     const slot = Number(step.choice);
-    const cost = rowCost(state, slot);
+    const cost = state.turn.freeBuy ? 0 : rowCost(state, slot);
     const waterOk = hasTrophy(p, 'MON-31') && p.hand.some(h => CARDS[h].terrain === 'water');
     if (cost === 0) { push(state, { op: 'p3buyPay', slot, ids: [] }); return; }
     if (waterOk) {

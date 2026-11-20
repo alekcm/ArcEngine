@@ -6,6 +6,8 @@ import { actionCard, elixirCard, attackCard, monsterCard, eventCard, esc } from 
 import { CARDS, ATTACK, MONSTER } from '/shared/engine/util.mjs';
 import { ROW_MODS } from '/shared/data/rules-data.mjs';
 import { sfx } from './sound.js';
+import { comboTotals } from '/shared/engine/fight.mjs';
+import { eventComboError } from '/shared/engine/explore.mjs';
 
 let lastKey = '';
 export function renderPrompt() {
@@ -55,13 +57,20 @@ export function renderPrompt() {
         return `<div class="card pick ${s ? 'sel' : ''}" data-id="${esc(id)}"><div class="name">${esc(id)}</div></div>`;
     }).join('');
     const n = sel.length;
-    const okCount = n >= pr.min && n <= pr.max;
-    const need = pr.min === pr.max ? `Выберите ${pr.min}` : `Выберите от ${pr.min} до ${pr.max}`;
+    // Event combo (outside a fight): click order is the chain order; totals and link check live.
+    const combo = pr.ui === 'combo';
+    const chainErr = combo ? eventComboError(sel) : null;
+    const okCount = n >= pr.min && n <= pr.max && !chainErr;
+    const need = chainErr || (pr.min === pr.max ? `Выберите ${pr.min}` : `Выберите от ${pr.min} до ${pr.max}`);
+    const tot = combo && n ? comboTotals(v, v.players[S.you], sel) : null;
+    const comboInfo = combo ? `<div class="combosum">${n ? `${sel.map((id, i) => `<b>${i + 1}</b> ${esc(CARDS[id].name)}`).join(' → ')} · урон <b>${tot.dmg}</b> · щит <b>+${tot.shield}</b>` : 'Щёлкайте карты по порядку цепочки'}</div>` : '';
     el.innerHTML = `<div class="box"><h2>${esc(pr.title || 'Выбор карт')}</h2>${pr.text ? `<p>${esc(pr.text)}</p>` : ''}
-        <div class="cards">${cardsHtml || '<span style="color:var(--dim)">Нет подходящих карт</span>'}</div>
+        <div class="${combo ? 'comborow' : ''}">${pr.card && combo ? `<div class="combocard">${eventCard(pr.card, { stage: 'full' })}</div>` : ''}
+        <div class="${combo ? 'combopick' : ''}"><div class="cards">${cardsHtml || '<span style="color:var(--dim)">Нет подходящих карт</span>'}</div>${comboInfo}</div></div>
         <div class="foot"><span class="cnt">${need}. Выбрано: ${n}</span>
         ${pr.min === 0 && n === 0 ? btn({ id: 'pSkip', label: 'Пропустить', key: 'Esc' }) : ''}
-        ${btn({ id: 'pOk', label: 'Готово', primary: true, why: okCount ? null : need, key: 'Enter' })}</div></div>`;
+        ${btn({ id: 'pOk', label: combo ? 'Разыграть' : 'Готово', primary: true, why: okCount ? null : need, key: 'Enter' })}</div></div>`;
+    if (combo) sel.forEach((id, i) => { const c = el.querySelector(`.cards [data-id="${CSS.escape(id)}"]`); if (c) c.setAttribute('data-ord', i + 1); });
     for (const c of el.querySelectorAll('.pick')) c.onclick = () => {
         const id = c.dataset.id;
         if (sel.includes(id)) sel.splice(sel.indexOf(id), 1);
@@ -81,7 +90,7 @@ function renderRow(el, pr) {
     const cards = pr.options.map(o => {
         const slot = Number(o.id), id = v.row[slot];
         if (!id) return '';
-        const cost = Math.max(0, CARDS[id].cost + ROW_MODS[slot]);
+        const cost = o.cost != null ? o.cost : Math.max(0, CARDS[id].cost + ROW_MODS[slot]);
         return `<div class="buyslot ${o.disabled ? 'dis' : ''}" data-c="${esc(o.id)}" ${o.disabled ? `title="${esc(o.hint || 'Недоступно')}"` : ''}>
             ${actionCard(id, { cls: 'buy ' + (o.disabled ? 'no' : 'pick'), cost })}
             <div class="buycap">${o.disabled ? esc(o.hint || 'Недоступно') : `сбросить ${cost}`}</div></div>`;
@@ -92,29 +101,45 @@ function renderRow(el, pr) {
     for (const b of el.querySelectorAll('.buyslot:not(.dis)')) b.onclick = () => cmd({ t: 'answer', choice: b.dataset.c }, pr.title);
 }
 
-/** Alt + hover: a large copy of the card under the cursor (buy row, hand, fight). */
+/**
+ * Alt + hover: the card under the cursor itself grows in place (buy row, hand, fight) — no
+ * second copy. It is scaled by a transform, kept inside the window; ancestors that clip their
+ * content (scrolling boxes) let it out while it is enlarged.
+ */
 export function initZoom() {
-    let over = null;
-    const box = document.createElement('div');
-    box.id = 'czoom'; box.className = 'hidden';
-    document.body.appendChild(box);
-    const show = (on) => {
-        const c = on && over && over.closest('.card.action, .card.attack');
-        if (!c) { box.className = 'hidden'; box.innerHTML = ''; return; }
-        const copy = c.cloneNode(true);
-        copy.classList.remove('small', 'huge', 'buy', 'sel', 'dim', 'no', 'pick', 'can');
-        copy.classList.add('zoomed');
-        box.innerHTML = ''; box.appendChild(copy);
-        const r = c.getBoundingClientRect();
-        const left = r.left + r.width / 2 > innerWidth / 2 ? Math.max(8, r.left - 380) : Math.min(innerWidth - 372, r.right + 12);
-        box.style.left = left + 'px';
-        box.style.top = Math.max(8, Math.min(innerHeight - 572, r.top + r.height / 2 - 280)) + 'px';
-        box.className = '';
+    let over = null, cur = null, hosts = [];
+    const TARGET_H = 560;
+    const reset = () => {
+        if (cur) { cur.classList.remove('altzoom'); cur.style.removeProperty('--zt'); }
+        for (const h of hosts) h.classList.remove('zoomhost');
+        cur = null; hosts = [];
     };
-    document.addEventListener('mouseover', (e) => { over = e.target; show(e.altKey); });
+    const show = (on) => {
+        const c = on && over && over.closest ? over.closest('.card.action, .card.attack, .evcard') : null;
+        if (c === cur) return;
+        reset();
+        if (!c) return;
+        const r = c.getBoundingClientRect();
+        const s = Math.min(TARGET_H / r.height, (innerHeight - 16) / r.height, (innerWidth - 16) / r.width);
+        if (s < 1.08) return;
+        const w = r.width * s, h = r.height * s;
+        const L = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+        const T = Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2));
+        // The origin is the card's own top-left corner: translate by the offset of the new box.
+        c.style.setProperty('--zt', `translate(${(L - r.left).toFixed(1)}px, ${(T - r.top).toFixed(1)}px) scale(${s.toFixed(3)})`);
+        for (let e = c.parentElement; e && e !== document.body; e = e.parentElement) {
+            const st = getComputedStyle(e);
+            if (st.overflow !== 'visible' || st.overflowX !== 'visible' || st.overflowY !== 'visible') { e.classList.add('zoomhost'); hosts.push(e); }
+        }
+        c.classList.add('altzoom');
+        cur = c;
+    };
+    document.addEventListener('mouseover', (e) => { if (cur && cur.contains(e.target)) return; over = e.target; show(e.altKey); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Alt') { e.preventDefault(); show(true); } });
     document.addEventListener('keyup', (e) => { if (e.key === 'Alt') { e.preventDefault(); show(false); } });
     window.addEventListener('blur', () => show(false));
+    // A re-render replaces the card element: drop the stale state.
+    new MutationObserver(() => { if (cur && !cur.isConnected) reset(); }).observe(document.body, { childList: true, subtree: true });
 }
 
 // Exploration / event card: the card itself on the left (options are clickable on it, like
@@ -123,10 +148,10 @@ function renderEvent(el, pr) {
     const choose = pr.stage === 'choose';
     // House rule «Открытые последствия»: both outcomes are printed before the choice.
     const open = choose && S.view.rules && S.view.rules.openEvents;
-    const card = eventCard(pr.card, { stage: choose ? (open ? 'full' : 'choose') : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.dice, choose });
+    const card = eventCard(pr.card, { stage: choose ? (open ? 'full' : 'choose') : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.sum != null ? pr.sum : pr.dice, choose });
     const opts = pr.options.map((o, i) => btn({ label: esc(o.label), why: o.disabled ? (o.hint || 'Недоступно') : null, data: `data-c="${esc(o.id)}"`, key: String(i + 1), primary: !choose && i === 0 })).join('');
     const sub = pr.stage === 'outcome' ? `<p class="eff" style="color:var(--gold2)">${esc(pr.effect || '')}</p>`
-        : pr.stage === 'roll' ? `<div style="display:flex;align-items:center;gap:12px"><span class="evdice">${pr.dice}</span><span style="color:var(--dim)">Выпало ${pr.dice} — исход подсвечен на карте</span></div>`
+        : pr.stage === 'roll' ? `<div style="display:flex;align-items:center;gap:12px"><span class="evdice">${pr.dice}</span><span style="color:var(--dim)">${pr.rollKind === 'combo' ? 'Исход по урону комбинации' : pr.sum != null ? `Выпало ${pr.dice}, сумма ${pr.sum}` : `Выпало ${pr.dice}`} — исход подсвечен на карте</span></div>`
         : choose ? `<p style="color:var(--dim)">Выберите вариант: щёлкните строку на карте или кнопку.${open ? ' Последствия открыты (правило стола).' : ''}</p>` : '';
     el.innerHTML = `<div class="box evbox-wrap">${card}<div class="evside"><h2>${esc(pr.title || 'Событие')}</h2>${sub}<div class="opts">${opts}</div></div></div>`;
     for (const o of pr.options) if (o.disabled) { const line = el.querySelector(`.evopt[data-c="${o.id}"]`); if (line) { line.classList.add('dis'); line.title = o.hint || ''; } }

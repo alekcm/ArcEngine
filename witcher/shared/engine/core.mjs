@@ -4,11 +4,11 @@
 import { STEPS, push, run, ask } from './flow.mjs';
 import { CARDS, LOC, ADJ, MONSTER, log, fx, removeFrom, potionOf, d6 } from './util.mjs';
 import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from '../data/rules-data.mjs';
-import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER } from './turn.mjs';
+import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
 import { monsterFightError, elixirError, specError, activeEffectError, comboError } from './fight.mjs';
-import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy } from './effects.mjs';
-import { exploreError, questError } from './explore.mjs';
-import { EXPLORE_DECKS, questLabel } from '../data/events-data.mjs';
+import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy, hasGear, trainCost, GEAR_MOVES } from './effects.mjs';
+import { exploreError, questError, eventComboError } from './explore.mjs';
+import { questLabel } from '../data/events-data.mjs';
 import './setup.mjs';
 
 export { createGame } from './setup.mjs';
@@ -46,7 +46,7 @@ export function locActionInfo(state, p) {
         case 'school': {
             const home = LOC[p.loc].school === p.school;
             for (const s of ['combat', 'defense', 'alchemy', 'spec']) {
-                const cost = p.skills[s] + 1;
+                const cost = trainCost(p, s);
                 let e = null;
                 if (s === 'spec' && !home) e = 'Специализацию — только в своей школе';
                 else if (p.skills[s] >= 5) e = 'Уже 5';
@@ -109,15 +109,14 @@ export function options(state, seat) {
         o.moves.push({ to: n, terrain: LOC[n].terrain });
     }
     o.loc = locActionInfo(state, p);
+    o.gearMoves = Object.keys(GEAR_MOVES).filter(k => k === 'CONT79-16' ? hasGear(p, k) : (p.keeps || []).some(x => x.id === k))
+        .map(k => ({ key: k, label: GEAR_MOVES[k].label, err: gearMoveError(state, p, k) }));
     const fe = monsterFightError(state, p);
     const slot = state.slots.find(s => s.mon && s.token === p.loc);
     o.phase2.push({ id: 'fight', label: slot ? `Битва: ${MONSTER[slot.mon].name}` : 'Битва с монстром', err: fe });
     const med = meditationOptions(state, p);
     o.phase2.push({ id: 'meditate', label: 'Медитация', err: med.length ? null : 'Нужен навык 5 и свободный трофей за него', trophies: med.map(m => m.id) });
-    for (const d of ['city', 'wild']) {
-        const left = (state.explore || EXPLORE_DECKS)[d].length;
-        o.phase2.push({ id: 'explore-' + d, label: `${d === 'city' ? 'Исследовать город' : 'Исследовать окрестности'} (${left})`, err: exploreError(state, p, d) });
-    }
+    for (const d of ['city', 'wild']) o.phase2.push({ id: 'explore-' + d, label: d === 'city' ? 'Исследовать город' : 'Исследовать окрестности', err: exploreError(state, p, d) });
     // Phase II is obligatory; when no action is possible here (empty decks, an event forbade
     // exploring, no monster), the player goes to phase III — «as far as possible».
     if (o.phase2.every(x => x.err)) o.phase2.push({ id: 'skipPhase2', label: 'Нет действий фазы II → фаза III', err: null });
@@ -153,6 +152,7 @@ function answer(state, seat, cmd) {
         if (new Set(ids).size !== ids.length) return err('Повтор в выборе');
         if (!ids.every(id => pr.ids.includes(id))) return err('Такой вариант выбрать нельзя');
         if (ids.length < pr.min || ids.length > pr.max) return err(pr.min === pr.max ? `Нужно выбрать ${pr.min}` : `Выберите от ${pr.min} до ${pr.max}`);
+        if (pr.ui === 'combo') { const ce = eventComboError(ids); if (ce) return err(ce); }
         if (pr.op === 'p3buyPay' && pr.args.waterAlt) {
             const cost = pr.max;
             const okWater = ids.length === 1 && CARDS[ids[0]].terrain === 'water';
@@ -188,6 +188,12 @@ function turnCmd(state, p, cmd) {
             t.phase = 2;
             log(state, `${p.name}: действий фазы II нет — сразу фаза III`);
             push(state, { op: 'phase3' });
+            return ok();
+        }
+        case 'gearMove': {
+            const e = gearMoveError(state, p, cmd.key);
+            if (e) return err(e);
+            push(state, { op: 'gearMoveAsk', seat: p.seat, key: cmd.key });
             return ok();
         }
         case 'quest': {

@@ -14,6 +14,8 @@
 //   * equipment / companions are kept for the rest of the game (Кастет is a fight action).
 import { STEPS, push, ask, later } from './flow.mjs';
 import { LOC, ADJ, CARDS, MONSTER, log, fx, d6, shuffle, clampShield, drawCards, removeFrom, potionOf } from './util.mjs';
+import { keepOf } from './effects.mjs';
+import { comboTotals, linkIndex } from './fight.mjs';
 import { TERRAIN_NAME, SKILL_NAME, SCHOOLS } from '../data/rules-data.mjs';
 import { EXPLORE_DECKS, EVENTS, questLabel } from '../data/events-data.mjs';
 import { canEnter, refillRow, SKILL_GEN } from './turn.mjs';
@@ -39,6 +41,8 @@ export function exploreError(state, p, deck) {
     if (t.afterExplore) return 'Исследование уже было в этот ход';
     if (t.noExplore) return 'Событие запретило исследовать в этот ход';
     const decks = state.explore || EXPLORE_DECKS;
+    // A kept card replaces the next exploration (CONT79-29Б, CITY1-33А, CONT79-22Б): no deck card is drawn.
+    if (keepOf(p, 'nextExplore')) return null;
     if (!decks[deck].length) return `Колода исследования (${DECK_NAME[deck]}) закончилась: все её карты уже разыграны`;
     return null;
 }
@@ -65,6 +69,17 @@ function askChoose(state, p, id, title, extra) {
 STEPS.exploreStart = (state, step) => {
     const p = state.players[step.seat];
     const decks = ensureExplore(state);
+    const k = keepOf(p, 'nextExplore');
+    if (k) {
+        removeFrom(p.keeps, k);
+        log(state, `${p.name} сбрасывает карту «${k.name}»: это происходит вместо обычного исследования`, { kind: 'explore' });
+        fx(state, { k: 'explore', seat: p.seat, deck: step.deck, id: k.card });
+        push(state,
+            ...(k.gold ? [{ op: 'eventFx', seat: p.seat, e: { gold: k.gold }, card: k.card }] : []),
+            ...(k.event ? [{ op: 'takeEvent', seat: p.seat, id: k.event }] : []),
+            { op: 'exploreDone', seat: p.seat, id: k.card, explore: true });
+        return;
+    }
     const id = decks[step.deck].shift();
     log(state, `${p.name} исследует ${DECK_NAME[step.deck]} (${LOC[p.loc].name})`, { kind: 'explore' });
     fx(state, { k: 'explore', seat: p.seat, deck: step.deck, id });
@@ -118,7 +133,9 @@ STEPS.eventFx = (state, step) => {
         else if (e.gold < 0) log(state, `${p.name}: золота нет — сбрасывать нечего`);
     }
     if (e.skill) {
-        if (SKILLS.includes(e.skill)) push(state, { op: 'raiseSkill', seat: p.seat, skill: e.skill, why: 'событие' });
+        // CONT79-43: «если этот навык уже на максимальном уровне — увеличьте любой».
+        if (e.orAny && SKILLS.includes(e.skill) && p.skills[e.skill] >= 5) { log(state, `${p.name}: навык ${SKILL_GEN[e.skill]} уже 5 — вместо него любой навык`); push(state, { op: 'eventSkillPick', seat: p.seat, mode: 'any', left: 1, done: [] }); }
+        else if (SKILLS.includes(e.skill)) push(state, { op: 'raiseSkill', seat: p.seat, skill: e.skill, why: 'событие' });
         else push(state, { op: 'eventSkillPick', seat: p.seat, mode: e.skill === 'any' ? 'any' : 'lowest', left: e.skill === 'lowest2' ? 2 : 1, done: [] });
     }
     if (e.skillDown) push(state, { op: 'lowerSkill', seat: p.seat, skill: e.skillDown });
@@ -156,6 +173,17 @@ STEPS.eventFx = (state, step) => {
             fx(state, { k: 'gear', seat: p.seat, id: e.gear });
         }
     }
+    if (e.gear === 'CONT79-16' && p.gear.includes('CONT79-16') && t && t.phase === 1 && !t.p3queued) push(state, { op: 'eventFx', seat: p.seat, e: { toPhase3: true } });
+    if (e.keep) {
+        if (!p.keeps) p.keeps = [];
+        p.keeps.push({ ...e.keep });
+        log(state, `${p.name} кладёт перед собой карту «${e.keep.name}»: ${e.keep.text}`, { kind: 'explore' });
+        fx(state, { k: 'keep', seat: p.seat, id: e.keep.card, name: e.keep.name });
+    }
+    if (e.dropGear) {
+        const i = p.gear.indexOf(e.dropGear);
+        if (i >= 0) { p.gear.splice(i, 1); log(state, `${p.name} сбрасывает карту «${EVENTS[e.dropGear].name}»`, { kind: 'explore' }); }
+    }
     if (e.event) push(state, { op: 'takeEvent', seat: p.seat, id: e.event });
     if (e.quest) push(state, { op: 'questStart', seat: p.seat, id: step.card, q: e.quest });
     if (e.freeMove) {
@@ -169,17 +197,64 @@ STEPS.eventFx = (state, step) => {
         log(state, `${p.name}: условие ${okc ? 'выполнено' : 'не выполнено'}`);
         push(state, ...effectSteps(p.seat, okc ? e.fx : e.else, { card: step.card }));
     }
+    if (e.freeBuy && t) { t.freeBuy = true; log(state, `${p.name}: в фазе III этого хода карта из ряда — бесплатно`); }
+    if (e.roll && e.by === 'combo') {
+        // «Возьмите N карт из своей колоды и немедленно разыграйте комбинацию» — then the table by damage.
+        const n = drawCards(state, p, e.comboDraw);
+        log(state, `${p.name} берёт ${n} карт(ы) и разыгрывает комбинацию`, { kind: 'explore' });
+        push(state, { op: 'eventComboAsk', seat: p.seat, card: step.card, e });
+        return;
+    }
     if (e.roll) {
-        let r;
-        if (!e.by) { r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat }); log(state, `${p.name} бросает кубик: ${r}`, { kind: 'explore' }); }
-        else { r = e.by === 'level' ? p.level : p.skills[e.by]; log(state, `${p.name}: ${e.by === 'level' ? 'уровень ведьмака' : 'навык ' + SKILL_GEN[e.by]} ${r}`, { kind: 'explore' }); }
+        let r, show;
+        if (e.x2) {
+            // «Умножьте уровень навыка на 2, затем бросьте кубик и прибавьте» (CONT79-36/48/55).
+            const die = d6(state); fx(state, { k: 'd6', v: die, seat: p.seat });
+            r = p.skills[e.by] * 2 + die;
+            log(state, `${p.name}: навык ${SKILL_GEN[e.by]} ${p.skills[e.by]} × 2 + кубик ${die} = ${r}`, { kind: 'explore' });
+            show = { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: e.by, x2: p.skills[e.by], die };
+        } else {
+            if (!e.by) { r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat }); log(state, `${p.name} бросает кубик: ${r}`, { kind: 'explore' }); }
+            else { r = e.by === 'level' ? p.level : p.skills[e.by]; log(state, `${p.name}: ${e.by === 'level' ? 'уровень ведьмака' : 'навык ' + SKILL_GEN[e.by]} ${r}`, { kind: 'explore' }); }
+            show = { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: e.by || null };
+        }
         const br = e.roll.find(b => r >= b.from && r <= b.to) || (r < e.roll[0].from ? e.roll[0] : e.roll[e.roll.length - 1]);
-        push(state, { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: e.by || null }, ...effectSteps(p.seat, br.fx, { card: step.card }));
+        push(state, show, ...effectSteps(p.seat, br.fx, { card: step.card }));
     }
 };
+STEPS.eventComboAsk = (state, step) => {
+    const p = state.players[step.seat];
+    if (!p.hand.length) { push(state, { op: 'eventComboDo', seat: p.seat, card: step.card, e: step.e, ids: [] }); return; }
+    ask(state, {
+        seat: p.seat, kind: 'cards', from: 'hand', ui: 'combo', ids: p.hand.slice(), min: 1, max: p.hand.length, card: step.card,
+        title: 'Комбинация', text: 'Разыграйте комбинацию из руки: выбирайте карты по порядку, каждая следующая — по цвету связи предыдущей. Применяются только щиты и урон.',
+        op: 'eventComboDo', args: { seat: p.seat, card: step.card, e: step.e },
+    });
+};
+STEPS.eventComboDo = (state, step) => {
+    const p = state.players[step.seat];
+    const ids = step.ids || [];
+    const t = comboTotals(state, p, ids);
+    for (const id of ids) removeFrom(p.hand, id);
+    p.discard.push(...ids);
+    if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')} — урон ${t.dmg}, щит +${t.shield}`, { kind: 'combo' });
+    fx(state, { k: 'combo', seat: p.seat, ids });
+    if (t.shield) { p.shield += t.shield; clampShield(state, p); }
+    const r = t.dmg, e = step.e;
+    const br = e.roll.find(b => r >= b.from && r <= b.to) || e.roll[e.roll.length - 1];
+    push(state, { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: 'combo' }, ...effectSteps(p.seat, br.fx, { card: step.card }));
+};
+/** Why `ids` (in order) is not a chain of links, or null (event combos outside a fight). */
+export function eventComboError(ids) {
+    for (let i = 1; i < ids.length; i++) {
+        const prev = CARDS[ids[i - 1]], next = CARDS[ids[i]];
+        if (linkIndex(prev, next) < 0) return `«${next.name}» не соединяется с «${prev.name}»`;
+    }
+    return null;
+}
 STEPS.eventRollShow = (state, step) => {
-    const title = !step.by ? `Бросок кубика: ${step.r}` : step.by === 'level' ? `Уровень ведьмака: ${step.r}` : `Навык ${SKILL_GEN[step.by]}: ${step.r}`;
-    ask(state, { seat: step.seat, kind: 'choice', ui: 'event', stage: 'roll', card: step.card, title, dice: step.r, options: [{ id: 'ok', label: 'Продолжить' }], op: 'noop', args: {} });
+    const title = step.by === 'combo' ? `Урон комбинации: ${step.r}` : step.x2 != null ? `${SKILL_NAME[step.by]} ${step.x2} × 2 + кубик ${step.die} = ${step.r}` : !step.by ? `Бросок кубика: ${step.r}` : step.by === 'level' ? `Уровень ведьмака: ${step.r}` : `Навык ${SKILL_GEN[step.by]}: ${step.r}`;
+    ask(state, { seat: step.seat, kind: 'choice', ui: 'event', stage: 'roll', card: step.card, title, dice: step.x2 != null ? step.die : step.r, sum: step.x2 != null ? step.r : undefined, rollKind: step.by === 'combo' ? 'combo' : undefined, options: [{ id: 'ok', label: 'Продолжить' }], op: 'noop', args: {} });
 };
 STEPS.noop = () => {};
 

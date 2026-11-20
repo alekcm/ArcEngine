@@ -1,6 +1,7 @@
 // Ownership checks for trophies and the catalogue of "once per fight" effects that the
 // player triggers by hand during step 1 of a fight turn (База.md p. 22).
 import { MONSTER } from './util.mjs';
+import { ELIXIR_LIMIT } from '../data/rules-data.mjs';
 
 /** Monster trophy: the trophy side of the defeated monster card (MON-NN). */
 export const hasTrophy = (p, monId) => p.trophies.some(t => t.kind === 'monster' && t.id === monId);
@@ -26,6 +27,28 @@ export const ACTIVE_EFFECTS = {
     'MON-30': { label: 'Тролль: 2 урона, если колода пуста', src: 'monster' },
     'W-griffin': { label: 'Трофей Грифона: верх сброса, затем сбросить 1', src: 'witcher' },
     'CONT79-15': { label: 'Кастет: сбросить 1 карту → 2 урона', src: 'gear' },
+    'CONT79-01': { label: 'Арбалет: сбросить 1 карту → 2 урона (первый ход)', src: 'gear' },
+    'CONT79-14': { label: 'Арбалет: 2 урона (первый ход)', src: 'gear' },
+    'CONT79-20': { label: 'Адья: бросить кубик (первый ход)', src: 'gear' },
+    'CONT79-56': { label: 'Лекарство: карта из сброса → в колоду', src: 'gear' },
+};
+
+/** Equipment / companion card (event card kept in front of the player, База.md p. 17). */
+export const hasGear = (p, id) => !!(p.gear && p.gear.includes(id));
+/** Event option kept in front of the player («Положите эту карту перед собой»): by kind. */
+export const keepOf = (p, kind) => (p.keeps || []).find(k => k.kind === kind) || null;
+/** Elixir limit: 4, or 5 with «Сумка для зелий». */
+export const elixirCap = (p) => keepOf(p, 'elixirLimit') ? keepOf(p, 'elixirLimit').n : ELIXIR_LIMIT;
+/** School training cost of `skill` (the printed level + 1, «Вырванная страница»: −3, at least 1). */
+export function trainCost(p, skill) {
+    const base = p.skills[skill] + 1;
+    const k = keepOf(p, 'train');
+    return k ? Math.max(1, base - k.n) : base;
+}
+/** Free movement granted by kept cards: Лошадь (forest, free), «Услуга гильдии купцов» (water, 1 card). */
+export const GEAR_MOVES = {
+    'CONT79-16': { terrain: 'forest', cost: 0, label: 'Лошадь: в соседнюю лесную локацию' },
+    'CONT79-32B': { terrain: 'water', cost: 1, label: 'Гильдия купцов: сбросить 1 карту → соседняя водная локация' },
 };
 
 export function trophyName(t) {

@@ -81,7 +81,9 @@ const svgI = (vb, body, cls) => `<svg class="${cls}" viewBox="${vb}" fill="none"
 const HAND = '<path d="M13 70V57a2.4 2.4 0 0 1 4.8 0v-4a2.4 2.4 0 0 1 4.8 0v-1a2.4 2.4 0 0 1 4.8 0v2a2.4 2.4 0 0 1 4.8 0v10c0 4-3 7-7 7h-5c-3 0-5-2-7.2-4.5z" fill="#f4efe3" stroke="none"/>';
 // Glyphs not cut from the scans (thin line art) — redrawn after the printed ones.
 const GLYPH_SVG = {
-    tray: () => svgI('0 0 48 20', '<path d="M3 4l5 12h32l5-12"/><path d="M17 4l7 6 7-6"/>', 'g tray'),
+    // One card lying flat: the lower half of a rhombus with the ends of its upper sides (the
+    // number stands in its open top, as printed).
+    tray: () => svgI('0 0 48 22', '<path d="M11 3L3 8l21 11 21-11-8-5"/>', 'g tray'),
     stack: () => svgI('0 0 48 30', '<path d="M4 8l20-6 20 6-20 6z"/><path d="M4 15l20 6 20-6"/><path d="M4 22l20 6 20-6"/>', 'g stack'),
     top: () => svgI('0 0 44 76', '<rect x="10" y="3" width="24" height="30" rx="2"/><path d="M15 8v20l14-20v20"/><path d="M22 37v10m-5-5l5 5 5-5"/>' + HAND, 'g top'),
     ret: () => svgI('0 0 44 76', '<rect x="8" y="3" width="24" height="32" rx="2"/><path d="M20 10v12m0 6v.5"/><path d="M36 46a12 12 0 0 1-8 14"/><path d="M27 55l1 5 5-1"/>' + HAND, 'g ret'),
@@ -226,7 +228,9 @@ function effectHtml(o) {
     return `${rest ? `<p class="eff">${br(rest)}</p>` : ''}<div class="evquest">${STAR}<div><b>Задание: ${esc(where)}.</b><br><b>В локации: ${pay}${BOOK} ${EVENTS[Q.event].num}.</b></div></div>`;
 }
 const TERRAIN_ADJ = { forest: 'лесная', mountain: 'горная', water: 'водная' };
-const br = (s) => esc(s || '').replace(/\n/g, '<br>');
+const br = (s) => esc(s || '').replace(/\n/g, '<br>').replace(/\[СОБЫТИЕ:(\d+)\]/g, (m, n) => `${BOOK} ${n}`);
+/** Effect line of an equipment/companion card: the timing lead («Один раз за битву:») in bold. */
+const gearText = (t) => esc(t).replace(/(Один раз за (?:битву|ход):|В течение всей битвы:)\s*/g, '<b>$1</b><br>').replace(/\[СОБЫТИЕ:(\d+)\]/g, `${BOOK} $1`);
 export function eventCard(id, opts = {}) {
     const ev = EVENTS[id];
     if (!ev) return '';
@@ -235,7 +239,7 @@ export function eventCard(id, opts = {}) {
         return `<div class="evcard gear ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(ev.name + ': ' + ev.text)}">
             <div class="evart" style="background-image:${artCss(id, '#6a4a2a', 'combat')}"></div>
             <div class="evbox"><div class="evkind">${esc(ev.kind || 'Снаряжение')}</div><p>Положите эту карту перед собой.</p><img class="evdiv" src="${A}event-div.webp" alt="">
-            <div class="evname">${esc(ev.name)}</div><p class="eff"><b>Один раз за битву:</b><br>${esc(ev.text.replace(/^(Снаряжение\. )?Один раз за битву:\s*/, ''))}</p></div></div>`;
+            <div class="evname">${esc(ev.name)}</div>${ev.story && !opts.small ? `<p class="evstory">${br(ev.story)}</p>` : ''}<p class="eff">${gearText(ev.text)}</p></div></div>`;
     }
     let body = para(ev.intro);
     if (ev.a) {
@@ -245,8 +249,10 @@ export function eventCard(id, opts = {}) {
         body += st === 'choose' ? `<div class="evhide"><span>Последствия откроются после выбора</span></div>` : res('a') + res('b');
     } else if (ev.fx && ev.fx.some(e => e.roll)) {
         const r = ev.fx.find(e => e.roll);
-        const head = !r.by ? 'Бросьте кубик:' : r.by === 'level' ? 'По уровню ведьмака:' : `По навыку ${SKILL_GEN_C[r.by]}:`;
-        body += `<p class="eff">${head}</p>` + r.roll.map(b => `<div class="evroll ${opts.dice ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.from === b.to ? b.from : b.from + '–' + b.to}:</b><div>${b.text ? `<p>${esc(b.text)}</p>` : ''}${b.effect ? `<p class="eff">${esc(b.effect)}</p>` : ''}</div></div>`).join('');
+        const head = !r.by ? 'Бросьте кубик:' : r.by === 'combo' ? esc(ev.effect.split('\n').find(l => /разыграйте комбинацию/.test(l)) || '') : r.x2 ? `Умножьте уровень своего навыка ${SKILL_GEN_C[r.by]} на 2. Затем бросьте кубик и прибавьте выпавшее значение к результату. Выполните эффект согласно получившейся сумме:` : r.by === 'level' ? 'По уровню ведьмака:' : `По навыку ${SKILL_GEN_C[r.by]}:`;
+        const preL = (ev.effect || '').split('\n').filter(l => l && !/^(Бросьте кубик:|При любом результате|Умножьте уровень|Если навык|Если уровень|По навыку|\d)/.test(l) && !/разыграйте комбинацию/.test(l));
+        if (preL.length) body += `<p class="eff">${br(preL.join('\n'))}</p>`;
+        body += `<p class="eff">${head}</p>` + r.roll.map(b => `<div class="evroll ${opts.dice != null ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.to >= 99 ? b.from + '+' : b.from === b.to ? b.from : b.from + '–' + b.to}${r.by === 'combo' ? ' урона' : ''}:</b><div>${b.text ? `<p>${esc(b.text)}</p>` : ''}${b.effect ? `<p class="eff">${br(b.effect)}</p>` : ''}</div></div>`).join('');
         const tail = ev.effect.split('\n').filter(l => l.startsWith('При любом результате'));
         if (tail.length) body += `<p class="eff">${br(tail.join('\n'))}</p>`;
     } else if (ev.effect) {

@@ -459,5 +459,5 @@ function listen(port, tries = 0) {
     });
 }
 // Sandbox positions (fight test, poker test, mid-game) are always available in the lobby.
-try { if (!listSaves().includes('Песочница — исследование')) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
+try { if (!listSaves().includes('Песочница — снаряжение')) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
 listen(PORT_BASE);

@@ -59,8 +59,11 @@ export function botCommand(view, opts = {}) {
             if (id === 'POTION-04' && p.shield >= 1 && p.deckCount >= 4) return { t: 'elixir', id: e };
         }
         if (opts.options && opts.options.fight && !opts.options.fight.spec) return { t: 'spec' };
-        const knuckle = opts.options && opts.options.fight && (opts.options.fight.active || []).find(a => a.key === 'CONT79-15' && !a.err);
-        if (knuckle && p.hand.length >= 3) return { t: 'active', key: knuckle.key };
+        // Equipment / companions: free damage at once, «discard 1 → 2 damage» with a full hand.
+        const act = (opts.options && opts.options.fight && opts.options.fight.active || []).filter(a => !a.err);
+        const gear = act.find(a => a.key === 'CONT79-14' || a.key === 'CONT79-20' || a.key === 'CONT79-56'
+            || ((a.key === 'CONT79-15' || a.key === 'CONT79-01') && p.hand.length >= 3));
+        if (gear) return { t: 'active', key: gear.key };
         const ids = bestCombo(view, p);
         return { t: 'combo', ids };
     }
@@ -141,6 +144,8 @@ function answerPrompt(view, p, pr) {
         }
         return { t: 'answer', choice: okOpts[Math.floor(R() * okOpts.length)].id };
     }
+    // Event combo outside a fight: the hardest-hitting single card is always a legal chain.
+    if (pr.ui === 'combo') return { t: 'answer', ids: pr.ids.slice().sort((a, b) => (CARDS[b].fx.dmg || 0) - (CARDS[a].fx.dmg || 0)).slice(0, 1) };
     // House rule: buy back drunk elixirs while keeping 2 gold for training/movement.
     if (pr.ui === 'elixirReturn') return { t: 'answer', ids: pr.ids.slice(0, Math.max(0, Math.min(pr.max, p.gold - 2))) };
     // cards: discard/remove -> weakest; take -> strongest

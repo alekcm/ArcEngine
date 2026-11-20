@@ -61,6 +61,32 @@ export function exploreScenario(seed = 9) {
     p.loc = ADJ[loc].find(m => canEnter(st, m));
     return st;
 }
+/**
+ * Equipment and companions: Лошадь, Мартин, Кая, Доспех, Наручи, Арбалет, Адья, Эдгар; three
+ * cards kept in front (меч Журавля, сумка для зелий, услуга гильдии купцов); an open quest to
+ * event 12 (draw 2 and play a combo at once) one step away; a monster nearby.
+ */
+export function gearScenario(seed = 10) {
+    const st = createGame({ seed, players: [{ name: 'Игрок', school: 'wolf' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    p.gold = 5;
+    p.gear.push('CONT79-16', 'CONT79-11', 'CONT79-23', 'CONT79-13', 'CONT79-28', 'CONT79-14', 'CONT79-20', 'CONT79-50');
+    p.keeps.push(
+        { id: 'CONT79-26B', card: 'CONT79-26', kind: 'blueDmg', name: 'Меч школы Журавля', text: 'В течение всей битвы: каждая карта быстрой атаки (синяя) в вашей комбинации дополнительно наносит 1 урон.' },
+        { id: 'CONT79-25B', card: 'CONT79-25', kind: 'elixirLimit', n: 5, name: 'Сумка для зелий', text: 'Ваш лимит эликсиров увеличен до 5.' },
+        { id: 'CONT79-32B', card: 'CONT79-32', kind: 'waterMove', name: 'Услуга гильдии купцов', text: 'Один раз за ход: сбросьте из руки 1 любую карту, чтобы переместиться в соседнюю водную локацию.' });
+    const decks = ensureExplore(st);
+    for (const d of Object.keys(decks)) decks[d] = decks[d].filter(id => !['CITY1-31', 'CITY1-22', 'CITY1-23', 'CITY1-26', 'CITY1-12', 'CONT81-16', 'CITY1-21', 'CONT81-34', 'CITY1-30', 'CONT81-27', 'CITY1-20'].includes(id));
+    // Start next to a forest and a mountain; the quest token lies on that mountain.
+    const start = Object.keys(LOC).map(Number).find(n => canEnter(st, n) && ADJ[n].some(m => LOC[m].terrain === 'forest') && ADJ[n].some(m => LOC[m].terrain === 'mountain' && st.locPiles.mountain.includes(m)));
+    const mtn = ADJ[start].find(m => LOC[m].terrain === 'mountain' && st.locPiles.mountain.includes(m));
+    st.locPiles.mountain.splice(st.locPiles.mountain.indexOf(mtn), 1);
+    p.quests.push({ id: 'CITY1-31', terrain: 'mountain', loc: mtn, event: 'CONT79-12', gold: 0 });
+    p.loc = start;
+    st.eventsUsed = ['CONT79-16', 'CONT79-11', 'CONT79-23', 'CONT79-13', 'CONT79-28', 'CONT79-14', 'CONT79-20', 'CONT79-50', 'CONT79-26', 'CONT79-25', 'CONT79-32'];
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -95,6 +121,6 @@ function save(name, st) {
     return name;
 }
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

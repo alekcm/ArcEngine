@@ -24,7 +24,20 @@ const ATLAS = [
 ];
 
 const SKILL = { 'сражения': 'combat', 'защиты': 'defense', 'алхимии': 'alchemy', 'специализации': 'spec' };
+const SKILL_IDS = Object.values(SKILL);
 const TERRAIN = { 'лесная': 'forest', 'горная': 'mountain', 'водная': 'water' };
+// «Положите эту карту перед собой» (event option kept in front of the player): the printed
+// tail after that sentence is the card's lasting effect; the engine knows these kinds.
+const KEEP = {
+    'CITY1-04A': { kind: 'train', n: 3, name: 'Вырванная страница' },
+    'CONT79-26B': { kind: 'blueDmg', name: 'Меч школы Журавля' },
+    'CONT79-25B': { kind: 'elixirLimit', n: 5, name: 'Сумка для зелий' },
+    'CONT79-32B': { kind: 'waterMove', name: 'Услуга гильдии купцов' },
+    'CONT79-29B': { kind: 'nextExplore', event: 30, name: 'Обиженные бандиты' },
+    'CITY1-33A': { kind: 'nextExplore', event: 55, name: 'Слава героя' },
+    'CONT79-22B': { kind: 'nextExplore', gold: 4, name: 'Шкатулка с драгоценностями' },
+};
+let CUR = '';   // card id + option letter while parsing (for KEEP)
 const num = (s) => ({ 'одну': 1, 'одна': 1 })[s] || Number(s);
 
 const clean = (s) => s
@@ -78,7 +91,12 @@ function sentence(s) {
     if ((m = s.match(/^Возьмите (?:1 )?(?:любую )?(первую \(самую левую\) )?карту (?:действия )?со стоимостью (\d) из ряда на поле и положите (?:её|ее) в свой сброс$/))) return [{ rowCard: m[1] ? { cost: num(m[2]), leftmost: true } : { cost: num(m[2]) } }];
     if (/^Возьмите 1 любую карту (?:действия )?из ряда на поле и положите (?:её|ее) в свой сброс$/.test(s)) return [{ rowCard: {} }];
     if (/^Переместитесь в соседнюю локацию не сбрасывая карты, затем можете выполнить (?:её|ее) действие$/.test(s)) return [{ freeMove: true }];
-    if ((m = s.match(/^Возьмите \[СОБЫТИЕ:(\d+)\]$/))) return [{ event: Number(m[1]) }];
+    if ((m = s.match(/^(?:Возьмите|Игрок справа берёт) \[СОБЫТИЕ:(\d+)\](?: и зачитывает вам)?$/))) return [{ event: Number(m[1]) }];
+    if ((m = s.match(/^Сбросьте \[СОБЫТИЕ:(\d+)\]$/))) return [{ dropGear: Number(m[1]) }];
+    if (/^В фазу III этого хода, получая карту из ряда на поле, не платите (?:её|ее) стоимость$/.test(s)) return [{ freeBuy: true }];
+    if (/^Увеличьте свой уровень щита до своего максимума$/.test(s)) return [{ shield: 99 }];
+    if ((m = s.match(/^Возьмите (\d+) карт[уы]?$/))) return [{ drawNow: num(m[1]) }];
+    if (/^Уберите из игры 1 свою карту$/.test(s)) return [{ removeCard: 1 }];
     return null;
 }
 
@@ -96,6 +114,12 @@ function effects(text) {
     else if ((m = t.match(qL))) { quest = { loc: Number(m[2]), gold: m[3] ? Number(m[3]) : 0, num: Number(m[4]) }; t = t.replace(m[0], ' '); }
     else if ((m = t.match(qS))) { quest = { school: true, gold: m[1] ? Number(m[1]) : 0, num: Number(m[2]) }; t = t.replace(m[0], ' '); }
     else if (/Задание/.test(t)) bad.push(t.match(/Задание[^.]*\.[^.]*\./)?.[0] || 'Задание');
+    let keep = null;
+    if ((m = t.match(/Положите эту карту перед собой\.\s*(.*)$/s))) {
+        t = t.slice(0, m.index);
+        if (KEEP[CUR]) keep = { id: CUR, card: CUR.slice(0, -1), ...KEEP[CUR], text: m[1].trim() };
+        else bad.push('Положите эту карту перед собой.');
+    }
     for (const s of t.split(/(?<=[.!])\s+/)) {
         if (!s.trim()) continue;
         const els = s.trim().match(/^В противном случае (.+)$/);
@@ -105,10 +129,15 @@ function effects(text) {
         if (r) fx.push(...r); else bad.push(s.trim());
     }
     if (quest) fx.push({ quest });
+    if (keep) fx.push({ keep });
     return { fx, bad };
 }
 
-const RANGE = /^(?:\*\*)?(\d)(?:[–-](\d))?:(?:\*\*)?\s*/;
+const RANGE = /^(?:\*\*)?(\d+)(?:[–-](\d+)|(\+))?(?: урона)?:(?:\*\*)?\s*/;
+// «Возьмите N карт из своей колоды и немедленно разыграйте комбинацию…» (CONT79-07/12/19/27).
+const COMBO = /\s*Возьмите (\d+) карт[уы]? из своей колоды и немедленно разыграйте комбинацию\. Примените только щиты и урон, а остальные эффекты проигнорируйте\. Затем выполните эффект согласно количеству урона в комбинации:\*\*$/;
+const X2 = /^\*\*Умножьте уровень своего навыка (сражения|защиты|алхимии|специализации) на 2\. Затем бросьте кубик и прибавьте выпавшее значение к результату\. Выполните эффект согласно получившейся сумме:\*\*$/;
+const OR_ANY = /^\*\*Если этот навык уже на максимальном уровне, то вместо этого увеличьте любой свой навык на 1\.\*\*$/;
 const COND = /^\*\*Если ваш (?:навык (сражения|защиты|алхимии|специализации)|(уровень ведьмака)) равен (\d)(?:[–-](\d))?:\*\*\s*/;
 const ALSO = /^\*\*Также,? \(?при любом результате(?: броска)?\)?:\*\*\s*|^\*\*Также,? \(?при любом результате(?: броска)?\)?:\s*/;
 
@@ -121,19 +150,27 @@ function section(paras) {
     // Split inline markers into their own paragraphs.
     const ps = [];
     for (let p of paras) {
+        p = p.replace(/^(\*\*[^*]+?)\s+Бросьте кубик\.\s*(\d+(?:[–-]\d+)?:\*\*)/, '$1**\n\n**Бросьте кубик:**\n\n**$2');
         p = p.replace(/\*\*Бросьте кубик\.\s*/g, '**Бросьте кубик:**\n\n**').replace(/\*\*\*\*/g, '');
-        p = p.replace(/\s(\*\*\d(?:[–-]\d)?:\*\*)/g, '\n\n$1').replace(/\s(\*\*Также)/g, '\n\n$1');
+        p = p.replace(/\s(\*\*\d+(?:[–-]\d+)?:\*\*)/g, '\n\n$1').replace(/\s(\*\*Также)/g, '\n\n$1');
         ps.push(...paragraphs(p));
     }
     const story = [], pre = [], post = [], branches = [];
-    let mode = 'story', by = null, cur = null;
+    let mode = 'story', by = null, cur = null, x2 = false, orAny = false, head = null, comboDraw = 0;
     const bad = [];
     for (const p of ps) {
         let m;
+        if ((m = p.match(X2))) { mode = 'roll'; by = SKILL[m[1]]; x2 = true; head = clean(p); continue; }
+        if (OR_ANY.test(p)) { orAny = true; continue; }
+        if ((m = p.match(COMBO))) {
+            const before = p.slice(0, m.index).trim();
+            if (before && before !== '**') pre.push(before + '**');
+            mode = 'roll'; by = 'combo'; comboDraw = Number(m[1]); head = clean(m[0]); continue;
+        }
         if (/^\**Бросьте кубик:?\**:?$/.test(p.replace(/\*\*/g, '**'))) { mode = 'roll'; by = 'die'; continue; }
         if ((m = p.match(RANGE)) && (mode === 'roll' || mode === 'story' || mode === 'pre' || mode === 'branch')) {
             mode = 'branch'; by = by || 'die';
-            cur = { from: Number(m[1]), to: Number(m[2] || m[1]), text: [], eff: [] };
+            cur = { from: Number(m[1]), to: m[3] ? 99 : Number(m[2] || m[1]), text: [], eff: [] };
             branches.push(cur);
             const rest = p.slice(m[0].length).trim();
             if (rest) (sentencesOk(rest) ? cur.eff : cur.text).push(rest);
@@ -163,14 +200,17 @@ function section(paras) {
             bad.push(...e.bad);
             return { from: b.from, to: b.to, text: b.text.map(clean).join(' '), effect: b.eff.map(clean).join(' '), fx: e.fx };
         });
-        fx.push(by === 'die' ? { roll: out } : { roll: out, by });
+        if (orAny) for (const b of out) for (const e of b.fx) if (e.skill && SKILL_IDS.includes(e.skill)) e.orAny = true;
+        fx.push(by === 'die' ? { roll: out } : x2 ? { roll: out, by, x2: true } : by === 'combo' ? { roll: out, by, comboDraw } : { roll: out, by });
     }
     const po = effects(post.map(clean).join(' ')); fx.push(...po.fx); bad.push(...po.bad);
     const effLines = [...pre.map(clean)];
+    if (head) effLines.push(head);
     if (branches.length) {
         if (by === 'die') effLines.push('Бросьте кубик:');
-        for (const b of out) effLines.push(`${by === 'die' ? '' : (by === 'level' ? 'Если уровень ведьмака' : 'Если навык ' + Object.keys(SKILL).find(k => SKILL[k] === by)) + ' равен '}${b.from === b.to ? b.from : b.from + '–' + b.to}: ${[b.text, b.effect].filter(Boolean).join(' ')}`);
+        for (const b of out) effLines.push(by === 'combo' ? `${b.to >= 99 ? b.from + '+' : b.from === b.to ? b.from : b.from + '–' + b.to} урона: ${[b.text, b.effect].filter(Boolean).join(' ')}` : `${by === 'die' || x2 ? '' : (by === 'level' ? 'Если уровень ведьмака' : 'Если навык ' + Object.keys(SKILL).find(k => SKILL[k] === by)) + ' равен '}${b.from === b.to ? b.from : b.from + '–' + b.to}: ${[b.text, b.effect].filter(Boolean).join(' ')}`);
     }
+    if (orAny) effLines.push('Если этот навык уже на максимальном уровне, то вместо этого увеличьте любой свой навык на 1.');
     if (post.length) effLines.push('При любом результате: ' + post.map(clean).join(' '));
     return { story: story.map(clean).join('\n'), effect: effLines.join('\n'), fx, bad, branches: out, by };
 }
@@ -202,8 +242,15 @@ function parseAtlas(a) {
         if (!post) {
             // Numbered card without a choice: equipment/companion or intro + effect.
             const g = preP[0] && preP[0].match(/^\*\*(Снаряжение|Спутник)\s*—\s*([^.*]+)\.\*\*/);
-            if (g) { card.gear = true; card.kind = g[1]; card.name = g[2].trim(); card.text = clean(preP.slice(1).join(' ')); }
+            if (g) {
+                card.gear = true; card.kind = g[1]; card.name = g[2].trim();
+                const rest = preP.slice(1);
+                const story = rest.filter(p => !p.startsWith('**')).map(clean).join('\n');
+                if (story) card.story = story;
+                card.text = rest.filter(p => p.startsWith('**')).map(clean).join(' ');
+            }
             else {
+                CUR = id + 'A';
                 const sec = section(preP);
                 card.intro = sec.story;
                 card.effect = sec.effect;
@@ -218,6 +265,7 @@ function parseAtlas(a) {
             const segs = ('\n' + post).split(/\n\*\*(А|Б)\*\*\s*/);
             for (let i = 1; i < segs.length; i += 2) {
                 const k = segs[i] === 'А' ? 'a' : 'b';
+                CUR = id + segs[i].replace('А', 'A').replace('Б', 'B');
                 const sec = section(paragraphs(segs[i + 1]));
                 const o = card[k] || (card[k] = { label: '' });
                 o.outcome = sec.story;
@@ -242,12 +290,15 @@ for (const a of ATLAS) {
 }
 // Event numbers: [СОБЫТИЕ:N] → CONT79-NN (Ивенты 1, cell N; see the atlas notes).
 const evId = (n) => `CONT79-${String(n).padStart(2, '0')}`;
-const GEAR_OK = new Set(['CONT79-15']);
+// Equipment and companions the engine implements (fight.mjs, turn.mjs, explore.mjs).
+const GEAR_OK = new Set(['CONT79-01', 'CONT79-05', 'CONT79-11', 'CONT79-13', 'CONT79-14', 'CONT79-15', 'CONT79-16',
+    'CONT79-18', 'CONT79-20', 'CONT79-23', 'CONT79-28', 'CONT79-31', 'CONT79-50', 'CONT79-56']);
 const why = {};
 function fxRefs(fx, out = []) {
     for (const e of fx || []) {
         if (e.event) out.push(evId(e.event));
         if (e.quest) out.push(evId(e.quest.num));
+        if (e.keep && e.keep.event) out.push(evId(e.keep.event));
         if (e.roll) for (const b of e.roll) fxRefs(b.fx, out);
         if (e.if) { fxRefs(e.fx, out); fxRefs(e.else, out); }
     }
@@ -279,6 +330,8 @@ for (const id of Object.keys(all)) supported(id);
 function finish(fx) {
     return fx.map(e => {
         if (e.event) return { event: evId(e.event) };
+        if (e.dropGear) return { dropGear: evId(e.dropGear) };
+        if (e.keep) return e.keep.event ? { keep: { ...e.keep, event: evId(e.keep.event) } } : e;
         if (e.quest) { const q = { event: evId(e.quest.num) }; for (const k of ['terrain', 'loc', 'school', 'gold']) if (e.quest[k]) q[k] = e.quest[k]; return { quest: q }; }
         if (e.roll) return { ...e, roll: e.roll.map(b => ({ from: b.from, to: b.to, text: b.text, effect: b.effect, fx: finish(b.fx) })) };
         if (e.if) return e.else ? { if: e.if, fx: finish(e.fx), else: finish(e.else) } : { if: e.if, fx: finish(e.fx) };

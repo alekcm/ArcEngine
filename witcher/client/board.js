@@ -3,7 +3,7 @@
 /* global BABYLON */
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { MONSTER } from '/shared/engine/util.mjs';
-import { toonMaterial, inkMini, keepOutline } from './toon.js';
+import { toonMaterial, inkMini } from './toon.js';
 
 // Board pins: pixel coordinates of the location number badges on Игровой стол.jpg.
 const PINS = {
@@ -68,9 +68,10 @@ export class Board {
 
         const hemi = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0.2, 1, -0.3), scene);
         hemi.intensity = 0.72; hemi.groundColor = new BABYLON.Color3(0.25, 0.2, 0.16);
+        hemi.specular = new BABYLON.Color3(0, 0, 0);   // as in the kit (View3D): the glint comes from the sun only
         const sun = this.sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.45, -1, 0.55), scene);
         sun.position = new BABYLON.Vector3(8, 16, -8); sun.intensity = 0.95;
-        sun.diffuse = new BABYLON.Color3(1, 0.94, 0.84);
+        sun.diffuse = new BABYLON.Color3(1, 0.94, 0.84); sun.specular = new BABYLON.Color3(0.25, 0.25, 0.25);
         this.shadows = new BABYLON.ShadowGenerator(2048, sun);
         this.shadows.useBlurExponentialShadowMap = true; this.shadows.blurKernel = 16; this.shadows.darkness = 0.35;
 
@@ -92,7 +93,6 @@ export class Board {
             if (this.activeRing && this.activeRing.isEnabled()) this.activeRing.rotation.y = t * 0.8;
         });
         this.initKeyPan();
-        keepOutline(scene, cam, () => [...Object.values(this.witchers), ...Object.values(this.monsters)].map(x => x.model));
         this.engine.runRenderLoop(() => scene.render());
         window.addEventListener('resize', () => this.engine.resize());
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -211,7 +211,7 @@ export class Board {
             model.scaling.setAll(scale);
             model.isPickable = false;
             model.material = toonMaterial(this.scene, name + 'mm', color);
-            inkMini(model, scale);
+            inkMini(model, height);
             this.shadows.addShadowCaster(model);
             model.receiveShadows = true;
         }
@@ -385,11 +385,10 @@ export class Preview {
         s.clearColor = new BABYLON.Color4(0, 0, 0, 0);
         const cam = new BABYLON.ArcRotateCamera('pc', -Math.PI / 2, 1.25, 2.2, new BABYLON.Vector3(0, 0.45, 0), s);
         cam.attachControl(canvas, true); cam.lowerRadiusLimit = 1.2; cam.upperRadiusLimit = 4; cam.wheelDeltaPercentage = 0.02;
-        const h = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0, 1, 0), s); h.intensity = 0.6;
+        const h = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0, 1, 0), s); h.intensity = 0.6; h.specular = new BABYLON.Color3(0, 0, 0);
         const d = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-0.5, -0.8, 0.6), s); d.intensity = 1.6;
         const d2 = new BABYLON.DirectionalLight('d2', new BABYLON.Vector3(0.7, -0.2, -0.6), s); d2.intensity = 0.5; d2.diffuse = new BABYLON.Color3(1, 0.8, 0.55);
         this.node = null; this.key = null; this.pm = null;
-        keepOutline(s, cam, () => [this.pm]);
         this.engine.runRenderLoop(() => s.render());
         window.addEventListener('resize', () => this.engine.resize());
     }

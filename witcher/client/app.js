@@ -13,6 +13,7 @@ import { renderPoker, pokerKey } from './poker.js';
 import { sfx } from './sound.js';
 import { MONSTER, LOC } from '/shared/engine/util.mjs';
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
+import { EVENTS } from '/shared/data/events-data.mjs';
 
 let board = null;
 function ensureBoard() {
@@ -118,7 +119,8 @@ function feedback(events, prev) {
             case 'hunt': sfx('coin'); break;
             case 'explore': sfx('card'); break;
             case 'gold': sfx('coin'); break;
-            case 'gear': sfx('trophy'); if (e.seat === S.you) banner('Снаряжение', 'Карта остаётся у вас до конца игры', 1600); break;
+            case 'gear': sfx('trophy'); if (e.seat === S.you) banner(EVENTS[e.id] ? EVENTS[e.id].kind + ' — ' + EVENTS[e.id].name : 'Снаряжение', 'Карта остаётся у вас до конца игры', 1800); break;
+            case 'keep': sfx('card'); if (e.seat === S.you) banner(e.name, 'Карта лежит перед вами', 1600); break;
             case 'quest': sfx('card'); if (board && prev) setTimeout(() => board.focus(e.loc, 9), 300); break;
             case 'questDone': sfx('trophy'); break;
             case 'd6': sfx('dice'); break;
@@ -171,8 +173,6 @@ window.addEventListener('keydown', (e) => {
     if (c === 'KeyT') doLocAction();
     else if (c === 'KeyF') phase2('fight');
     else if (c === 'KeyM') phase2('meditate');
-    else if (c === 'KeyC') phase2('explore-city');
-    else if (c === 'KeyV') phase2('explore-wild');
     else if (c === 'KeyE') phase2(S.options.phase2.some(x => x.id === 'skipPhase2') ? 'skipPhase2' : 'endExplore');
     else if (c === 'KeyQ') { const q = S.options && (S.options.quests || []).find(x => !x.err); if (q) cmd({ t: 'quest', i: q.i }, 'задание'); }
 });

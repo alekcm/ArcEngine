@@ -17,7 +17,8 @@ shared/engine/          правила (чистые функции над JSON-
   core.mjs              apply(state, seat, cmd), options(state, seat) с причинами, actingSeat
   flow.mjs              очередь шагов state.queue {op,...}, ask() → state.prompt
   setup.mjs turn.mjs    подготовка; ход, навыки, перемещение, локации, медитация, фаза III, покер
-  fight.mjs effects.mjs битва с монстром, эликсиры, специализации, трофеи
+  fight.mjs effects.mjs битва с монстром, эликсиры, специализации, трофеи, снаряжение/спутники
+                        (hasGear, keepOf, GEAR_MOVES, ACTIVE_EFFECTS в effects.mjs)
   explore.mjs           исследование, задания, карты событий (срез: данные в data/events-data.mjs)
 shared/view.mjs         вид для места: скрытая информация вырезается на сервере
 shared/bots.mjs         боты видят только свой вид и действуют через тот же apply()
@@ -32,10 +33,11 @@ tools/check.mjs         ЕДИНЫЕ ВОРОТА — гонять перед к
 tools/rules.test.mjs    аудит правил со ссылками на страницы + партии ботов 1–5 игроков
 tools/explore.test.mjs  исследование/задания/снаряжение, уникальность карт, карты битвы
 tools/modes.test.mjs    режимы партии и правила стола
+tools/gear.test.mjs     снаряжение, спутники, карты «перед собой», «навык × 2», комбинация из события
 tools/events-gen.mjs    md → events-gen.mjs; -v — неподдержанные карты; --check — свежесть (в воротах)
 tools/frames.mjs        разовая нарезка лиц карт из сканов (нужен sharp, не зависимость игры)
 tools/sim.mjs           партии ботов: node witcher/tools/sim.mjs [игр] [игроков] (MODE=mmr — все правила стола)
-tools/scenarios.mjs     песочницы (битва, покер, исследование, середина партии) — в лобби как сохранения
+tools/scenarios.mjs     песочницы (битва, покер, исследование, снаряжение, середина партии) — в лобби как сохранения
 tools/import.mjs obj.mjs  импорт md → данные; OBJ → меш
 ```
 

@@ -6,7 +6,7 @@ import {
     CARDS, MONSTER, ATTACK, LOC, card, log, fx, drawCards, removeFrom, shuffle, randInt, d6, skillVal, maxShield, clampShield, potionOf,
 } from './util.mjs';
 import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT } from '../data/rules-data.mjs';
-import { hasTrophy, hasWitcherTrophy, hasSkillTrophy, ACTIVE_EFFECTS } from './effects.mjs';
+import { hasTrophy, hasWitcherTrophy, hasSkillTrophy, ACTIVE_EFFECTS, hasGear, keepOf } from './effects.mjs';
 import { SKILL_GEN } from './turn.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
@@ -161,6 +161,7 @@ STEPS.discardFromHandDo = (state, step) => {
 STEPS.firstTurn = (state) => {
     const f = state.fight;
     if (f.track) { log(state, 'Есть жетон следа — ведьмак ходит первым'); push(state, F('witcherTurn')); }
+    else if (hasGear(fp(state), 'CONT79-23')) { log(state, 'Кая: в битве с монстром ведьмак всегда ходит первым'); push(state, F('witcherTurn')); }
     else { log(state, 'Жетона следа нет — первым ходит монстр'); push(state, F('monsterTurn')); }
 };
 
@@ -431,6 +432,9 @@ export function activeEffectError(state, p, key) {
         case 'MON-10': return p.hand.length && p.discard.length ? null : 'Нужны карта в руке и карта в сбросе';
         case 'MON-14': return p.hand.length ? null : 'Нужна карта в руке';
         case 'CONT79-15': return p.hand.length ? null : 'Нужна карта в руке';
+        case 'CONT79-01': return f.wTurns !== 1 ? 'Только в первый ход битвы' : p.hand.length ? null : 'Нужна карта в руке';
+        case 'CONT79-14': case 'CONT79-20': return f.wTurns !== 1 ? 'Только в первый ход битвы' : null;
+        case 'CONT79-56': return p.discard.length ? null : 'Сброс пуст';
         case 'MON-21': return p.gold >= 2 && p.discard.length ? null : 'Нужно 2 золота и карта в сбросе';
         case 'MON-28': return p.discard.length ? null : 'Сброс пуст';
         case 'W-griffin': return p.discard.length ? null : 'Сброс пуст';
@@ -453,6 +457,17 @@ STEPS.useActive = (state, step) => {
         case 'MON-10': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Трофей «Виверна»', text: 'Сбросьте 1 карту из руки…', op: 'trWyvern', args: { fight: 1 } }); break;
         case 'MON-14': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Трофей «Брукса»', text: 'Сбросьте 1 карту из руки, чтобы взять 5 карт.', op: 'trBruxa', args: { fight: 1 } }); break;
         case 'CONT79-15': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Кастет', text: 'Сбросьте 1 карту из руки, чтобы нанести 2 урона.', op: 'gearKnuckle', args: { fight: 1 } }); break;
+        case 'CONT79-01': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Арбалет', text: 'Сбросьте 1 карту из руки, чтобы нанести 2 урона.', op: 'gearKnuckle', args: { fight: 1, src: 'арбалет' } }); break;
+        case 'CONT79-14': push(state, F('dealDamage', { n: 2, src: 'арбалет' })); break;
+        case 'CONT79-20': {
+            // Адья: 1 — 1 урон себе; 2–4 — 1 урон себе и 2 монстру; 5–6 — 2 монстру.
+            const r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat });
+            log(state, `${p.name}: Адья — бросок ${r}`);
+            if (r >= 2) push(state, F('dealDamage', { n: 2, src: 'Адья' }));
+            if (r <= 4) push(state, F('hurtWitcher', { n: 1 }));
+            break;
+        }
+        case 'CONT79-56': ask(state, { seat: p.seat, kind: 'cards', from: 'discard', ids: p.discard.slice(), min: 1, max: 1, title: 'Лекарство', text: 'Возьмите 1 любую карту из своего сброса и замешайте её в свою колоду.', op: 'gearMedicine', args: { fight: 1 } }); break;
         case 'MON-21': p.gold -= 2; askDiscardPick('Трофей «Мантикора»', 'trTakeDiscard'); break;
         case 'MON-28': askDiscardPick('Трофей «Сколопендроморф»', 'trTakeDiscard'); break;
         case 'W-griffin': {
@@ -494,8 +509,16 @@ STEPS.trBruxa = (state, step) => {
 STEPS.gearKnuckle = (state, step) => {
     const p = fp(state);
     removeFrom(p.hand, step.ids[0]); p.discard.push(step.ids[0]);
-    log(state, `${p.name}: кастет — сбрасывает «${CARDS[step.ids[0]].name}»`);
-    push(state, F('dealDamage', { n: 2, src: 'кастет' }));
+    const src = step.src || 'кастет';
+    log(state, `${p.name}: ${src} — сбрасывает «${CARDS[step.ids[0]].name}»`);
+    push(state, F('dealDamage', { n: 2, src }));
+};
+STEPS.gearMedicine = (state, step) => {
+    const p = fp(state);
+    removeFrom(p.discard, step.ids[0]);
+    p.deck.push(step.ids[0]);
+    shuffle(state, p.deck);
+    log(state, `${p.name}: лекарство — «${CARDS[step.ids[0]].name}» замешана в колоду`);
 };
 STEPS.trTakeDiscard = (state, step) => {
     const p = fp(state);
@@ -549,7 +572,15 @@ export function comboTotals(state, p, ids, opts = {}) {
             }
         }
         if (c.color === 'red' && hasTrophy(p, 'MON-13')) t.dmg += 1;
+        if (f && c.color === 'blue' && keepOf(p, 'blueDmg')) t.dmg += 1;          // меч школы Журавля
+        if (f && c.color === 'green' && hasGear(p, 'CONT79-13')) t.shield += 1;   // доспех
     });
+    if (f && ids.length) {
+        // Наручи: once per fight, a combo with a green card: shield +1.
+        if (hasGear(p, 'CONT79-28') && !f.once.g28 && t.colors.has('green')) { t.shield += 1; t.bracers = true; }
+        // Эдгар де Спота: the first combo of a monster fight deals 3 more damage.
+        if (hasGear(p, 'CONT79-50') && !f.once.g50 && f.kind === 'monster') { t.dmg += 3; t.edgar = true; }
+    }
     if (f) {
         if (f.mon === 'MON-26' && (t.colors.has('green') || t.colors.has('yellow')) && t.dmg > 0) t.dmg -= 1;
         if (f.mon === 'MON-28' && t.colors.has('blue') && t.dmg > 0) t.dmg -= 1;
@@ -572,6 +603,8 @@ STEPS.playCombo = (state, step) => {
     f.cur.combo = ids.slice();
     const t = comboTotals(state, p, ids, { free: step.free, links: step.links });
     f.lastCombo = { ids: ids.slice(), dmg: t.dmg, shield: t.shield, draw: t.draw, free: !!step.free };
+    if (t.bracers) { f.once.g28 = true; log(state, `${p.name}: наручи — щит +1`); }
+    if (t.edgar) { f.once.g50 = true; log(state, `${p.name}: Эдгар де Спота — первая комбинация +3 урона`); }
     if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')}`, { kind: 'combo' });
     else log(state, `${p.name}: в руке нет карт — комбинации нет`);
     fx(state, { k: 'combo', seat: p.seat, ids });
@@ -618,6 +651,7 @@ STEPS.comboAfterDamage = (state, step) => {
     if (hasTrophy(p, 'MON-08') && colors.has('yellow')) n += 2;
     if (f.mon === 'MON-05' && !colors.has('green')) n -= 1;
     if (f.mon === 'MON-09' && n > 1) n -= 1;
+    if (hasGear(p, 'CONT79-31') && f.wTurns === 1 && !f.once.g31) { f.once.g31 = true; n += 2; log(state, `${p.name}: кожаные сапоги — +2 карты`); }
     const g = drawCards(state, p, Math.max(0, n));
     log(state, `${p.name} берёт ${g} карт(ы) в конце хода битвы`);
     // combo to the discard in order (last card on top)
@@ -638,6 +672,13 @@ STEPS.afterWitcherTurn = (state) => {
 STEPS.monsterTurn = (state) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
+    // Оскар: before the monster's first turn, look at its top 2 cards: one to its discard.
+    if (f.mTurns === 0 && hasGear(p, 'CONT79-18') && !f.once.g18 && f.life.length) {
+        f.once.g18 = true;
+        f.stage = 'busy';
+        push(state, F('oscarAsk'), F('monsterTurn'));
+        return;
+    }
     f.turn = 'monster';
     f.mTurns++;
     f.cur = null;
@@ -662,6 +703,27 @@ STEPS.monsterTurn = (state) => {
         options: [{ id: 'strike', label: 'Удар' }, { id: 'bite', label: 'Укус' }], op: 'monsterAttackChosen', args: { fight: 1 },
     });
 };
+STEPS.oscarAsk = (state) => {
+    const f = state.fight, p = fp(state);
+    const top = f.life.slice(0, 2);
+    log(state, `${p.name}: Оскар смотрит ${top.length} верхние карты монстра`);
+    if (top.length === 1 || p.bot) { push(state, F('oscarDo', { ids: [top.length === 1 ? top[0] : worstAttack(state, top)] })); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'monsterTop', ids: top, min: 1, max: 1, title: 'Оскар', text: 'Положите одну из карт в сброс монстра — другая останется на верху его колоды (её атака будет следующей).', op: 'oscarDo', args: { fight: 1 } });
+};
+STEPS.oscarDo = (state, step) => {
+    const f = state.fight;
+    const id = step.ids[0];
+    removeFrom(f.life, id); f.monDiscard.push(id);
+    log(state, `Оскар: карта монстра отправлена в сброс, осталось ${f.life.length}`);
+    fx(state, { k: 'monsterHit', n: 1, left: f.life.length });
+    if (!f.life.length) endFight(state, 'win');
+};
+/** The more dangerous of the monster's top cards (for bots): the larger worst-case card loss. */
+function worstAttack(state, ids) {
+    const f = state.fight, p = fp(state);
+    const loss = (id) => Math.max(cardLoss(state, p, ATTACK[id].strike, f.level), cardLoss(state, p, ATTACK[id].bite, f.level));
+    return ids.slice().sort((a, b) => loss(b) - loss(a))[0];
+}
 STEPS.monsterAttackChosen = (state, step) => { push(state, F('monsterAttack', { type: step.choice })); };
 function botAttackType(state) { return randInt(state, 2) ? 'strike' : 'bite'; }
 
@@ -721,6 +783,7 @@ STEPS.applyAttack = (state, step) => {
     if (a.k === 'dmg' || a.k === 'dmgSkill' || a.k === 'skill') {
         if (f.mon === 'MON-14' && f.poolAtStart <= 2) { dmg += 2; log(state, 'Брукса: в запасе 2 карты или меньше — +2 урона'); }
         if (f.mon === 'MON-30' && f.mTurns === 1) { dmg += 3; log(state, 'Тролль: первая атака +3 урона'); }
+        if (f.mTurns === 1 && hasGear(p, 'CONT79-05') && !f.once.g05 && dmg > 0) { f.once.g05 = true; const was = dmg; dmg = Math.max(0, dmg - 2); log(state, `Ярдель: урон первой атаки снижен на 2 (${was} → ${dmg})`); }
         if (f.mon === 'MON-21' && dmg > 0) { dmg -= 1; manticore = true; log(state, 'Мантикора: урон −1, но случайная карта из руки сбрасывается'); }
     }
     if (dmg > 0) seq.push(F('hurtWitcher', { n: dmg, handFirst: f.mon === 'MON-25' && f.mTurns === 1 }));
@@ -854,7 +917,10 @@ STEPS.fightConsequences = (state) => {
     }
     f.result = result;
     fx(state, { k: 'fightEnd', seat: p.seat, result, mon: mon.id });
-    steps.push({ op: 'fightCleanup' }, { op: 'phase3' });
+    steps.push({ op: 'fightCleanup' });
+    // Эдгар де Спота: after a won monster fight (and all its consequences) — event 51.
+    if (result === 'win' && hasGear(p, 'CONT79-50') && f.kind === 'monster') steps.push({ op: 'takeEvent', seat: p.seat, id: 'CONT79-51' });
+    steps.push({ op: 'phase3' });
     push(state, ...steps);
 };
 STEPS.fightCleanup = (state) => {
