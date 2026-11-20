@@ -14,6 +14,8 @@ import { questLabel } from '../data/events-data.mjs';
 import './setup.mjs';
 import { chaseError, legendFightError } from './legend.mjs';
 import { LEGEND } from '../data/legend-data.mjs';
+import { sailMoves, skSail, skLocError, skFightError, skLeaving, gift02Error, hasGift } from './skellige.mjs';
+import { DAGON_LOC } from '../data/skellige-data.mjs';
 
 export { createGame } from './setup.mjs';
 
@@ -41,6 +43,7 @@ export function locActionInfo(state, p) {
     if (!t.moved) { info.err = 'Сначала нужно переместиться хотя бы раз'; return info; }
     if (t.usedLoc.includes(p.loc)) { info.err = 'Действие этой локации уже выполнено в этот ход'; return info; }
     if (state.legend && state.legend.loc === p.loc) { info.err = `${LEGEND[state.legend.mon].name} закрывает действие этой локации — прогоните его`; return info; }
+    if (act.kind.startsWith('sk')) { info.err = skLocError(state, p, act.kind); return info; }
     switch (act.kind) {
         case 'raise': {
             const v = p.skills[act.skill];
@@ -128,12 +131,17 @@ export function options(state, seat) {
             }
         }
     }
+    // «Скеллиге»: ship routes (the client shows them on the map like the land moves).
+    for (const m of sailMoves(state, p)) o.moves.push(m);
     o.loc = locActionInfo(state, p);
+    if (hasGift(p, 'DAGON-GIFT-02')) o.gift02 = { err: gift02Error(state, p) };
     o.gearMoves = Object.keys(GEAR_MOVES).filter(k => k === 'CONT79-16' ? hasGear(p, k) : (p.keeps || []).some(x => x.id === k))
         .map(k => ({ key: k, label: GEAR_MOVES[k].label, err: gearMoveError(state, p, k) }));
     const fe = monsterFightError(state, p);
     const slot = state.slots.find(s => s.mon && s.token === p.loc);
     o.phase2.push({ id: 'fight', label: slot ? `Битва: ${MONSTER[slot.mon].name}` : 'Битва с монстром', err: fe });
+    // «Скеллиге»: a witcher who starts the turn in the Dagon location can fight there in phase II.
+    if (p.loc === DAGON_LOC) o.phase2.push({ id: 'skFight', label: state.sk && state.sk.track >= 4 ? 'Битва: Дагон' : 'Битва: сирена', err: skFightError(state, p) });
     // «Легендарная охота»: the legendary fight and «Прогнать» (phase I).
     if (state.legend) {
         const L = state.legend;
@@ -205,6 +213,7 @@ function answer(state, seat, cmd) {
 
 /** End of phase I: secret cards, then («Легендарная охота») the ruin token of this location. */
 function endPhase1(state, p) {
+    skLeaving(state, p, false);
     push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
     if (state.legend) push(state, { op: 'ruinPickup', seat: p.seat });
 }
@@ -246,6 +255,20 @@ function turnCmd(state, p, cmd) {
         case 'move': {
             const to = Number(cmd.to);
             const via = cmd.via == null ? null : Number(cmd.via);
+            // «Скеллиге»: a sea route (never a land neighbour of the location).
+            const sail = via == null && !(ADJ[p.loc] || []).includes(to) ? sailMoves(state, p).find(m => m.to === to) : null;
+            if (sail) {
+                const cards = Array.isArray(cmd.cards) ? cmd.cards : [];
+                const gold = Number(cmd.gold) || 0;
+                if (!(sail.free && !cards.length && !gold)) { const e = movePaymentError(state, p, to, cards, gold, null); if (e) return err(e); }
+                for (const id of cards) { removeFrom(p.hand, id); p.discard.push(id); }
+                p.gold -= gold;
+                t.moved = true;
+                skSail(state, p, sail);
+                if (sail.sail === 'dagon') endPhase1(state, p);
+                state.undoable = sail.sail === 'return';
+                return ok();
+            }
             if (via != null) {
                 if (!(ADJ[p.loc] || []).includes(via) || !(ADJ[via] || []).includes(to) || to === p.loc || !canEnter(state, via) || !canEnter(state, to)) return err('Туда нет дороги');
             } else if (!(ADJ[p.loc] || []).includes(to) || !canEnter(state, to)) return err('Туда нет дороги');
@@ -255,6 +278,7 @@ function turnCmd(state, p, cmd) {
             if (e) return err(e);
             for (const id of cards) { removeFrom(p.hand, id); p.discard.push(id); }
             p.gold -= gold;
+            skLeaving(state, p, false);
             const from = p.loc;
             p.loc = to;
             t.moved = true;
@@ -269,6 +293,13 @@ function turnCmd(state, p, cmd) {
             const info = locActionInfo(state, p);
             if (info.err) return err(info.err);
             const mark = () => t.usedLoc.push(p.loc);
+            // «Скеллиге» islands (skellige.mjs); SK-EX-12C/32D: after the island action — phase III.
+            if (info.kind.startsWith('sk')) {
+                mark();
+                push(state, { op: 'skLocAction', seat: p.seat, kind: info.kind });
+                if (t.skP3After && info.kind !== 'skHunt') state.queue.push({ op: 'skP3Now', seat: p.seat });
+                return ok();
+            }
             switch (info.kind) {
                 case 'raise': mark(); push(state, { op: 'raiseSkill', seat: p.seat, skill: info.skill, why: 'действие локации' }); state.undoable = info.skill !== 'alchemy'; break;
                 case 'school': {
@@ -301,6 +332,20 @@ function turnCmd(state, p, cmd) {
                     break;
                 }
             }
+            return ok();
+        }
+        case 'skFight': {
+            const e = skFightError(state, p);
+            if (e) return err(e);
+            push(state, { op: 'skFightStart', seat: p.seat });
+            endPhase1(state, p);
+            return ok();
+        }
+        case 'skGift02': {
+            const e = gift02Error(state, p);
+            if (e) return err(e);
+            t.g02 = true;
+            push(state, { op: 'skGift02Ask', seat: p.seat });
             return ok();
         }
         case 'chase': {

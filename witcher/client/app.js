@@ -94,6 +94,7 @@ function onState(m) {
     for (const loc of (v.legend && v.legend.ruins) || []) markers.push({ key: `r${loc}`, loc, color: '#8c8272', ruin: true });
     b.syncMarkers(markers);
     b.syncLegend(v.legend);
+    b.syncSkellige(v.sk);
     const myMoves = S.options && S.options.acting && !v.fight && !v.prompt ? S.options.moves.map(x => x.to) : [];
     b.setMoveTargets(myMoves, v.turn ? v.players[v.turn.seat].loc : null);
 

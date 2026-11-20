@@ -4,6 +4,8 @@
 //  those sources and fails if a number here drifts from the Markdown.
 // ============================================================================
 
+import { SK_LOC_ACTIONS, SK_LOC_ACTION_TEXT } from './skellige-data.mjs';
+
 /** Schools: hero name (Начальные колоды.md), home location (Игровой стол.md), colour of the board art. */
 export const SCHOOLS = {
     wolf: { name: 'Волк', school: 'Школа Волка', hero: 'Эрим', home: 3, color: '#8a6a4a', spec: 'Владение мечом', model: 'Witcher/Ведьмаки/Волк.obj', base: true },
@@ -72,6 +74,8 @@ export const LOC_ACTIONS = {
     7: { kind: 'poor' },
     8: { kind: 'swap' },
     9: { kind: 'elixir' }, 11: { kind: 'elixir' }, 16: { kind: 'elixir' },
+    // «Скеллиге»: the islands (skellige-data.mjs).
+    ...SK_LOC_ACTIONS,
 };
 export const LOC_ACTION_TEXT = {
     school: 'Тренировка в школе: навык +1 за (навык + 1) золота',
@@ -81,6 +85,7 @@ export const LOC_ACTION_TEXT = {
     poor: 'Если 0 золота: +1 золото; убрать до 2 карт ряда',
     swap: 'Убрать карту из руки и взять из ряда карту дороже не более чем на 1',
     elixir: '+1 эликсир',
+    ...SK_LOC_ACTION_TEXT,
 };
 
 export const TERRAINS = ['forest', 'mountain', 'water'];
@@ -110,7 +115,7 @@ export const HOUSE_RULES = [
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
 /** Expansions that can already be switched on in the lobby. */
 export const TRAIL_PART_IDS = ['bombs', 'manticore', 'troll', 'mutagens', 'unique', 'masters', 'vuln'];
-export const EXPANSIONS_READY = ['legendary', 'ciri', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
+export const EXPANSIONS_READY = ['legendary', 'ciri', 'skellige', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
 /** «Легендарная охота» settings carried in the expansion list (see legend-data.mjs legendOpts). */
 const LEGEND_SUB = /^legendary:(B|mon:(golem|cyclops|toad|fiend|unseen|icegiant|gaunter|kayran)|solo:(easy|normal|hard))$/;
 /** Keeps known ids; the «По следу монстра» parts only together with 'trail'. A bare 'trail'
@@ -127,6 +132,8 @@ export function normalizeExp(exp) {
         const solo = subs.filter(x => x.startsWith('legendary:solo:')).pop();
         out.push(...(subs.includes('legendary:B') ? ['legendary:B'] : []), ...(mon ? [mon] : []), ...(solo ? [solo] : []));
     }
+    // «Скеллиге»: Сирена (the extra-monster set) in the Dagon location.
+    if (out.includes('skellige') && exp.includes('skellige:siren')) out.push('skellige:siren');
     return out;
 }
 /** Is a «По следу монстра» part on? `s` is a state/view (with .exp) or an exp array. */

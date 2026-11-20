@@ -62,4 +62,10 @@ for (const c of Object.values(EVENTS)) {
 }
 
 /** Short label of a quest for the HUD. */
-export const questLabel = (q) => EVENTS[q.id]?.questName || 'Задание';
+export const questLabel = (q) => {
+    const ev = EVENTS[q.id];
+    if (ev?.questName) return ev.questName;
+    // Cards without a quest name («Скеллиге»): the number of the event the quest leads to.
+    const fx = [...(ev?.fx || []), ...(ev?.a?.fx || []), ...(ev?.b?.fx || [])].find(f => f.quest);
+    return fx && EVENTS[fx.quest.event] ? `событие ${EVENTS[fx.quest.event].num}` : 'Задание';
+};

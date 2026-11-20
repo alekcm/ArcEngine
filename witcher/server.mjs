@@ -66,6 +66,7 @@ const MODEL_FILES = {};
 for (const [k, s] of Object.entries(SCHOOLS)) MODEL_FILES['w-' + k] = path.join(REPO, s.model);
 for (const m of MONSTERS) MODEL_FILES[m.id] = path.join(REPO, 'Witcher', 'Миниатюры монстров', m.model);
 for (const m of LEGENDS) MODEL_FILES[m.id] = path.join(REPO, 'Witcher', 'Легендарные монстры', m.model);
+MODEL_FILES.DAGON = path.join(REPO, 'Witcher', 'Миниатюры монстров', 'Дагон.obj');   // «Скеллиге»
 const modelCache = new Map();
 const MODEL_TRIS = 40000;
 function modelJson(key, tris = MODEL_TRIS) {

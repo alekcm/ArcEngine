@@ -23,7 +23,7 @@ const SCHOOL_TEXT = {
 const SCHOOL_NEEDS = { ciri: '«Цири и доп. события»', 'trail:manticore': '«По следу монстра» → Школа Мантикоры' };
 const EXPANSIONS = [
     ['legendary', 'Легендарная охота', 'вместо гонки за трофеями — общий враг: легендарный монстр бродит по Континенту и оставляет руины; кто победит его, тот и выиграл (8 монстров, включая Кейрана)'],
-    ['skellige', 'Скеллиге', 'острова 19–21, корабли и новые события'],
+    ['skellige', 'Скеллиге', 'острова 19–21, корабли и 50 карт исследования Скеллиге; Дагон поднимается из пучины — прогнавший его получает дар'],
     ['mages', 'Чародеи', 'играбельные чародеи'],
     ['ciri', 'Цири и доп. события', 'Цири, новые события исследования, тайные карты и жетоны заданий'],
     ['trail', 'По следу монстра', 'мини-дополнения можно включать по отдельности — уязвимости и особые атаки монстров подключаются следующими'],
@@ -66,10 +66,10 @@ export function renderLobby() {
             <div class="exp">${EXPANSIONS.map(([id, n, d]) => {
                 const ready = EXPANSIONS_READY.includes(id);
                 const why = !ready ? 'Подключается на следующем этапе' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
-                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>${id === 'trail' ? trailParts(L, isHost) : id === 'legendary' ? legendParts(L, isHost, solo) : ''}`;
+                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>${id === 'trail' ? trailParts(L, isHost) : id === 'legendary' ? legendParts(L, isHost, solo) : id === 'skellige' ? skelligeParts(L, isHost) : ''}`;
             }).join('')}
             <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий; «По следу монстра» — бомбы, Мантикора, тролль, мутагены, уникальные и мастерские действия.</div></div>
-            ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 12).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
+            ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 16).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
             <div class="lobby-actions">${isHost ? btn({ id: 'lStart', label: 'Начать партию', primary: true, key: 'Enter' }) : '<span style="color:var(--dim)">Ждём, пока хозяин начнёт партию…</span>'}</div>
             <div class="lan">Друзья в той же сети подключаются по адресу: ${(L.addresses || []).map(a => `<code>http://${a}:${L.port}/</code>`).join(' ') || '<code>' + location.host + '</code>'}</div>
         </div></div></div>`;
@@ -89,6 +89,7 @@ export function renderLobby() {
         let exp = [...el.querySelectorAll('[data-exp]:checked')].map(x => x.dataset.exp);
         // «Легендарная охота»: the monster / difficulty selects stay while the expansion is on.
         exp = exp.includes('legendary') ? [...exp, ...(L.settings.exp || []).filter(x => /^legendary:(mon|solo):/.test(x))] : exp.filter(x => !x.startsWith('legendary:'));
+        if (!exp.includes('skellige')) exp = exp.filter(x => !x.startsWith('skellige:'));
         // Switching «По следу монстра» on turns every mini-expansion on; switching all of them off turns it off.
         if (c.dataset.exp === 'trail' && c.checked) exp = [...exp.filter(x => !x.startsWith('trail:')), ...TRAIL_PARTS.map(t => 'trail:' + t.id)];
         if (c.dataset.exp.startsWith('trail:') && !exp.some(x => x.startsWith('trail:'))) exp = exp.filter(x => x !== 'trail');
@@ -137,6 +138,15 @@ function legendParts(L, isHost, solo) {
         <label class="check"><input type="checkbox" data-exp="legendary:B" ${on && exp.includes('legendary:B') ? 'checked' : ''} ${dis}><span><b>Памятка, сторона Б</b> — броня монстра по трофеям ${ARMOR.B.join('/')} вместо ${ARMOR.A.join('/')} (сложнее)</span></label>
         <div class="legsel"><label>Легендарный монстр</label><select data-legsel="mon" ${dis}>${opt('', 'Случайный', !o || !o.mon)}${LEGENDS.map(l => opt(l.key, `${l.name} · старт в локации ${l.start}`, o && o.mon === l.key)).join('')}</select></div>
         ${solo ? `<div class="legsel"><label>Сложность одиночной игры</label><select data-legsel="solo" ${dis}>${Object.keys(SOLO_MOVES).map(k => opt(k, `${SOLO_NAME[k]} — ${SOLO_MOVES[k]} карт перемещения`, (o ? o.solo : 'normal') === k)).join('')}</select></div>` : ''}
+    </div>`;
+}
+
+/** «Скеллиге»: Сирена (Доп монстра.md) — waits in the Dagon location while Dagon is under water. */
+function skelligeParts(L, isHost) {
+    const exp = L.settings.exp || [];
+    const on = exp.includes('skellige'), dis = on && isHost ? '' : 'disabled';
+    return `<div class="subexp ${on ? '' : 'off'}" title="${on ? '' : 'Сначала включите «Скеллиге»'}">
+        <label class="check"><input type="checkbox" data-exp="skellige:siren" ${on && exp.includes('skellige:siren') ? 'checked' : ''} ${dis}><span><b>Сирена</b> — монстр I уровня в локации Дагона, пока Дагона нет (трофей без жетона трофеев)</span></label>
     </div>`;
 }
 

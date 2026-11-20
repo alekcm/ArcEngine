@@ -3,13 +3,15 @@
 // The printed texts come from gen-data.mjs (BIGCARDS, imported from the Markdown); this file only
 // encodes them as structured operations the engine executes (engine/vuln.mjs).
 import { BIGCARDS } from './gen-data.mjs';
+import { DAGON_BIG, DAGON_ATTACKS, DAGON_DISCARD } from './skellige-data.mjs';
 
 /** The 4 special combat cards: the number is the special attack I–IV of the fought monster. */
 export const SPECIALS = [1, 2, 3, 4].map(n => ({ id: 'MON-SPECIAL-0' + n, n, cell: ['r1c1', 'r1c2', 'r2c1', 'r2c2'][n - 1] }));
 export const SPECIAL = Object.fromEntries(SPECIALS.map(s => [s.id, s]));
 export const isSpecial = (id) => !!SPECIAL[id];
 /** Large monster cards by the small card id (Сирена and Кащей have none in this game). */
-export const BIG = Object.fromEntries(BIGCARDS.map(b => [b.id, b]));
+// «Скеллиге»: Dagon's special side (skellige-data.mjs) — special attacks and a discard ability, no vulnerabilities.
+export const BIG = Object.fromEntries([...BIGCARDS, DAGON_BIG].map(b => [b.id, b]));
 export const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
 // ---------------------------------------------------------------------------------------------
@@ -256,3 +258,7 @@ export function vulnWindow(op) {
 }
 /** The text of vulnerability N of a monster (the printed card). */
 export const vulnText = (monId, n) => (BIG[monId] ? BIG[monId].vulns[n - 1] : '');
+
+// «Скеллиге»: Dagon (Сирена uses the same side, see engine/skellige.mjs `bigAs`).
+ATTACKS.DAGON = DAGON_ATTACKS;
+DISCARD.DAGON = DAGON_DISCARD;

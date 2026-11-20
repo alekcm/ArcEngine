@@ -16,6 +16,7 @@ import { SKILL_VALUE } from '../data/rules-data.mjs';
 import { isSpecial, freshAttackDeck, onMonsterAppears, restrictError, endOfTurnDiscards, afterCombo25, vulnOn, specialName } from './vuln.mjs';
 import { isDuel, otherSeat, onceOf, duelKo } from './duel.mjs';
 import { ARMOR, LEGEND, LEG_ATTACK } from '../data/legend-data.mjs';
+import { skConsequences, dagonFirstTurn, skAfterBattle, hasGift } from './skellige.mjs';
 import { vtFirstWitcherTurn, vtBeforeMonster, vtAfterMonster, vtM1, vtComboBonus, vtDrawBonus, vtLife, vulnReset } from './vtoken.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
@@ -181,6 +182,8 @@ STEPS.postLife = (state) => {
         case 'MON-31': if (p.hand.length > 3) push(state, F('discardFromHandAsk', { n: p.hand.length - 3, why: 'Сирена: в руке не больше 3 карт' })); break;
     }
     if (f.pendingHarpy) push(state, F('dealDamage', { n: 2, src: 'трофей «Гарпия»' }));
+    // «Скеллиге», gift 03: after the life pools are formed the opponent takes 3 damage.
+    if (hasGift(p, 'DAGON-GIFT-03')) push(state, F('dealDamage', { n: 3, src: 'дар Дагона' }));
     // Гроббо (CONT80-37): once per fight, after the life pools are formed — draw 1 card.
     if (hasGear(p, 'CONT80-37') && !f.once.g37) { f.once.g37 = true; const n = drawCards(state, p, 1); if (n) log(state, `${p.name}: Гроббо — +1 карта`); }
 };
@@ -1179,6 +1182,8 @@ STEPS.comboAfterDamage = (state, step) => {
     if (ab(f) === 'MON-05' && !colors.has('green')) n -= 1;
     if (ab(f) === 'MON-09' && n > 1) n -= 1;
     if (hasGear(p, 'CONT79-31') && f.wTurns === 1 && !f.once.g31) { f.once.g31 = true; n += 2; log(state, `${p.name}: кожаные сапоги — +2 карты`); }
+    // Нагрудник со Скеллиге (SK-EV-13): once per fight, +1 card at the end of the turn.
+    if (hasGear(p, 'SK-EV-13') && !f.once.sk13) { f.once.sk13 = true; n += 1; log(state, `${p.name}: нагрудник со Скеллиге — +1 карта`); }
     n += vtDrawBonus(state, step.ids);
     if (ab(f) === 'LEG-CYCLOPS' && f.once.spec && !f.cur.specBefore) { n -= 3; log(state, 'Циклоп: специализация использована — на 3 карты меньше'); }
     if (ab(f) === 'LEG-TOAD' && f.usedElixirs.length + (f.usedBombs || []).length > f.cur.kitBefore) { n -= 2; log(state, 'Гигантская жаба: использован эликсир или бомба — на 2 карты меньше'); }
@@ -1255,6 +1260,8 @@ STEPS.monsterTurn = (state) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
     if (f.mTurns === 0) { const vm = vtBeforeMonster(state); if (vm.length) { f.stage = 'busy'; push(state, ...vm, F('monsterTurn')); return; } }
+    // «Скеллиге»: Dagon's ability at the start of his first turn.
+    if (dagonFirstTurn(state)) return;
     // Ледяной великан: at the start of its first turn the witcher discards the top 4 deck cards (no deck: from the hand).
     if (f.mTurns === 0 && ab(f) === 'LEG-ICEGIANT' && !f.once.ice) {
         f.once.ice = true; f.stage = 'busy';
@@ -1477,6 +1484,12 @@ STEPS.hurtWitcher = (state, step) => {
         f.vt.capUsed += n;
         if (n <= 0) return;
     }
+    // «Скеллиге», gift 01: once per turn of the battle the attack's damage is 1 lower.
+    if (f.kind === 'monster' && f.turn === 'monster' && !step.notAttack && hasGift(p, 'DAGON-GIFT-01') && f.once.g01 !== f.mTurns && n > 0) {
+        f.once.g01 = f.mTurns; n -= 1;
+        log(state, `${p.name}: дар Дагона — урон атаки −1`);
+        if (n <= 0) return;
+    }
     log(state, `${p.name} получает ${n} урона`);
     fx(state, { k: 'witcherHit', seat: p.seat, n });
     let handN = 0;
@@ -1594,6 +1607,7 @@ STEPS.fightConsequences = (state) => {
     const f = state.fight, p = fp(state);
     const mon = MONSTER[f.mon];
     if (f.legend) { legendConsequences(state, f, p, mon); return; }
+    if (f.sk) { skConsequences(state, f, p, mon); return; }
     const slot = state.slots[f.slot];
     let result;
     const steps = [];
@@ -1667,6 +1681,8 @@ STEPS.fightCleanup = (state) => {
     p.shield = 0;
     state.lastFight = { mon: f.mon, result: f.result, seat: p.seat, life: f.life.length, shield: shieldEnd };
     state.fight = null;
+    // «Скеллиге»: the common effect of Dagon's gifts.
+    skAfterBattle(state, [p.seat], f.newGift);
     p.shield = maxShield(state, p);
     state.elixirDiscard.push(...f.usedElixirs);
     if (f.usedBombs && f.usedBombs.length) { if (!state.bombDiscard) state.bombDiscard = []; state.bombDiscard.push(...f.usedBombs); }

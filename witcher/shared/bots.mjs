@@ -9,6 +9,7 @@ import { movePaymentError } from './engine/turn.mjs';
 import { findChain } from './engine/vuln.mjs';
 import { trainCost, hasWitcherTrophy } from './engine/effects.mjs';
 import { ARMOR } from './data/legend-data.mjs';
+import { seaEdges } from './engine/skellige.mjs';
 
 export const cardValue = (id) => {
     const c = CARDS[id];
@@ -248,6 +249,14 @@ function actionValue(view, p, n) {
         }
         case 'elixir': return p.elixirs.length < ELIXIR_LIMIT ? 2.5 : 0;
         case 'poker': return p.gold >= 1 ? (view.solo ? 1.5 : 2) : 0;
+        // «Скеллиге» islands.
+        case 'skAnySkill': return ['combat', 'defense', 'alchemy', 'spec'].some(s => p.skills[s] < 5) ? 6 : 0;
+        case 'skMist': return 2;
+        case 'skEyna': return 4;
+        case 'skHenInis': return 4;
+        case 'skGold3': return 3;
+        case 'skElixir4': return p.elixirs.length < 3 ? 3 : 0;
+        case 'skTracks': return 2;
         case 'hunt': return view.slots.some(s => s.mon && !p.trackTokens[s.terrain] && !p.hunts.some(h => h.terrain === s.terrain)) ? 3 : 0;
         default: return 0;
     }
@@ -256,13 +265,14 @@ function actionValue(view, p, n) {
 // ---------------------------------------------------------------------------------------------
 // Route planning
 // ---------------------------------------------------------------------------------------------
-const enterable = (view, n) => !!LOC[n] && (!LOC[n].island || !!view.skellige);
-/** Shortest path lengths from `from` over the land and sea routes (BFS). */
-export function distances(view, from) {
+const enterable = (view, n) => !!LOC[n] && (!LOC[n].island || !!view.skellige) && !LOC[n].dagon;
+/** Shortest path lengths from `from` over the land and sea routes (BFS); `rev` — towards `from`
+ *  («Скеллиге»: the ship routes are one-way at a given moment). */
+export function distances(view, from, rev = false) {
     const d = { [from]: 0 }, q = [from];
     while (q.length) {
         const x = q.shift();
-        for (const y of ADJ[x] || []) if (d[y] == null && enterable(view, y)) { d[y] = d[x] + 1; q.push(y); }
+        for (const y of [...(ADJ[x] || []), ...seaEdges(view, x, rev)]) if (d[y] == null && enterable(view, y)) { d[y] = d[x] + 1; q.push(y); }
     }
     return d;
 }
@@ -320,7 +330,7 @@ function planStep(view, p, o) {
     if (!best || best.score <= Math.max(1, stay)) return null;
     // A far goal: spend only the cards above 3 (phase III draws back up to 3 anyway).
     if (!best.reach && p.hand.length <= 1) return null;
-    const goalDist = best.n === p.loc ? null : distances(view, best.n);
+    const goalDist = best.n === p.loc ? null : distances(view, best.n, true);
     const steps = o.moves.filter(m => m.via == null).map(m => {
         const pay = cheapestPayment(view, p, m.to);
         if (!pay) return null;
@@ -372,6 +382,11 @@ function answerPrompt(view, p, pr) {
         if (['fetch', 'take', 'tutor2', 'row2', 'elixirPick'].includes(pr.vt)) return { t: 'answer', ids: best.slice(0, Math.max(pr.min, 1)).slice(0, pr.max) };
         if (pr.vt === 'pay' && pr.from !== 'elixirs' && p.hand.length >= 4 && CARDS[pr.ids[0]]) return { t: 'answer', ids: worst.slice(0, Math.max(pr.min, 1)) };
         if (pr.ordered) return { t: 'answer', ids: pr.ids.slice() };
+    }
+    // Трофей «Сирена»: the cost in cards — or 1 water card.
+    if (pr.waterAlt) {
+        const w = pr.ids.filter(id => CARDS[id].terrain === 'water').sort((a, b) => value(a) - value(b))[0];
+        return { t: 'answer', ids: w ? [w] : pr.ids.slice().sort((a, b) => value(a) - value(b)).slice(0, pr.max) };
     }
     // cards: discard/remove -> weakest; take -> strongest
     const takeLike = ['deckTop', 'discard', 'row', 'elixirs'].includes(pr.from) && !/Сброс|сбрось|убер/i.test(pr.text || '');

@@ -7,6 +7,7 @@ import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, 
 import { BIG, ROMAN as VROMAN, vulnText } from '/shared/data/vuln-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { ARMOR } from '/shared/data/legend-data.mjs';
+import { GIFT, GIFT_SECOND, TRACK_TOP, calmRange, dangerRange } from '/shared/data/skellige-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
 import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES, trailOn } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
@@ -56,6 +57,8 @@ function renderPlayers(v) {
                 ${(p.mutagens || []).length ? `<span title="Мутагены: ${esc(p.mutagens.map(m => MUTAGEN[m].name).join(', '))}" style="color:#9fd6e6">${icon('alchemy')}${p.mutagens.length}</span>` : ''}
                 ${(p.vulns || []).length ? `<span class="c-vuln" title="Жетоны уязвимостей (лицом вверх): ${esc(p.vulns.map(x => TERRAIN_NAME[x.terrain] + ' ' + VROMAN[x.n - 1]).join(', '))}">${icon('skull')}${p.vulns.length}</span>` : ''}
                 ${v.legend ? `<span title="Жетоны руин: каждый сбрасывает карту из запаса жизни легендарного монстра" style="color:#c8b898">${icon('skull')}${p.ruinCount != null ? p.ruinCount : (p.ruins || []).length}</span>` : ''}
+                ${(p.gifts || []).length ? `<span title="Дары Дагона:\n${esc(p.gifts.map(g => '• ' + GIFT[g].text).join('\n') + '\n' + GIFT_SECOND)}" style="color:#6fc7cf">${icon('elixir')}${p.gifts.length}</span>` : ''}
+                ${p.skToken ? `<span title="Жетон следа Дагона: в битве с Дагоном вы ходите первым" style="color:#6fc7cf">${icon('track')}Д</span>` : ''}
                 ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
@@ -119,8 +122,22 @@ function legendSlot(v) {
         <small>${icon('deck')}перемещение: ${L.moveDeck}${L.solo ? ' (одиночная — без замешивания)' : ''} · руины на поле ${L.ruins.length}, в запасе ${L.ruinPool}</small>
         ${mine.length ? `<div class="ruins-row" title="Ваши жетоны руин: каждый сбрасывает 1 карту из запаса жизни монстра${v.solo ? ' (одиночная игра — 1 за каждые 2)' : ''}">${mine.map(id => ruinToken(id)).join('')}</div>` : ''}</div></div>`;
 }
+/** «Скеллиге»: the Dagon track (calm/danger ranges), Сирена, ships, the decks. */
+function skelligeSlot(v) {
+    const sk = v.sk;
+    if (!sk) return '';
+    const up = sk.track >= TRACK_TOP;
+    const mon = up ? MONSTER.DAGON : sk.siren ? MONSTER['MON-31'] : null;
+    const sea = up ? 'в океане всегда опасно' : `спокойно ${calmRange(sk.track)}, опасно ${dangerRange(sk.track)}`;
+    return `<div class="mslot panel" data-sk="1" style="--tc:#2a7f86" title="${esc(mon ? mon.name + ': ' + (mon.ability || '') : 'Локация Дагона пуста')}">
+        <div class="mini" style="background-image:${artCss(mon ? mon.id : 'DAGON', '#1d3a44', 'skull')}"></div>
+        <div class="inf"><b>${up ? 'Дагон появился!' : `Дагон: деление ${sk.track + 1} из 4`}${!up && sk.siren ? ' · сирена' : ''}</b>
+        <small>${icon('explore')}${esc(sea)}</small>
+        <small>${icon('move')}корабли: ${sk.ships.map(n => esc(LOC[n].name)).join(', ')}</small>
+        <small>${icon('deck')}карт Скеллиге ${sk.deck} · даров ${sk.gifts}${sk.islands.length ? ` · острова: ${sk.islands.map(n => esc(LOC[n].name)).join(', ')}` : ''}</small></div></div>`;
+}
 function renderMonsters(v) {
-    $('monsters').innerHTML = legendSlot(v) + v.slots.map((s, i) => {
+    $('monsters').innerHTML = legendSlot(v) + skelligeSlot(v) + v.slots.map((s, i) => {
         if (!s.mon) return `<div class="mslot panel" style="--tc:${TERRAIN_COLOR[s.terrain]}"><div class="mini" style="background:#0005"></div><div class="inf"><b style="color:var(--dim)">Нет монстра</b><small>${icon(s.terrain, 'c-' + s.terrain)}${TERRAIN_NAME[s.terrain]}</small></div></div>`;
         const m = MONSTER[s.mon];
         const vb = (v.vulnBoard || []).find(x => x.terrain === s.terrain);
@@ -188,6 +205,8 @@ function renderActions(v) {
     for (const g of o.gearMoves || []) parts.push(btn({ label: esc(g.label), icon: icon('move'), why: g.err, data: `data-gmove="${esc(g.key)}"` }));
     if ((o.gearMoves || []).length) parts.push('<span class="sep"></span>');
     // «Легендарная охота»: «Прогнать» (phase I, only where the legend stands).
+    // «Скеллиге», gift 02: water travel along the Continent.
+    if (o.gift02 && !/водной локации|Уже/.test(o.gift02.err || '')) parts.push(btn({ label: 'Дар Дагона: в другую водную локацию', icon: icon('move'), why: o.gift02.err, data: 'data-g02="1"' }), '<span class="sep"></span>');
     if (o.chase && o.chase.here) parts.push(btn({ label: 'Прогнать монстра (сбросить 1 карту)', icon: icon('move'), why: o.chase.err, data: 'data-chase="1"' }), '<span class="sep"></span>');
     // Poker with witchers met here (pp. 13–14): phase I, after moving in.
     for (const k of o.pokers || []) parts.push(btn({ label: esc(k.label), icon: icon('poker'), why: k.err, data: `data-wpoker="${k.seat}"` }));
@@ -195,11 +214,11 @@ function renderActions(v) {
     for (const a of o.phase2) {
         if (a.id === 'meditate' && a.err) continue;
         if (a.id === 'legend' && a.err && !(v.legend && v.legend.loc === p.loc)) continue;
-        const ic = a.id === 'fight' || a.id === 'legend' || a.id.startsWith('duel-') ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
+        const ic = a.id === 'fight' || a.id === 'legend' || a.id === 'skFight' || a.id.startsWith('duel-') ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
         const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'E' : '';   // exploring: mouse only
         let why = a.err;
         if (!why && a.id !== 'fight' && !t.moved && o.moves.length) why = null;
-        parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: (a.id === 'fight' || a.id === 'legend') && !a.err, data: `data-p2="${a.id}"`, key }));
+        parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: (a.id === 'fight' || a.id === 'legend' || a.id === 'skFight') && !a.err, data: `data-p2="${a.id}"`, key }));
     }
     box.innerHTML = parts.join('');
     hint.textContent = t.afterExplore ? 'Событие переместило вас: можно выполнить действие этой локации, затем — фаза III' : !t.moved ? 'Фаза I: переместитесь — кликните подсвеченную локацию на карте (или сразу выберите действие фазы II)'
@@ -210,6 +229,7 @@ function renderActions(v) {
     for (const b of box.querySelectorAll('[data-p2]')) b.onclick = () => phase2(b.dataset.p2);
     for (const b of box.querySelectorAll('[data-wpoker]')) b.onclick = () => cmd({ t: 'wpoker', seat: Number(b.dataset.wpoker) }, 'покер');
     for (const b of box.querySelectorAll('[data-gmove]')) b.onclick = () => cmd({ t: 'gearMove', key: b.dataset.gmove }, 'перемещение');
+    for (const b of box.querySelectorAll('[data-g02]')) b.onclick = () => cmd({ t: 'skGift02' }, 'дар Дагона');
     for (const b of box.querySelectorAll('[data-chase]')) b.onclick = () => cmd({ t: 'chase' }, 'прогнать');
     for (const b of box.querySelectorAll('[data-quest]')) b.onclick = () => cmd({ t: 'quest', i: Number(b.dataset.quest) }, 'задание');
 }
@@ -220,6 +240,7 @@ export function phase2(id) {
     if (a.err) { toast(a.err); return; }
     if (id === 'fight') cmd({ t: 'fight' }, 'битва');
     else if (id === 'legend') cmd({ t: 'legend' }, 'битва с легендарным монстром');
+    else if (id === 'skFight') cmd({ t: 'skFight' }, 'битва в локации Дагона');
     else if (id.startsWith('duel-')) cmd({ t: 'duel', seat: a.seat }, 'битва ведьмаков');
     else if (id === 'endExplore') cmd({ t: 'endExplore' }, 'фаза III');
     else if (id === 'skipPhase2') cmd({ t: 'skipPhase2' }, 'фаза III');
@@ -343,10 +364,15 @@ function renderPay(v) {
     if (!pay || !p || !S.options || !S.options.moves.some(m => m.to === pay.to)) { el.classList.add('hidden'); S.ui.pay = null; return; }
     el.classList.remove('hidden');
     const dest = LOC[pay.to];
-    const err = movePaymentError(v, p, pay.to, pay.cards, pay.gold, pay.via);
+    const mv = S.options.moves.find(m => m.to === pay.to) || {};
+    const err = mv.free && !pay.cards.length && !pay.gold ? null : movePaymentError(v, p, pay.to, pay.cards, pay.gold, pay.via);
     const goldOk = p.gold >= 1;
+    // «Скеллиге»: a sea route (the cost is the usual one by the destination's terrain).
+    const sea = mv.sail === 'island' ? `На корабле на остров (1 раз за ход): бросок кубика и карта исследования Скеллиге. ${mv.terrain === 'joker' ? 'Оплата: 1 карта любой местности, 2 любые карты или 1 карта + 1 золото.' : `Оплата: карта «${TERRAIN_NAME[mv.terrain].toLowerCase()}» или джокер, 2 любые карты или 1 карта + 1 золото.`}`
+        : mv.sail === 'dagon' ? 'На корабле в локацию Дагона: 1 карта любой местности (или 2 любые / карта + золото). Битва начнётся сразу.'
+        : mv.sail === 'return' ? (mv.free ? 'Обратно на Континент — бесплатно (событие); можно и не платить.' : `Обратно на Континент, без карты исследования. Оплата: карта «${TERRAIN_NAME[mv.terrain].toLowerCase()}» или джокер, 2 любые карты или 1 карта + 1 золото.`) : null;
     el.innerHTML = `<span class="t">${icon('move')} ${esc(dest.name)} <span class="c-${dest.terrain}">${icon(dest.terrain)}</span></span>
-        <span style="color:var(--dim);font-size:12.5px;max-width:330px">${pay.via != null ? `Два перемещения через ${esc(LOC[pay.via].name)} (её действие пропускается): оплата — карта «Выносливость».` : `Оплата: карта «${TERRAIN_NAME[dest.terrain].toLowerCase()}» или джокер (подсвечены), 2 любые карты, или 1 карта + 1 золото. Выберите карты в руке.`}</span>
+        <span style="color:var(--dim);font-size:12.5px;max-width:330px">${sea ? esc(sea) : pay.via != null ? `Два перемещения через ${esc(LOC[pay.via].name)} (её действие пропускается): оплата — карта «Выносливость».` : `Оплата: карта «${TERRAIN_NAME[dest.terrain].toLowerCase()}» или джокер (подсвечены), 2 любые карты, или 1 карта + 1 золото. Выберите карты в руке.`}</span>
         ${pay.via != null ? '' : `<label class="check" ${goldOk ? '' : 'style="opacity:.4"'}><input type="checkbox" id="payGold" ${pay.gold ? 'checked' : ''} ${goldOk ? '' : 'disabled'}> +1 золото</label>`}
         ${btn({ id: 'payGo', label: 'Идти', primary: true, why: err, key: 'Enter' })}
         ${btn({ id: 'payCancel', label: 'Отмена', key: 'Esc' })}`;
@@ -373,7 +399,7 @@ export function mapTip(loc, x, y) {
     if (!can && p && S.options && S.options.acting && !v.fight) {
         why = v.turn && v.turn.phase !== 1 ? '' : p.loc === loc ? 'Вы здесь' : 'Нет прямой дороги отсюда';
     }
-    el.innerHTML = `<b>${loc}. ${esc(L.name)}</b> <span class="c-${L.terrain}">${icon(L.terrain)}</span> ${esc(TERRAIN_NAME[L.terrain])}${L.port ? ` · ${icon('port')} порт` : ''}
+    el.innerHTML = `<b>${loc}. ${esc(L.name)}</b> <span class="c-${L.terrain}">${icon(L.terrain)}</span> ${esc(TERRAIN_NAME[L.terrain])}${L.island ? ' · остров' : L.port ? ` · ${icon('port')} порт` : ''}
         ${L.school ? `<div>${icon('school')} ${esc(SCHOOLS[L.school] ? SCHOOLS[L.school].school : 'Школа')}</div>` : ''}
         ${act ? `<div style="color:#d8ccb7">${esc(LOC_ACTION_TEXT[act.kind])}</div>` : ''}
         ${slot ? `<div class="c-red">${icon('skull')} ${esc(MONSTER[slot.mon].name)} (ур. ${MONSTER[slot.mon].level})</div>` : ''}
@@ -394,6 +420,10 @@ export function openViewer(title, html) {
     $('vClose').onclick = () => el.classList.add('hidden');
     el.onclick = (e) => { if (e.target === el) el.classList.add('hidden'); };
 }
+/** «Скеллиге»: a gift of Dagon, typeset (the scan of one gift repeats another's text). */
+const giftCard = (id) => `<div class="evcard small" style="display:flex;flex-direction:column;gap:6px;padding:10px;background:#d8c8a4;color:#2a2018;width:180px;border-radius:8px">
+    <b style="font-family:var(--serif);text-align:center">Дар Дагона</b><span style="font-size:12px">${esc(GIFT[id].text)}</span>
+    <span style="font-size:11px;border-top:1px solid #8a7a5a;padding-top:5px">${esc(GIFT_SECOND)}</span></div>`;
 function openPlayer(seat) {
     const p = S.view.players[seat];
     const sc = SCHOOLS[p.school];
@@ -402,6 +432,7 @@ function openPlayer(seat) {
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
         ${(p.mutagens || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Мутагены (${p.mutagens.length})</h3>${p.mutagens.map(id => mutagenCard(id)).join('')}` : ''}
         ${p.gear.length || p.quests.length || (p.keeps || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение, спутники и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${(p.keeps || []).map(k => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(k.card, { small: true, stage: 'outcome', pick: k.id.slice(-1) === 'A' ? 'a' : 'b' })}<span style="color:#d8ccb7;font-size:12px">${esc(k.name)}</span></div>`).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'outcome', pick: questPick(q.id) })}<span style="color:#d8ccb7;font-size:12px">→ ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span></div>`).join('')}` : ''}
+        ${(p.gifts || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Дары Дагона (${p.gifts.length})</h3>${p.gifts.map(g => giftCard(g)).join('')}` : ''}
         <h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Сброс (${p.discard.length})</h3>${p.discard.map(id => actionCard(id, { small: true })).join('') || '<span style="color:var(--dim)">Пусто</span>'}`);
 }
 export function openChoice(title, text, options, onPick) {

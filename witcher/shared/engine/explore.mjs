@@ -19,6 +19,7 @@ import { comboTotals, linkIndex } from './fight.mjs';
 import { TERRAIN_NAME, SKILL_NAME, SCHOOLS, COLOR_NAME } from '../data/rules-data.mjs';
 import { EXPLORE_DECKS, EXP_DECKS, EVENTS, questLabel } from '../data/events-data.mjs';
 import { canEnter, refillRow, SKILL_GEN } from './turn.mjs';
+import { skEventFx } from './skellige.mjs';
 
 export const EXPLORE_READY = true;
 const DECK_NAME = { city: 'город', wild: 'окрестности' };
@@ -35,7 +36,8 @@ export function ensureExplore(state) {
     // Expansions shuffle their exploration cards in (also into a running game, e.g. a sandbox
     // loaded with the expansion switched on in the lobby).
     for (const x of state.exp || []) {
-        if ((state.expDecks || []).includes(x) || !EXP_DECKS[x]) continue;
+        // «Скеллиге» keeps its own deck (state.sk.deck, skellige.mjs).
+        if ((state.expDecks || []).includes(x) || !EXP_DECKS[x] || x === 'skellige') continue;
         for (const d of Object.keys(EXP_DECKS[x])) {
             const add = EXP_DECKS[x][d].filter(id => !state.eventsUsed.includes(id) && !state.explore[d].includes(id));
             state.explore[d] = shuffle(state, [...state.explore[d], ...add]);
@@ -51,6 +53,7 @@ export function exploreError(state, p, deck) {
     if (!t || t.seat !== p.seat || t.phase !== 1) return 'Только в свой ход вместо битвы/медитации';
     if (t.afterExplore) return 'Исследование уже было в этот ход';
     if (t.noExplore) return 'Событие запретило исследовать в этот ход';
+    if (t.skRead) return 'В этот ход уже зачитана карта исследования Скеллиге';
     const decks = state.explore || EXPLORE_DECKS;
     // A kept card replaces the next exploration (CONT79-29Б, CITY1-33А, CONT79-22Б): no deck card is drawn.
     if (keepOf(p, 'nextExplore')) return null;
@@ -65,11 +68,14 @@ export function optionCostError(p, opt) {
     if (c.gold && p.gold < c.gold) return `Нужно ${c.gold} золота`;
     if (c.elixir && p.elixirs.length < c.elixir) return `Нужно эликсиров: ${c.elixir}`;
     if (c.color && !p.hand.some(id => CARDS[id].color === c.color)) return `Нужна ${COLOR_ADJ[c.color]} карта в руке (${COLOR_NAME[c.color].toLowerCase()})`;
+    // «Скеллиге»: «Сбросьте 1 карту с символом водной местности» / a card the option cannot do without.
+    if (c.terrain && !p.hand.some(id => CARDS[id].terrain === c.terrain)) return `Нужна карта с символом местности «${TERRAIN_NAME[c.terrain].toLowerCase()}» в руке`;
+    if (c.need && p.hand.length < (c.card || 1)) return 'Нужна карта в руке';
     return null;
 }
 
 /** «Прочитать» a card with options А/Б: shared by exploration and numbered event cards. */
-function askChoose(state, p, id, title, extra) {
+export function askChoose(state, p, id, title, extra) {
     const ev = EVENTS[id];
     ask(state, {
         seat: p.seat, kind: 'choice', ui: 'event', stage: 'choose', card: id, title,
@@ -123,11 +129,11 @@ STEPS.exploreChoice = (state, step) => {
         ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: c.elixir, max: c.elixir, title: 'Оплата', text: `Сбросьте ${c.elixir} эликсир(а).`, op: 'explorePay', args: { ...args, from: 'elixirs' } });
         return;
     }
-    if (c.color || c.card) {
-        const ids = p.hand.filter(id => !c.color || CARDS[id].color === c.color);
+    if (c.color || c.card || c.terrain) {
+        const ids = p.hand.filter(id => (!c.color || CARDS[id].color === c.color) && (!c.terrain || CARDS[id].terrain === c.terrain));
         if (!ids.length) { push(state, { op: 'exploreOutcome', ...args }); return; }
         if (ids.length === 1) { push(state, { op: 'explorePay', ...args, from: 'hand', ids }); return; }
-        ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids, min: 1, max: 1, title: 'Оплата', text: c.color ? `Сбросьте 1 ${COLOR_ADJ[c.color].replace(/ая$/, 'ую')} карту из руки (${COLOR_NAME[c.color].toLowerCase()}).` : 'Сбросьте 1 карту из руки.', op: 'explorePay', args: { ...args, from: 'hand' } });
+        ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids, min: 1, max: 1, title: 'Оплата', text: c.color ? `Сбросьте 1 ${COLOR_ADJ[c.color].replace(/ая$/, 'ую')} карту из руки (${COLOR_NAME[c.color].toLowerCase()}).` : c.terrain ? `Сбросьте 1 карту с символом местности «${TERRAIN_NAME[c.terrain].toLowerCase()}» из руки.` : 'Сбросьте 1 карту из руки.', op: 'explorePay', args: { ...args, from: 'hand' } });
         return;
     }
     push(state, { op: 'exploreOutcome', ...args });
@@ -178,6 +184,8 @@ STEPS.eventFx = (state, step) => {
     const p = state.players[step.seat];
     const e = step.e;
     const t = state.turn;
+    // «Скеллиге»: Dagon, islands, the voyage (skellige.mjs); true — the effect is consumed there.
+    if (skEventFx(state, p, e, step)) return;
     if (e.gold) {
         const before = p.gold;
         p.gold = Math.max(0, p.gold + e.gold);
@@ -189,9 +197,18 @@ STEPS.eventFx = (state, step) => {
         // CONT79-43: «если этот навык уже на максимальном уровне — увеличьте любой».
         if (e.orAny && SKILLS.includes(e.skill) && p.skills[e.skill] >= 5) { log(state, `${p.name}: навык ${SKILL_GEN[e.skill]} уже 5 — вместо него любой навык`); push(state, { op: 'eventSkillPick', seat: p.seat, mode: 'any', left: 1, done: [] }); }
         else if (SKILLS.includes(e.skill)) push(state, { op: 'raiseSkill', seat: p.seat, skill: e.skill, why: 'событие' });
+        // SK-EX-50D: «Понизьте любой свой навык на 1. Затем увеличьте любой другой свой навык на 1».
+        else if (e.skill === 'anyOther') push(state, { op: 'eventSkillPick', seat: p.seat, mode: 'any', left: 1, done: t && t.lastLowered ? [t.lastLowered] : [] });
         else push(state, { op: 'eventSkillPick', seat: p.seat, mode: e.skill === 'any' ? 'any' : 'lowest', left: e.skill === 'lowest2' ? 2 : 1, done: [] });
     }
-    if (e.skillDown) push(state, { op: 'lowerSkill', seat: p.seat, skill: e.skillDown });
+    if (e.skillDown === 'any') push(state, { op: 'eventSkillDownPick', seat: p.seat });
+    else if (e.skillDown) push(state, { op: 'lowerSkill', seat: p.seat, skill: e.skillDown });
+    if (e.discardTerrain) {
+        const ids = p.hand.filter(id => CARDS[id].terrain === e.discardTerrain);
+        if (ids.length) push(state, { op: 'eventDiscardDo', seat: p.seat, ids });
+        else log(state, `${p.name}: карт с символом местности «${TERRAIN_NAME[e.discardTerrain].toLowerCase()}» в руке нет`);
+    }
+    if (e.discardColorOr) push(state, { op: 'eventDiscardColorOr', seat: p.seat, color: e.discardColorOr.color, n: e.discardColorOr.n });
     if (e.draw && t && t.seat !== p.seat) {
         // Not this player's turn (event 133 read to the opponent after witcher poker): its next phase III.
         p.drawLater = (p.drawLater || 0) + e.draw;
@@ -210,7 +227,7 @@ STEPS.eventFx = (state, step) => {
     }
     if (e.elixir) push(state, { op: 'gainElixir', seat: p.seat, n: e.elixir, why: 'событие', noLimit: !!e.noLimit });
     if (e.elixirLoss) push(state, { op: 'eventElixirLoss', seat: p.seat, n: e.elixirLoss });
-    if (e.track) push(state, { op: e.track === 'all' ? 'eventTrackAll' : 'eventTrackAsk', seat: p.seat });
+    if (e.track) push(state, { op: e.track === 'all' ? 'eventTrackAll' : 'eventTrackAsk', seat: p.seat, ...(e.track !== 'all' && e.track !== 'any' && e.track !== true ? { terrain: e.track } : {}) });
     if (e.removeCard) push(state, { op: 'eventRemoveAsk', seat: p.seat });
     if (e.rowCard) push(state, { op: 'eventRowCard', seat: p.seat, cost: e.rowCard.cost, leftmost: !!e.rowCard.leftmost });
     if (e.noExplore && t) { t.noExplore = true; log(state, `${p.name}: в этот ход исследовать нельзя`); }
@@ -278,6 +295,7 @@ STEPS.eventFx = (state, step) => {
         const okc = (c.goldMax == null || p.gold <= c.goldMax) && (c.elixirMax == null || p.elixirs.length <= c.elixirMax)
             && (c.shieldMax == null || p.shield <= c.shieldMax) && (c.trophiesMax == null || p.trophies.length <= c.trophiesMax)
             && (c.ownSchool == null || (p.loc === SCHOOLS[p.school].home) === c.ownSchool)
+            && (c.trackOf == null || p.trackTokens[c.trackOf] != null)
             && (c.pokerVs == null || ((state.lastPoker && state.lastPoker.seat === p.seat ? state.lastPoker.vs : state.lastPokerB && state.lastPokerB.seat === p.seat ? state.lastPokerB.vs : 'town') === c.pokerVs));
         log(state, `${p.name}: условие ${okc ? 'выполнено' : 'не выполнено'}`);
         push(state, ...effectSteps(p.seat, okc ? e.fx : e.else, { card: step.card }));
@@ -339,7 +357,7 @@ STEPS.eventComboAsk = (state, step) => {
     if (!p.hand.length) { push(state, { op: 'eventComboDo', seat: p.seat, card: step.card, e: step.e, ids: [] }); return; }
     ask(state, {
         seat: p.seat, kind: 'cards', from: 'hand', ui: 'combo', ids: p.hand.slice(), min: 1, max: p.hand.length, card: step.card,
-        title: 'Комбинация', text: 'Разыграйте комбинацию из руки: выбирайте карты по порядку, каждая следующая — по цвету связи предыдущей. Применяются только щиты и урон.',
+        title: 'Комбинация', text: `Разыграйте комбинацию из руки: выбирайте карты по порядку, каждая следующая — по цвету связи предыдущей. ${step.e.dmgOnly ? 'Применяется только урон.' : 'Применяются только щиты и урон.'}`,
         op: 'eventComboDo', args: { seat: p.seat, card: step.card, e: step.e },
     });
 };
@@ -351,7 +369,8 @@ STEPS.eventComboDo = (state, step) => {
     p.discard.push(...ids);
     if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')} — урон ${t.dmg}, щит +${t.shield}`, { kind: 'combo' });
     fx(state, { k: 'combo', seat: p.seat, ids });
-    if (t.shield) { p.shield += t.shield; clampShield(state, p); }
+    // «Примените только урон, а остальные эффекты проигнорируйте» (Скеллиге).
+    if (t.shield && !step.e.dmgOnly) { p.shield += t.shield; clampShield(state, p); }
     const r = t.dmg, e = step.e;
     const br = e.roll.find(b => r >= b.from && r <= b.to) || e.roll[e.roll.length - 1];
     push(state, { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: 'combo' }, ...effectSteps(p.seat, br.fx, { card: step.card }));
@@ -398,6 +417,35 @@ STEPS.eventDiscardHand = (state, step) => {
     if (n === p.hand.length) { push(state, { op: 'eventDiscardDo', seat: p.seat, ids: p.hand.slice() }); return; }
     ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: n, max: n, title: 'Сброс', text: `Сбросьте ${n} карт(у) из руки.`, op: 'eventDiscardDo', args: { seat: p.seat } });
 };
+/** «Понизьте любой свой навык на 1» (a skill at 1 or 5 cannot go down — see lowerSkill). */
+STEPS.eventSkillDownPick = (state, step) => {
+    const p = state.players[step.seat];
+    const cand = SKILLS.filter(s => p.skills[s] > 1 && p.skills[s] < 5);
+    if (!cand.length) { log(state, `${p.name}: ни один навык не понижается`); return; }
+    if (cand.length === 1 || p.bot || p.away) { const s = cand.slice().sort((a, b) => p.skills[b] - p.skills[a])[0]; push(state, { op: 'eventSkillDownDo', seat: p.seat, choice: s }); return; }
+    ask(state, { seat: p.seat, kind: 'choice', title: 'Понизьте навык', text: 'Выберите навык, который понижается на 1.', options: cand.map(s => ({ id: s, label: `${SKILL_NAME[s]} ${p.skills[s]} → ${p.skills[s] - 1}` })), op: 'eventSkillDownDo', args: { seat: p.seat } });
+};
+STEPS.eventSkillDownDo = (state, step) => {
+    if (state.turn) state.turn.lastLowered = step.choice;
+    push(state, { op: 'lowerSkill', seat: step.seat, skill: step.choice });
+};
+/** «Сбросьте из руки 1 карту защитного Знака (жёлтую) либо 2 любые карты» (SK-EX-46D). */
+STEPS.eventDiscardColorOr = (state, step) => {
+    const p = state.players[step.seat];
+    const col = p.hand.filter(id => CARDS[id].color === step.color);
+    if (!p.hand.length) { log(state, `${p.name}: рука пуста — сбрасывать нечего`); return; }
+    if (!col.length) { push(state, { op: 'eventDiscardHand', seat: p.seat, n: step.n }); return; }
+    const name = `${COLOR_ADJ[step.color].replace(/ая$/, 'ую')} (${COLOR_NAME[step.color].toLowerCase()})`;
+    if (p.hand.length < step.n || p.bot || p.away) { ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: col, min: 1, max: 1, title: 'Сброс', text: `Сбросьте 1 ${name} карту из руки.`, op: 'eventDiscardDo', args: { seat: p.seat } }); return; }
+    ask(state, { seat: p.seat, kind: 'choice', title: 'Сброс', text: `Сбросьте 1 ${name} карту либо ${step.n} любые карты.`, options: [{ id: 'color', label: `1 ${name} карта` }, { id: 'any', label: `${step.n} любые карты` }], op: 'eventDiscardColorDo', args: { seat: p.seat, color: step.color, n: step.n } });
+};
+STEPS.eventDiscardColorDo = (state, step) => {
+    const p = state.players[step.seat];
+    if (step.choice === 'any') { push(state, { op: 'eventDiscardHand', seat: p.seat, n: step.n }); return; }
+    const col = p.hand.filter(id => CARDS[id].color === step.color);
+    if (col.length === 1) { push(state, { op: 'eventDiscardDo', seat: p.seat, ids: col }); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: col, min: 1, max: 1, title: 'Сброс', text: 'Выберите карту для сброса.', op: 'eventDiscardDo', args: { seat: p.seat } });
+};
 STEPS.eventDiscardDo = (state, step) => {
     const p = state.players[step.seat];
     for (const id of step.ids) if (removeFrom(p.hand, id)) p.discard.push(id);
@@ -429,7 +477,7 @@ function giveTrack(state, p, terrain) {
 }
 STEPS.eventTrackAsk = (state, step) => {
     const p = state.players[step.seat];
-    const ch = trackChoices(state, p);
+    const ch = trackChoices(state, p).filter(({ s }) => !step.terrain || s.terrain === step.terrain);
     if (!ch.length) { log(state, `${p.name}: жетон следа взять не для кого`); return; }
     if (ch.length === 1) { giveTrack(state, p, ch[0].s.terrain); return; }
     ask(state, {
@@ -541,7 +589,7 @@ STEPS.questStart = (state, step) => {
     }
     // «Локация вашей школы или школы другого игрока»: any school of the table.
     const locs = q.school === 'any' ? [...new Set(state.players.map(x => SCHOOLS[x.school].home))] : null;
-    p.quests.push({ id: step.id, terrain, loc, event: q.event, gold: q.gold || 0, ...(locs && locs.length > 1 ? { locs } : {}) });
+    p.quests.push({ id: step.id, terrain, loc, event: q.event, gold: q.gold || 0, ...(q.cards ? { cards: q.cards } : {}), ...(locs && locs.length > 1 ? { locs } : {}) });
     log(state, `${p.name} получает задание «${questLabel({ id: step.id })}»: ${LOC[loc].name}${terrain ? ' (' + TERRAIN_NAME[terrain].toLowerCase() + ')' : ''}`, { kind: 'explore' });
     fx(state, { k: 'quest', seat: p.seat, loc });
 };
@@ -554,6 +602,7 @@ export function questError(state, p, i) {
     if (!t || t.seat !== p.seat || t.phase !== 1 || t.afterExplore) return 'Только в фазе I своего хода';
     if (q.locs ? !q.locs.includes(p.loc) : p.loc !== q.loc) return q.locs ? `Нужно быть в локации школы: ${q.locs.map(n => LOC[n].name).join(', ')}` : `Нужно быть в локации ${LOC[q.loc].name}`;
     if (q.gold && p.gold < q.gold) return `Нужно ${q.gold} золота`;
+    if (q.cards && p.hand.length < q.cards) return `Нужно сбросить ${q.cards} карт(ы) из руки`;
     return null;
 }
 
@@ -562,10 +611,11 @@ STEPS.questDone = (state, step) => {
     const q = p.quests.splice(step.i, 1)[0];
     if (q.terrain) { state.locPiles[q.terrain].push(q.loc); shuffle(state, state.locPiles[q.terrain]); }
     if (q.gold) { p.gold -= q.gold; log(state, `${p.name}: −${q.gold} золота (задание)`); }
+
     // The quest card itself goes back to the box.
     used(state, q.id);
     log(state, `${p.name} выполняет задание «${questLabel(q)}»`, { kind: 'explore' });
-    push(state, { op: 'takeEvent', seat: p.seat, id: q.event });
+    push(state, ...(q.cards ? [{ op: 'eventDiscardHand', seat: p.seat, n: q.cards }] : []), { op: 'takeEvent', seat: p.seat, id: q.event });
 };
 
 // ---- quest tokens that spring on others, secret cards («Цири и доп. события») ----------------
@@ -587,7 +637,7 @@ STEPS.trapPlace = (state, step) => {
     if (tr.where === 'here') return put(p.loc);
     if (tr.where === 'school') return put(SCHOOLS[p.school].home);
     if (tr.where === 'adj' || tr.where === 'any') {
-        const locs = tr.where === 'adj' ? (ADJ[p.loc] || []).filter(n => canEnter(state, n)) : Object.keys(LOC).map(Number).filter(n => n !== p.loc && canEnter(state, n));
+        const locs = tr.where === 'adj' ? (ADJ[p.loc] || []).filter(n => canEnter(state, n)) : Object.keys(LOC).map(Number).filter(n => n !== p.loc && !LOC[n].dagon && canEnter(state, n));
         ask(state, {
             seat: p.seat, kind: 'choice', ui: 'move', title: 'Жетон задания',
             text: `Куда положить жетон задания? Когда другой игрок ${tr.on === 'move' ? 'придёт туда' : 'закончит там ход'}, вы зачитаете ему событие ${EVENTS[tr.event].num}.`,

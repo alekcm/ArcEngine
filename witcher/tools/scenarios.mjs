@@ -223,6 +223,24 @@ export function legendScenario(seed = 31) {
     p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift());
     return st;
 }
+/** «Скеллиге» + Сирена: the player in a port with a ship, Dagon one division below the top,
+ *  a new island already placed, every gift-free option of the sea at hand. */
+export function skelligeScenario(seed = 33) {
+    const st = createGame({ seed, exp: ['skellige', 'skellige:siren'], players: [{ name: 'Игрок', school: 'wolf' }, { name: 'Ламберт', school: 'cat', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    st.sk.ships = [1, 12, 21];
+    st.sk.islands.push(32);
+    st.sk.track = 3;
+    p.loc = 1;
+    p.gold = 4;
+    const water = Object.values(CARDS).filter(c => c.terrain === 'water' && !c.starter && !st.row.includes(c.id)).slice(0, 2).map(c => c.id);
+    for (const id of water) { const i = st.actionDeck.indexOf(id); if (i >= 0) st.actionDeck.splice(i, 1); }
+    p.discard.push(...p.hand.splice(0, 2));
+    p.hand.push(...water);
+    p.gifts = ['DAGON-GIFT-02'];
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -270,8 +288,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — легендарная охота', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — легендарная охота', 'Песочница — Скеллиге', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — легендарная охота', legendScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — легендарная охота', legendScenario()), save('Песочница — Скеллиге', skelligeScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

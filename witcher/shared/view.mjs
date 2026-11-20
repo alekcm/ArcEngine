@@ -23,6 +23,8 @@ export function viewFor(state, seat) {
         s.legend.ruinPool = s.legend.ruinPool.length;
         s.legend.ruins = Object.keys(s.legend.ruins).map(Number);
     }
+    // «Скеллиге»: the exploration deck and the gifts lie face down.
+    if (s.sk) { s.sk.deck = s.sk.deck.length; s.sk.gifts = s.sk.gifts.length; }
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;
     s.extraStack = s.extraStack.length;
     if (s.explore) for (const k of Object.keys(s.explore)) s.explore[k] = s.explore[k].length;

@@ -12,6 +12,7 @@ import { MUTAGEN, MUTAGEN_GAIN } from '../data/trail-data.mjs';
 import { SKILLTROPHIES } from '../data/gen-data.mjs';
 import { hasTrophy, hasGear, keepOf, elixirCap, trainCost, GEAR_MOVES } from './effects.mjs';
 import { bombOfferError, askElixirOrBomb } from './bombs.mjs';
+import { skCanEnter, skArrived, gift04Pending } from './skellige.mjs';
 
 export const SKILL_GEN = { combat: 'сражения', defense: 'защиты', alchemy: 'алхимии', spec: 'специализации' };
 
@@ -30,6 +31,8 @@ STEPS.startTurn = (state, step) => {
 STEPS.endTurn = (state) => {
     const t = state.turn;
     const p = state.players[t.seat];
+    // «Скеллиге», gift 04: once per turn after phase III.
+    if (gift04Pending(state, p)) { push(state, { op: 'skGift04Ask', seat: p.seat }, { op: 'endTurn' }); return; }
     // Trophies that trigger at the end of the turn.
     if (hasTrophy(p, 'MON-03') && LOC[p.loc].terrain === 'water') push(state, { op: 'gainElixir', seat: p.seat, n: 1, why: 'трофей «Гнездо гулей»' });
     if (hasTrophy(p, 'MON-20')) { p.gold += 1; log(state, `${p.name}: +1 золото (трофей «Водная баба»)`); }
@@ -169,6 +172,8 @@ STEPS.elixirDiscard = (state, step) => {
 STEPS.gainTrophy = (state, step) => {
     const p = state.players[step.seat];
     p.trophies.push({ kind: step.kind, id: step.id, ...(step.card ? { card: step.card } : {}) });
+    // «Скеллиге»: «получите трофей … (не перемещайте свой жетон трофеев)» — no track, no exhaustion.
+    if (step.noTrack) { fx(state, { k: 'trophy', seat: p.seat, kind: step.kind, id: step.id, track: p.track }); return; }
     const meditation = step.kind === 'skill';
     if (state.legend) {
         // «Легендарная охота»: the top division does not end the game; the token stops there.
@@ -293,7 +298,8 @@ export function movePaymentError(state, p, to, cards, gold, via) {
 export function canEnter(state, to) {
     const l = LOC[to];
     if (!l) return false;
-    if (l.island && !state.skellige) return false;
+    // «Скеллиге»: the islands, the event islands once placed, the Dagon location while open.
+    if (l.island || l.dagon) return skCanEnter(state, to);
     return true;
 }
 STEPS.arrive = (state, step) => {
@@ -315,6 +321,8 @@ STEPS.arrive = (state, step) => {
     push(state, { op: 'trapCheck', seat: p.seat, on: 'move' });
     // «Уязвимости и особые атаки»: a vulnerability token in this location is taken face up.
     vulnPickup(state, p);
+    // «Скеллиге»: gift 05 (a Continent location with a ship).
+    skArrived(state, p);
 };
 
 /** Destinations of a kept-card move (Лошадь / гильдия купцов): adjacent locations of its terrain. */
@@ -448,6 +456,8 @@ STEPS.phase3 = (state) => {
     // Monster trophies that grant an extra draw for ending phase II in a terrain.
     if (hasTrophy(p, 'MON-12') && LOC[p.loc].terrain === 'mountain') t.drawDelta++;
     if (hasTrophy(p, 'MON-19') && LOC[p.loc].terrain === 'water') t.drawDelta++;
+    // Медвежьи меха (SK-EV-07): phase II ended on an island.
+    if (hasGear(p, 'SK-EV-07') && LOC[p.loc].island) { t.drawDelta++; log(state, `${p.name}: медвежьи меха — +1 карта в фазу III`); }
     push(state, { op: 'p3discardAsk' });
 };
 STEPS.p3discardAsk = (state) => {
@@ -513,7 +523,7 @@ STEPS.p3buyPick = (state, step) => {
     if (waterOk) {
         ask(state, {
             seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: cost,
-            title: `Оплата: ${cost}`, text: `Сбросьте ${cost} карт(ы) — или 1 карту с символом воды (трофей «Сирена»).`,
+            title: `Оплата: ${cost}`, text: `Сбросьте ${cost} карт(ы) — или 1 карту с символом воды (трофей «Сирена»).`, waterAlt: true,
             op: 'p3buyPay', args: { slot, waterAlt: true },
         });
         return;

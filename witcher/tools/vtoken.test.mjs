@@ -58,7 +58,8 @@ test('данные: 174 уязвимости закодированы, у каж
         for (const ops of list) { n++; for (const o of ops) { assert.ok(vulnWindow(o), id + ' ' + o.k); if (o.k === 'ignSp') assert.ok(BIG[id].attacks.some(a => a.name === o.name), o.name); } }
     }
     assert.equal(n, 174);
-    assert.deepEqual(Object.keys(VULNS).sort(), Object.keys(BIG).sort());
+    // «Скеллиге»: Dagon's special side has no vulnerabilities (Скеллиге.md p. 10).
+    assert.deepEqual(Object.keys(VULNS).sort(), Object.keys(BIG).filter(id => id !== 'DAGON').sort());
 });
 
 test('поле: по жетону на каждого монстра — в локации его местности без игроков; номер скрыт от всех', () => {

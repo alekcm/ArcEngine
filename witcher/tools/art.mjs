@@ -45,6 +45,7 @@ const ATLAS = {
     LEG: 'Легендарные монстры/Легендарные монстры.jpg',
     LATK: 'Легендарные монстры/Атаки.jpg',
     LMOVE: 'Легендарные монстры/Движение.jpg',
+    BIGMON: 'Монстры/C0A412B0121E82D71EABEBF758DFFE90C7A48D97_httpcloud3steamusercontentcomugc2033984369207806355AEF8C8D40EC913C9B22322C8BA6B19479F00B8B9.jpg',
 };
 const cellOf = (c) => { const m = /^r(\d+)c(\d+)$/.exec(c); return [+m[1], +m[2]]; };
 const atlases = new Map();
@@ -117,7 +118,14 @@ async function legend() {
     for (const r of RUINS) await sharp(path.join(SRC, 'Легендарные монстры', r.file)).resize({ width: 200 }).webp({ quality: 80 }).toFile(path.join(OUT, `${r.id}.webp`));
     console.log('легендарная охота:', LEGENDS.length + LEGATTACKS.length + LEGMOVES.length + RUINS.length);
 }
+/** «Скеллиге»: Dagon's illustration (large card r5c6, 929 × 1160 cells). The gifts are typeset by the
+ *  client: the scan of DAGON-GIFT-02 (r1c2) repeats the text of 04 (Скелиге/Дары Дагона.md). */
+async function skellige() {
+    await cut('BIGMON', 'r5c6', { x: 0, y: 0, w: 929, h: 780 }, 'DAGON.webp', 420, 929, 1160);
+    console.log('Скеллиге: 1');
+}
 const only = process.argv[2];
+if (only === 'sk') await skellige();
 if (only === 'legend') await legend();
 if (only === 'wtrophies') await witcherTrophies();
 if (!only || only === 'actions') await actions();

@@ -2,14 +2,17 @@
 import { STARTER, COMMON, MONSTERS, ATTACKS, POTIONS, BOARD, LEGENDS, LEGATTACKS } from '../data/gen-data.mjs';
 import { SKILL_VALUE, HAND_LIMIT } from '../data/rules-data.mjs';
 import { MASTERS, UNIQUES } from '../data/trail-data.mjs';
+import { DAGON, SK_LOCS } from '../data/skellige-data.mjs';
 
 export const CARDS = Object.fromEntries([...STARTER, ...COMMON, ...MASTERS, ...UNIQUES].map(c => [c.id, c]));
 // «Легендарная охота»: the legendary monsters share the lookup (level III for the level-indexed
 // texts, life = the 20 legendary combat cards) and their combat cards share ATTACK.
-export const MONSTER = Object.fromEntries([...MONSTERS, ...LEGENDS.map(l => ({ ...l, level: 3, life: LEGATTACKS.length, legend: true }))].map(m => [m.id, m]));
+// «Скеллиге»: Dagon (a level II monster card that never lies in a monster stack).
+export const MONSTER = Object.fromEntries([...MONSTERS, ...LEGENDS.map(l => ({ ...l, level: 3, life: LEGATTACKS.length, legend: true })), DAGON].map(m => [m.id, m]));
 export const ATTACK = Object.fromEntries([...ATTACKS, ...LEGATTACKS].map(a => [a.id, a]));
 export const POTION = Object.fromEntries(POTIONS.map(p => [p.id, p]));
-export const LOC = Object.fromEntries(BOARD.locs.map(l => [l.n, l]));
+// «Скеллиге»: the Dagon location (30) and the islands of the event cards (31–35) — see canEnter.
+export const LOC = Object.fromEntries([...BOARD.locs, ...SK_LOCS].map(l => [l.n, l]));
 export const ADJ = BOARD.adj;
 
 /** Elixir instances are "POTION-03#2"; this returns the printed card. */

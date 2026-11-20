@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SRC = path.join(ROOT, 'Witcher/События');
+const SK_SRC = path.join(ROOT, 'Witcher/Скелиге');
 const OUT = path.join(ROOT, 'witcher/shared/data/events-gen.mjs');
 
 const ATLAS = [
@@ -26,6 +27,10 @@ const ATLAS = [
     { file: 'Городские события 2.md', deck: 'city', short: 'Городские события 2', exp: 'ciri', numbered: 23 },
     { file: 'События мира 2.md', deck: 'wild', short: 'События мира 2', exp: 'ciri', numbered: 18 },
     { file: 'Ивенты 2.md', deck: null, short: 'Ивенты 2', exp: 'ciri' },
+    // Expansion «Скеллиге»: exploration cards with a calm and a dangerous half (read when sailing to
+    // an island), events SK-EV-01..30 = numbers 1001..1030 here (the deck is not shuffled).
+    { file: 'Исследования Скеллиге.md', dir: SK_SRC, deck: 'skellige', short: 'Исследования Скеллиге', exp: 'skellige', halves: true },
+    { file: 'События Скеллиге.md', dir: SK_SRC, deck: null, short: 'События Скеллиге', exp: 'skellige' },
 ];
 
 const SKILL = { 'сражения': 'combat', 'защиты': 'defense', 'алхимии': 'alchemy', 'специализации': 'spec' };
@@ -45,6 +50,13 @@ const KEEP = {
 };
 // Cards whose printed effect is too special for the phrase parser: hand-written data.
 const HAND = {
+    // «Скеллиге» SK-EX-36 (calm half): two conditional paragraphs on the track token of the monster
+    // in a mountain location.
+    'SK-EX-36C': {
+        intro: 'Когда на море спокойно, у иных моряков дел немного. Вот и сегодня они решили убить время, пересказывая истории о зверях.',
+        effect: 'Если у вас есть жетон следа монстра, находящегося в горной локации: моряки слушают вас с большим интересом. Возьмите 2 золота.\nЕсли у вас нет жетона следа монстра, находящегося в горной локации: «Что ж ты за ведьмак такой, если и рассказать нечего? Тогда слушай, что мы слыхали…» Возьмите жетон следа монстра, находящегося в горной локации.',
+        fx: [{ if: { trackOf: 'mountain' }, fx: [{ gold: 2 }], else: [{ track: 'mountain' }] }],
+    },
     // Manticore sting (from CONT81-26): at your own school or at another player's.
     'CONT79-10': {
         intro: 'Вы приносите жало мантикоры в ведьмачью школу.',
@@ -60,6 +72,19 @@ const HAND = {
         fx: [{ if: { pokerVs: 'town' }, fx: [{ shield: -2 }], else: [{ draw: -1 }] }],
     },
 };
+// «Скеллиге»: the five island cards (actions on p. 11 of the rules) and the four gear cards are
+// pictograms / short texts — hand-written data.
+const SK_HAND = {
+    'SK-EV-01': { island: { name: 'Хен Инис', act: 'heninis' }, text: 'Если у вас не больше 1 трофея монстра I уровня, получите трофей случайного монстра I уровня (жетон трофеев не перемещается).' },
+    'SK-EV-02': { island: { name: 'Лок Гвен', act: 'gold3' }, text: 'Возьмите 3 золота.' },
+    'SK-EV-03': { island: { name: 'Энье Ард', act: 'elixir4' }, text: 'Возьмите 4 эликсира с верха колоды. Если у вас больше 4 эликсиров, сбросьте лишние.' },
+    'SK-EV-04': { island: { name: 'Павен-и-Креван', act: 'tracks' }, text: 'Возьмите по 1 жетону следа каждого типа, которого у вас ещё нет.' },
+    'SK-EV-05': { island: { name: 'Хвандр Хеванги', act: 'hunt' }, text: 'Выберите стопку монстров I, II или III уровня и возьмите из неё 1 случайный жетон; немедленно завершите фазу I и сразитесь с этим монстром в фазу II. После битвы новый монстр не появляется; если вы не победили, монстр возвращается в стопку.' },
+    'SK-EV-06': { gear: true, kind: 'Снаряжение', name: 'Ожерелье', text: 'Один раз за ход: бросая кубик при перемещении на остров, добавьте 1 к результату.' },
+    'SK-EV-07': { gear: true, kind: 'Снаряжение', name: 'Медвежьи меха', text: 'Каждый раз, когда вы заканчиваете фазу II на острове, в фазу III возьмите из своей колоды на 1 карту больше.' },
+    'SK-EV-13': { gear: true, kind: 'Снаряжение', name: 'Нагрудник со Скеллиге', text: 'Один раз за битву: в конце своего хода битвы возьмите на 1 карту больше.' },
+    'SK-EV-14': { gear: true, kind: 'Снаряжение', name: 'Подзорная труба', text: 'Один раз за ход: бросая кубик при перемещении на остров, бросьте ещё один кубик. Используйте результат одного из этих бросков на свой выбор.' },
+};
 // Names of the auto-detected «вместо следующего исследования» cards (shown in the player panel).
 const KEEP_NAME = {
     'CITY2-15A': 'Должок краснолюда', 'CITY2-17B': 'Слухи нищего', 'CITY2-19A': 'Глаз химеры', 'CITY2-29A': 'Приглашение на ужин',
@@ -69,6 +94,7 @@ let CUR = '';   // card id + option letter while parsing (for KEEP)
 const num = (s) => ({ 'одну': 1, 'одна': 1 })[s] || Number(s);
 
 const clean = (s) => s
+    .replace(/`КНИГА \+ КОРАБЛЬ`\s*\[(\d+)\](?:\((?:<[^>]*>|#[^)]*)\))?/g, (m, n) => `[СОБЫТИЕ:${1000 + Number(n)}]`)
     .replace(/\[СОБЫТИЕ:(\d+)\](?:\((?:<[^>]*>|#[^)]*)\))+/g, '[СОБЫТИЕ:$1]')
     .replace(/\[([^\]]+)\]\((?:<[^>]*>|#[^)]*)\)/g, '$1')
     .replace(/✦\s*/g, '')
@@ -144,6 +170,23 @@ function sentence(s) {
     if ((m = s.match(/^В фазу III,? получая карту из ряда на поле, снизьте (?:её|ее) стоимость на (\d)$/))) return [{ buyDiscount: num(m[1]) }];
     if ((m = s.match(/^Возьмите \[СОБЫТИЕ:(\d+)\], но не показывайте (?:её|ее) другим игрокам$/))) return [{ secret: Number(m[1]) }];
     if ((m = s.match(/^Получите за победу над монстром на (\d+) золот[оа] меньше$/))) return [{ gold: -num(m[1]) }];
+    // Expansion «Скеллиге» (exploration cards and events SK-EV, Witcher/Скелиге/*.md).
+    if (/^Переместите Дагона на 1 деление вверх по шкале$/.test(s)) return [{ dagon: 1 }];
+    if (/^Понизьте любой свой навык на 1$/.test(s)) return [{ skillDown: 'any' }];
+    if (/^Увеличьте любой другой свой навык на 1$/.test(s)) return [{ skill: 'anyOther' }];
+    if ((m = s.match(/^Возьмите 1 случайный жетон из стопки монстров (I|II|III) уровня и получите трофей этого монстра \(не перемещайте свой жетон трофеев\)$/))) return [{ randomTrophy: m[1].length }];
+    if (/^Сыграйте в покер на костях по обычным правилам игры с горожанами \(если у вас нет золота — сыграйте,? не добавляя своё 1 золото в качестве ставки\)$/.test(s)) return [{ poker: { stake: 'ifGold' } }];
+    if (/^Сбросьте из руки 1 карту защитного Знака \(жёлтую\) либо 2 любые карты$/.test(s)) return [{ discardColorOr: { color: 'yellow', n: 2 } }];
+    if (/^Сбросьте все карты из руки$/.test(s)) return [{ discardHand: 99 }];
+    if (/^Сбросьте все карты с символом водной местности из руки$/.test(s)) return [{ discardTerrain: 'water' }];
+    if (/^После выполнения действия локации на острове в этом ходу,? немедленно перейдите к фазе III$/.test(s)) return [{ skP3AfterAction: true }];
+    if (/^После выполнения действия локации на острове в этом ходу,? можете переместиться на корабле на Континент,? не сбрасывая карты$/.test(s)) return [{ skFreeReturn: true }];
+    if ((m = s.match(/^Поместите \[СОБЫТИЕ:(\d+)\] рядом с полем$/))) return [{ skIsland: Number(m[1]) }];
+    if (/^Переместитесь туда вместо изначально выбранной локации$/.test(s)) return [{ skRedirect: true }];
+    if (/^Вы можете переместиться туда вместо изначально выбранной локации$/.test(s)) return [{ skRedirect: 'may' }];
+    if (/^Выполните действие локации$/.test(s)) return [{ skDoAction: true }];
+    if (/^Останьтесь в портовой локации$/.test(s)) return [{ skStay: true }];
+    if (/^Вы не можете перемещаться на остров до конца хода$/.test(s)) return [{ skNoSail: true }];
     return null;
 }
 
@@ -152,14 +195,16 @@ function effects(text) {
     const bad = [];
     const fx = [];
     let t = ' ' + text + ' ';
-    const tail = '\\.\\s*В локации:\\s*(?:сбросьте (\\d+) золот(?:о|а), чтобы взять |возьмите )?\\[СОБЫТИЕ:(\\d+)\\]\\.?';
+    const tail = '\\.\\s*В локации:\\s*(?:сбросьте (\\d+) (?:золот(?:о|а)|(карт)[уы] из руки), чтобы взять |возьмите )?\\[СОБЫТИЕ:(\\d+)\\]\\.?';
     const qT = new RegExp('Задание:\\s*(лесная|горная|водная) локация' + tail);
     const qL = new RegExp('Задание:\\s*([А-ЯЁ][А-ЯЁа-яё’ -]+?)\\s*\\((\\d+)\\)' + tail);
     const qS = new RegExp('Задание:\\s*локация вашей школы( или школы другого игрока)?' + tail);
     let quest = null, m;
-    if ((m = t.match(qT))) { quest = { terrain: TERRAIN[m[1]], gold: m[2] ? Number(m[2]) : 0, num: Number(m[3]) }; t = t.replace(m[0], ' '); }
-    else if ((m = t.match(qL))) { quest = { loc: Number(m[2]), gold: m[3] ? Number(m[3]) : 0, num: Number(m[4]) }; t = t.replace(m[0], ' '); }
-    else if ((m = t.match(qS))) { quest = { school: m[1] ? 'any' : true, gold: m[2] ? Number(m[2]) : 0, num: Number(m[3]) }; t = t.replace(m[0], ' '); }
+    // «сбросьте N золота / N карт из руки, чтобы взять событие» — the price of the quest.
+    const price = (n, cards) => !n ? { gold: 0 } : cards ? { gold: 0, cards: Number(n) } : { gold: Number(n) };
+    if ((m = t.match(qT))) { quest = { terrain: TERRAIN[m[1]], ...price(m[2], m[3]), num: Number(m[4]) }; t = t.replace(m[0], ' '); }
+    else if ((m = t.match(qL))) { quest = { loc: Number(m[2]), ...price(m[3], m[4]), num: Number(m[5]) }; t = t.replace(m[0], ' '); }
+    else if ((m = t.match(qS))) { quest = { school: m[1] ? 'any' : true, ...price(m[2], m[3]), num: Number(m[4]) }; t = t.replace(m[0], ' '); }
     else if (/Задание/.test(t)) bad.push(t.match(/Задание[^.]*\.[^.]*\./)?.[0] || 'Задание');
     // «Поместите жетон задания в … Когда любой игрок, кроме вас, переместится туда, возьмите
     // событие N и зачитайте ему» — a quest token that springs on the other players.
@@ -217,9 +262,9 @@ function effects(text) {
     return { fx, bad, trigger };
 }
 
-const RANGE = /^(?:\*\*)?(\d+)(?:[–-](\d+)|(\+))?(?: урона)?:(?:\*\*)?\s*/;
+const RANGE = /^(?:\*\*)?(\d+)(?:[–-](\d+)|(\+))?(?: урона?)?:(?:\*\*)?\s*/;
 // «Возьмите N карт из своей колоды и немедленно разыграйте комбинацию…» (CONT79-07/12/19/27).
-const COMBO = /\s*(?:Возьмите (\d+) карт[уы]? из своей колоды и немедленно|Немедленно) разыграйте комбинацию\. Примените только (?:щиты и урон|урон и щиты), а остальные эффекты проигнорируйте\. Затем выполните эффект согласно количеству урона в комбинации:\*\*$/;
+const COMBO = /\s*(?:Возьмите (\d+) карт[уы]? из своей колоды и немедленно|Немедленно) разыграйте комбинацию\. Примените только (щиты и урон|урон и щиты|урон), а остальные эффекты проигнорируйте\. Затем выполните эффект согласно количеству урона в комбинации:\*\*$/;
 const X2 = /^\*\*Умножьте уровень своего навыка (сражения|защиты|алхимии|специализации) на 2\. Затем бросьте кубик и прибавьте выпавшее значение к результату\. Выполните эффект согласно получившейся сумме:\*\*$/;
 // «Сбросьте любое количество эликсиров (но не менее 1, если можете). Затем выполните эффект
 // согласно количеству сброшенных эликсиров:» (CONT80-34).
@@ -247,7 +292,7 @@ function section(paras) {
         ps.push(...paragraphs(p));
     }
     const story = [], pre = [], post = [], branches = [];
-    let mode = 'story', by = null, cur = null, x2 = false, orAny = false, head = null, comboDraw = 0;
+    let mode = 'story', by = null, cur = null, x2 = false, orAny = false, head = null, comboDraw = 0, dmgOnly = false;
     const bad = [];
     for (const p of ps) {
         let m;
@@ -256,7 +301,7 @@ function section(paras) {
         if ((m = p.match(COMBO))) {
             const before = p.slice(0, m.index).trim();
             if (before && before !== '**') pre.push(before + '**');
-            mode = 'roll'; by = 'combo'; comboDraw = Number(m[1] || 0); head = clean(m[0]); continue;
+            mode = 'roll'; by = 'combo'; comboDraw = Number(m[1] || 0); dmgOnly = m[2] === 'урон'; head = clean(m[0]); continue;
         }
         if (/^\**(?:Затем )?[Бб]росьте кубик:?\**:?$/.test(p)) { mode = 'roll'; by = 'die'; continue; }
         if (/^\*\*Зачитайте эту карту любому другому игроку/.test(p)) { pre.push(p); continue; }
@@ -308,7 +353,7 @@ function section(paras) {
             if (!DICE) bad.push('покер: нет кубиков соперника');
             const w = out.find(b => b.from === 1), l = out.find(b => b.from === 0);
             fx.push({ poker: { dice: DICE, opp: OPP, win: w ? w.fx : [], lose: l ? l.fx : [] } });
-        } else fx.push(by === 'die' ? { roll: out } : by === 'elixirs' ? { roll: out, by } : x2 ? { roll: out, by, x2: true } : by === 'combo' ? { roll: out, by, comboDraw } : { roll: out, by });
+        } else fx.push(by === 'die' ? { roll: out } : by === 'elixirs' ? { roll: out, by } : x2 ? { roll: out, by, x2: true } : by === 'combo' ? { roll: out, by, comboDraw, ...(dmgOnly ? { dmgOnly } : {}) } : { roll: out, by });
     }
     const po = effects(post.map(clean).join(' ')); fx.push(...po.fx); bad.push(...po.bad);
     const effLines = pre.map(clean).filter(l => !/^Зачитайте эту карту любому другому игроку/.test(l));
@@ -336,6 +381,9 @@ function optionCost(label) {
     const c = label.match(/Сбросьте 1 карту [^(]*\((жёлтую|зелёную|фиолетовую|синюю|красную)\) из руки/);
     if (c) return { color: { 'жёлтую': 'yellow', 'зелёную': 'green', 'фиолетовую': 'purple', 'синюю': 'blue', 'красную': 'red' }[c[1]] };
     if (/Сбросьте 1 карту из руки \(если в руке нет карт/.test(label)) return { card: 1 };
+    // «Скеллиге»: a plain card from the hand (the option needs one) / a card of a terrain.
+    if (/Сбросьте 1 карту из руки\.?$/.test(label)) return { card: 1, need: true };
+    if (/Сбросьте 1 карту с символом водной местности из руки/.test(label)) return { terrain: 'water' };
     if (/Сбросьте|Уберите/.test(label)) return { unknown: true };
     return null;
 }
@@ -343,14 +391,31 @@ function optionCost(label) {
 function paragraphs(s) { return s.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean); }
 
 function parseAtlas(a) {
-    const text = fs.readFileSync(path.join(SRC, a.file), 'utf8');
+    const text = fs.readFileSync(path.join(a.dir || SRC, a.file), 'utf8');
     const cards = {};
     for (const chunk of text.split(/\n### /).slice(1)) {
         const head = chunk.split('\n')[0];
         const [id, pos] = head.split(' — ').map(x => x.trim());
-        if (!/^[A-Z]+\d*-\d+$/.test(id)) continue; // mapping tables, «Пустая ячейка» — not cards
-        const body = chunk.slice(head.length).replace(/\n<a id=[^\n]*\n?/g, '\n');
-        const card = { src: `${a.short} · ${pos}` };
+        if (!/^[A-Z]+\d*(?:-[A-Z]+)?-\d+$/.test(id)) continue; // mapping tables, «Пустая ячейка» — not cards
+        const body = chunk.slice(head.length).replace(/\n<a id=[^\n]*\n?/g, '\n').replace(/\n## [^\n]*[\s\S]*$/, '\n');
+        if (a.halves) {
+            // «Скеллиге»: [Спокойно] … [Опасно] … — each half is read like a card of its own.
+            const [calm, danger] = body.split(/\*\*\[Опасно\]\*\*/);
+            const src = `${a.short} · ${pos}`;
+            cards[id] = { src, halves: [id + 'C', id + 'D'] };
+            cards[id + 'C'] = parseBody(id + 'C', calm.replace(/\*\*\[Спокойно\]\*\*/, ''), { src, half: 'calm', parent: id });
+            cards[id + 'D'] = parseBody(id + 'D', danger || '', { src, half: 'danger', parent: id });
+            for (const h of ['C', 'D']) if (HAND[id + h]) { Object.assign(cards[id + h], HAND[id + h]); cards[id + h].bad = []; }
+            continue;
+        }
+        if (SK_HAND[id]) { cards[id] = { src: `${a.short} · ${pos}`, ...SK_HAND[id], bad: [] }; continue; }
+        cards[id] = parseBody(id, body, { src: `${a.short} · ${pos}` });
+    }
+    return cards;
+}
+/** One card body (or one half of a Skellige exploration card) → card data. */
+function parseBody(id, body, card) {
+    {
         const [pre, post] = body.split(/\n---\n/);
         const preP = paragraphs(pre).filter(p => !p.startsWith('#'));
         if (!post) {
@@ -392,7 +457,12 @@ function parseAtlas(a) {
             for (let i = 1; i < segs.length; i += 2) {
                 const k = segs[i] === 'А' ? 'a' : 'b';
                 CUR = id + segs[i].replace('А', 'A').replace('Б', 'B');
-                const sec = section(paragraphs(segs[i + 1]));
+                // «Скеллиге» prints the effect in bold at the end of the story paragraph: split it off.
+                const paras = paragraphs(segs[i + 1]).flatMap(p => {
+                    const m = !p.startsWith('**') && p.match(/^(.*[^*])\s+(\*\*[^*]+\*\*)$/s);
+                    return m ? [m[1], m[2]] : [p];
+                });
+                const sec = section(paras);
                 const o = card[k] || (card[k] = { label: '' });
                 o.outcome = sec.story;
                 o.effect = sec.effect;
@@ -403,29 +473,28 @@ function parseAtlas(a) {
             }
         }
         if (HAND[id]) { Object.assign(card, HAND[id]); card.bad = []; }
-        cards[id] = card;
     }
-    return cards;
+    return card;
 }
 
 const all = {};
-const decks = { city: [], wild: [] }, expDecks = { city: [], wild: [] };
+const decks = { city: [], wild: [] }, expDecks = { city: [], wild: [], skellige: [] };
 for (const a of ATLAS) {
     const c = parseAtlas(a);
     const ids = Object.keys(c);
     for (const id of ids) if (a.exp) c[id].exp = a.exp;
     Object.assign(all, c);
-    if (a.deck) (a.exp ? expDecks : decks)[a.deck].push(...ids.slice(a.numbered || 0));
+    if (a.deck) (a.exp ? expDecks : decks)[a.deck].push(...ids.filter(id => !c[id].half).slice(a.numbered || 0));
 }
 // Event numbers: [СОБЫТИЕ:N] → the card id (see the atlas notes): 1–56 Ивенты 1 (cell N),
 // 57–75 and 94–97 the first faces of Городские события 2, 76–93 of События мира 2,
 // 98–137 Ивенты 2.
 const pad = (n) => String(n).padStart(2, '0');
-const evId = (n) => n <= 56 ? `CONT79-${pad(n)}` : n <= 75 ? `CITY2-${pad(n - 56)}` : n <= 93 ? `CONT82-${pad(n - 75)}`
+const evId = (n) => n > 1000 ? `SK-EV-${pad(n - 1000)}` : n <= 56 ? `CONT79-${pad(n)}` : n <= 75 ? `CITY2-${pad(n - 56)}` : n <= 93 ? `CONT82-${pad(n - 75)}`
     : n <= 97 ? `CITY2-${pad(n - 74)}` : `CONT80-${pad(n - 97)}`;
-const NUM = Object.fromEntries(Array.from({ length: 137 }, (_, i) => [evId(i + 1), i + 1]));
+const NUM = Object.fromEntries([...Array.from({ length: 137 }, (_, i) => i + 1), ...Array.from({ length: 30 }, (_, i) => 1001 + i)].map(n => [evId(n), n]));
 // Equipment and companions the engine implements (fight.mjs, turn.mjs, explore.mjs).
-const GEAR_OK = new Set(['CONT79-01', 'CONT79-05', 'CONT79-11', 'CONT79-13', 'CONT79-14', 'CONT79-15', 'CONT79-16',
+const GEAR_OK = new Set(['SK-EV-06', 'SK-EV-07', 'SK-EV-13', 'SK-EV-14', 'CONT79-01', 'CONT79-05', 'CONT79-11', 'CONT79-13', 'CONT79-14', 'CONT79-15', 'CONT79-16',
     'CONT79-18', 'CONT79-20', 'CONT79-23', 'CONT79-28', 'CONT79-31', 'CONT79-50', 'CONT79-56', 'CONT80-37', 'CONT80-39']);
 const why = {};
 function fxRefs(fx, out = []) {
@@ -449,10 +518,12 @@ function supported(id, seen = new Set()) {
     if (!c) reason = 'нет карты';
     else if (c.gear) reason = GEAR_OK.has(id) ? '' : `${c.kind.toLowerCase()} «${c.name}» ещё не реализован`;
     else {
-        const parts = c.a ? [c.a, c.b] : [c];
+        const parts = c.halves ? [] : c.a ? [c.a, c.b] : [c];
+        if (c.halves) for (const h of c.halves) if (!reason && !supported(h, seen)) reason = `${all[h].half === 'calm' ? 'спокойно' : 'опасно'}: ${why[h]}`;
         if (c.badTrigger) reason = 'эффект: ' + c.badTrigger;
         for (const o of parts) {
             if (reason) break;
+            if (c.island) break;
             if (!o || !o.fx) { reason = 'нет текста'; break; }
             if (o.bad.length) { reason = 'эффект: ' + o.bad[0]; break; }
             const bad = fxRefs(o.fx).find(r => !supported(r, seen));
@@ -472,7 +543,8 @@ function finish(fx) {
         if (e.trap) return { trap: { where: e.trap.where, on: e.trap.on, event: evId(e.trap.num) } };
         if (e.secret) return { secret: evId(e.secret) };
         if (e.keep) return e.keep.event ? { keep: { ...e.keep, event: evId(e.keep.event) } } : e;
-        if (e.quest) { const q = { event: evId(e.quest.num) }; for (const k of ['terrain', 'loc', 'school', 'gold']) if (e.quest[k]) q[k] = e.quest[k]; return { quest: q }; }
+        if (e.quest) { const q = { event: evId(e.quest.num) }; for (const k of ['terrain', 'loc', 'school', 'gold', 'cards']) if (e.quest[k]) q[k] = e.quest[k]; return { quest: q }; }
+        if (e.skIsland) return { skIsland: evId(e.skIsland) };
         if (e.roll) return { ...e, roll: e.roll.map(b => ({ from: b.from, to: b.to, text: b.text, effect: b.effect, fx: finish(b.fx) })) };
         if (e.if) return e.else ? { if: e.if, fx: finish(e.fx), else: finish(e.else) } : { if: e.if, fx: finish(e.fx) };
         return e;
@@ -481,15 +553,19 @@ function finish(fx) {
 const outCards = {};
 for (const [id, c] of Object.entries(all)) {
     if (why[id]) continue;
-    const o = { ...c };
-    for (const k of ['a', 'b']) if (o[k]) { o[k] = { ...o[k], fx: finish(o[k].fx) }; delete o[k].bad; }
-    if (o.fx) o.fx = finish(o.fx);
-    delete o.bad;
-    if (NUM[id]) o.num = NUM[id];
+    const fin = (c0) => {
+        const o = { ...c0 };
+        for (const k of ['a', 'b']) if (o[k]) { o[k] = { ...o[k], fx: finish(o[k].fx) }; delete o[k].bad; }
+        if (o.fx) o.fx = finish(o.fx);
+        delete o.bad;
+        return o;
+    };
+    const o = fin(c);
+    if (NUM[id]) o.num = NUM[id] > 1000 ? `Скеллиге ${NUM[id] - 1000}` : NUM[id];
     outCards[id] = o;
 }
 const DECKS = { city: decks.city.filter(id => !why[id]), wild: decks.wild.filter(id => !why[id]) };
-const EXP_DECKS = { ciri: { city: expDecks.city.filter(id => !why[id]), wild: expDecks.wild.filter(id => !why[id]) } };
+const EXP_DECKS = { ciri: { city: expDecks.city.filter(id => !why[id]), wild: expDecks.wild.filter(id => !why[id]) }, skellige: { explore: expDecks.skellige.filter(id => !why[id]) } };
 const UNSUP = Object.fromEntries(Object.entries(why).filter(([, r]) => r));
 const js = `// GENERATED by witcher/tools/events-gen.mjs from Witcher/События/*.md — do not edit by hand;
 // hand-tuned overrides live in events-data.mjs. ${Object.keys(outCards).length} cards supported.
@@ -507,5 +583,5 @@ if (process.argv.includes('--check')) {
     process.exit(0);
 }
 fs.writeFileSync(OUT, js);
-console.log(`город: ${DECKS.city.length}/${decks.city.length}, окрестности: ${DECKS.wild.length}/${decks.wild.length}; доп. события: город ${EXP_DECKS.ciri.city.length}/${expDecks.city.length}, окрестности ${EXP_DECKS.ciri.wild.length}/${expDecks.wild.length}; всего карт: ${Object.keys(outCards).length}`);
+console.log(`город: ${DECKS.city.length}/${decks.city.length}, окрестности: ${DECKS.wild.length}/${decks.wild.length}; доп. события: город ${EXP_DECKS.ciri.city.length}/${expDecks.city.length}, окрестности ${EXP_DECKS.ciri.wild.length}/${expDecks.wild.length}; Скеллиге: исследования ${EXP_DECKS.skellige.explore.length}/${expDecks.skellige.length}, события ${Object.keys(outCards).filter(id => id.startsWith('SK-EV')).length}/30; всего карт: ${Object.keys(outCards).length}`);
 if (process.argv.includes('-v')) for (const [id, r] of Object.entries(UNSUP)) console.log(' ', id, '—', r);

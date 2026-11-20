@@ -2,7 +2,7 @@
 // by the game), camera control, move highlights. Pure presentation — it never decides rules.
 /* global BABYLON */
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
-import { MONSTER } from '/shared/engine/util.mjs';
+import { MONSTER, LOC } from '/shared/engine/util.mjs';
 import { toonMaterial, inkMini } from './toon.js';
 
 // Board pins: pixel coordinates of the location number badges on Игровой стол.jpg.
@@ -10,14 +10,19 @@ const PINS = {
     0: [5090, 1758], 1: [3223, 744], 2: [4226, 700], 3: [5170, 575], 4: [5255, 880], 5: [3100, 1312], 6: [3453, 1105],
     7: [4102, 1152], 8: [5059, 1264], 9: [3223, 1735], 10: [4142, 1899], 11: [4958, 1942], 12: [3347, 2212], 13: [3442, 2628],
     14: [4361, 2500], 15: [5347, 2382], 16: [3898, 2919], 17: [4674, 2857], 18: [5293, 2937], 19: [2659, 1873], 20: [2487, 2220], 21: [2706, 2777],
+    // «Скеллиге»: the Dagon location (the top circle of his track) and the islands of the event
+    // cards, laid on the table to the left of the Skellige strip.
+    30: [2232, 430], 31: [1840, 1250], 32: [1840, 1650], 33: [1840, 2050], 34: [1840, 2450], 35: [1840, 2850],
 };
+/** «Скеллиге»: the divisions of the Dagon track under his location (index 0 = the bottom one). */
+const DAGON_TRACK = [[2178, 1300], [2178, 1100], [2178, 905], [2178, 715]];
+const pxWorld = ([x, y]) => new BABYLON.Vector3(((x - 2050) / 3375 - 0.5) * MAP_W, 0, (0.5 - (y - 270) / 2725) * MAP_H);
 const MAP_W = 16, MAP_H = 16 * 2725 / 3375;
+const LOC_NAMES = new Proxy({}, { get: (_, n) => LOC[n] && LOC[n].name });
 export const TERRAIN_HEX = { forest: '#3f9a3a', mountain: '#9aa0a8', water: '#2f86cf', joker: '#c49a3a' };
 
 export function pinWorld(n) {
-    const [x, y] = PINS[n];
-    const u = (x - 2050) / 3375, v = (y - 270) / 2725;
-    return new BABYLON.Vector3((u - 0.5) * MAP_W, 0, (0.5 - v) * MAP_H);
+    return pxWorld(PINS[n]);
 }
 
 const meshCache = new Map();
@@ -319,6 +324,86 @@ export class Board {
             node.scaling.setAll(Math.max(0.01, 1 - t)); node.position.y = t * 0.6;
             if (t >= 1) { this.scene.onBeforeRenderObservable.remove(obs); node.dispose(); }
         });
+    }
+
+    /** «Скеллиге»: ships, Dagon on his track or in his location, Сирена, the event islands. */
+    async syncSkellige(sk) {
+        const st = this.sk || (this.sk = { ships: [], tiles: {}, mini: null, marker: null });
+        for (const n of [30, 31, 32, 33, 34, 35]) if (this.pins[n]) this.pins[n].isPickable = !!sk && (n === 30 || sk.islands.includes(n));
+        if (!sk) return;
+        // Ships: a little longship next to the badge; slides from port to island.
+        while (st.ships.length < sk.ships.length) st.ships.push({ node: this.makeShip('ship' + st.ships.length), loc: null });
+        const at = (loc) => pinWorld(loc).add(new BABYLON.Vector3(-0.62, 0, -0.32));
+        const left = sk.ships.slice(), free = [];
+        for (const s of st.ships) { const i = left.indexOf(s.loc); if (i >= 0) left.splice(i, 1); else free.push(s); }
+        for (const s of free) {
+            const to = left.shift();
+            if (s.loc == null) s.node.position = at(to); else this.slide(s.node, at(to));
+            s.loc = to;
+        }
+        // The event islands: a parchment tile with the island's name.
+        for (const n of sk.islands) if (!st.tiles[n]) { st.tiles[n] = this.makeIslandTile(n); this.appear(st.tiles[n]); }
+        // Dagon: a token on the track, the miniature when he is up; otherwise Сирена (if in play).
+        const up = sk.track >= DAGON_TRACK.length;
+        if (!st.marker) {
+            const c = st.marker = BABYLON.MeshBuilder.CreateCylinder('dagonTok', { diameter: 0.34, height: 0.07, tessellation: 24 }, this.scene);
+            const m = new BABYLON.StandardMaterial('dagonTokM', this.scene);
+            m.diffuseColor = BABYLON.Color3.FromHexString('#2a7f86'); m.emissiveColor = BABYLON.Color3.FromHexString('#2a7f86').scale(0.3);
+            c.material = m; c.isPickable = false; this.shadows.addShadowCaster(c);
+        }
+        st.marker.setEnabled(!up);
+        if (!up) { const p = pxWorld(DAGON_TRACK[sk.track]).add(new BABYLON.Vector3(0, 0.04, 0)); if (st.track == null) st.marker.position = p; else if (st.track !== sk.track) this.slide(st.marker, p); }
+        st.track = sk.track;
+        const want = up ? 'DAGON' : sk.siren ? 'MON-31' : null;
+        if (st.mini && st.mini.mon !== want) { if (st.mini.root) this.vanish(st.mini.root); st.mini = null; }
+        if (want && !st.mini) {
+            const m = st.mini = { mon: want, loading: true };
+            const made = await this.makeModel(want, '#3a6a6a', want === 'DAGON' ? 1.2 : 0.85, 'skmini');
+            if (st.mini !== m) { made.root.dispose(); return; }
+            Object.assign(m, made, { loading: false });
+            made.base.material.diffuseColor = BABYLON.Color3.FromHexString('#2a6f86');
+            if (made.model) made.model.material.diffuseColor = new BABYLON.Color3(0.3, 0.42, 0.44);
+            made.root.position = pinWorld(30).add(new BABYLON.Vector3(0.55, 0, 0.1));
+            this.appear(made.root);
+        }
+    }
+    makeShip(name) {
+        const root = new BABYLON.TransformNode(name, this.scene);
+        const wood = new BABYLON.StandardMaterial(name + 'w', this.scene);
+        wood.diffuseColor = new BABYLON.Color3(0.42, 0.27, 0.14); wood.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+        const sail = new BABYLON.StandardMaterial(name + 's', this.scene);
+        sail.diffuseColor = new BABYLON.Color3(0.78, 0.2, 0.16); sail.specularColor = new BABYLON.Color3(0, 0, 0); sail.backFaceCulling = false;
+        const hull = BABYLON.MeshBuilder.CreateCylinder(name + 'h', { diameterTop: 0.2, diameterBottom: 0.1, height: 0.62, tessellation: 12 }, this.scene);
+        hull.rotation.z = Math.PI / 2; hull.scaling.z = 0.75; hull.position.y = 0.07; hull.parent = root; hull.material = wood;
+        for (const s of [-1, 1]) {
+            const prow = BABYLON.MeshBuilder.CreateCylinder(name + 'p' + s, { diameterTop: 0, diameterBottom: 0.07, height: 0.16, tessellation: 8 }, this.scene);
+            prow.position = new BABYLON.Vector3(s * 0.33, 0.14, 0); prow.rotation.z = -s * 0.5; prow.parent = root; prow.material = wood;
+        }
+        const mast = BABYLON.MeshBuilder.CreateCylinder(name + 'm', { diameter: 0.025, height: 0.5, tessellation: 6 }, this.scene);
+        mast.position.y = 0.36; mast.parent = root; mast.material = wood;
+        const cloth = BABYLON.MeshBuilder.CreatePlane(name + 'c', { width: 0.34, height: 0.26 }, this.scene);
+        cloth.position = new BABYLON.Vector3(0, 0.42, 0.02); cloth.rotation.y = Math.PI / 2; cloth.parent = root; cloth.material = sail;
+        for (const m of [hull, mast, cloth]) { m.isPickable = false; this.shadows.addShadowCaster(m); }
+        root.rotation.y = -0.3;
+        root.scaling.setAll(1.7);
+        return root;
+    }
+    makeIslandTile(n) {
+        const tex = new BABYLON.DynamicTexture('isl' + n, { width: 512, height: 256 }, this.scene, true);
+        const g = tex.getContext();
+        g.fillStyle = '#1d3440'; g.fillRect(0, 0, 512, 256);
+        g.strokeStyle = '#c8b27a'; g.lineWidth = 10; g.strokeRect(6, 6, 500, 244);
+        g.fillStyle = '#4f6a3a'; g.beginPath(); g.ellipse(150, 140, 110, 60, -0.2, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#e8dcc0'; g.font = 'bold 44px serif'; g.textAlign = 'center';
+        g.fillText(LOC_NAMES[n] || '', 330, 120);
+        g.font = '34px serif'; g.fillText(String(n), 330, 180);
+        tex.update();
+        const tile = BABYLON.MeshBuilder.CreateGround('tile' + n, { width: 1.9, height: 0.95 }, this.scene);
+        const m = new BABYLON.StandardMaterial('tilem' + n, this.scene);
+        m.diffuseTexture = tex; m.specularColor = new BABYLON.Color3(0, 0, 0);
+        tile.material = m; tile.isPickable = false; tile.receiveShadows = true;
+        tile.position = pinWorld(n).add(new BABYLON.Vector3(-0.35, 0.005, 0.1));
+        return tile;
     }
 
     /** Hunt markers: a small coin-like token on each location with gold from a hunt. */

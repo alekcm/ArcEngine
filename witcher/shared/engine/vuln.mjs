@@ -79,12 +79,14 @@ export function restrictError(f, p, ids) {
 // ---------------------------------------------------------------------------------------------
 /** The large card with the special attacks: «По следу монстра» or a legendary monster. */
 const bigOf = (monId) => BIG[monId] || LEGEND[monId];
+/** Whose large card the fight uses: «Скеллиге» — Сирена fights with Dagon's special side. */
+const bigId = (f) => f.bigAs || f.mon;
 export function specialName(monId, n) { const b = bigOf(monId); return b ? b.attacks[n - 1].name : ''; }
 STEPS.spAttack = (state, step) => {
     if (!alive(state)) return;
     const f = state.fight;
-    const ops = (ATTACKS[f.mon] || LEG_SPECIAL[f.mon] || [])[step.n - 1] || [];
-    const b = bigOf(f.mon);
+    const ops = (ATTACKS[bigId(f)] || LEG_SPECIAL[f.mon] || [])[step.n - 1] || [];
+    const b = bigOf(bigId(f));
     if (vtIgnoredSpecial(f, step.n)) {
         log(state, `${MONSTER[f.mon].name}: особая атака ${ROMAN[step.n - 1]} «${b.attacks[step.n - 1].name}» игнорируется (уязвимость)`, { kind: 'attack' });
         push(state, F('afterMonsterTurn'));
@@ -139,7 +141,7 @@ STEPS.spEnd = (state) => {
 };
 const vulnCount = (state, p) => (p.vulns || []).filter(v => v.terrain === state.fight.terrain).length;
 
-const DMG_OPS = ['dmg', 'dmgHand', 'dmgElixirs', 'dmgShield0', 'dmgDie', 'dmgDice', 'dmgTrack', 'dmgVuln', 'dmgVulnLess', 'dmgTrophies', 'dmgKit', 'dmgRuinsBoard', 'dmgTable'];
+const DMG_OPS = ['dmg', 'dmgHand', 'dmgElixirs', 'dmgShield0', 'dmgDie', 'dmgDice', 'dmgTrack', 'dmgVuln', 'dmgVulnLess', 'dmgTrophies', 'dmgKit', 'dmgRuinsBoard', 'dmgTable', 'dmgWater'];
 /** Vulnerability: after the special card is revealed the witcher may pick the special attack. */
 STEPS.vtSpChoose = (state, step) => {
     const f = state.fight, p = fp(state);
@@ -207,6 +209,9 @@ STEPS.spOp = (state, step) => {
             return;
         }
         case 'dmgVulnLess': return hurt(Math.max(0, op.base - vulnCount(state, p)));
+        // «Скеллиге» (Дагон): water cards in the hand.
+        case 'dmgWater': { const w = p.hand.filter(id => CARDS[id].terrain === 'water').length; log(state, `Карт с символом воды в руке: ${w}`); return hurt(Math.max(0, op.base - w)); }
+        case 'ifWater': return push(state, ...(p.hand.some(id => CARDS[id].terrain === 'water') ? op.then : op.else).map(o => F('spOp', { o })));
         case 'randCorner': {
             let id = null, fromDeck = false;
             if (p.hand.length) { id = p.hand[randInt(state, p.hand.length)]; removeFrom(p.hand, id); }
@@ -484,22 +489,22 @@ STEPS.vCombo3Do = (state, step) => {
 STEPS.discAbility = (state, step) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
-    const b = BIG[f.mon];
+    const b = BIG[bigId(f)];
     if (!b) return;
     log(state, `Сброшена особая боевая карта: способность сброса «${b.discard.name}» — ${b.discard.text}`, { kind: 'attack' });
     fx(state, { k: 'discAbility', mon: f.mon });
     if (vtIgnoreDiscard(state)) return;
     const bomb = (p.bombs || []).find(x => x.startsWith('BOMB-07#'));
     if (bomb && f.elixirsUsed < skillVal(p, 'alchemy')) {
-        if (p.bot) { push(state, F('dimeritDo', { choice: 'use', id: bomb, mon: f.mon })); return; }
+        if (p.bot) { push(state, F('dimeritDo', { choice: 'use', id: bomb, mon: bigId(f) })); return; }
         ask(state, {
             seat: p.seat, kind: 'choice', ui: 'bomb', card: bomb, title: 'Двимеритовая бомба',
             text: `Срабатывает способность сброса «${b.discard.name}»: ${b.discard.text} Бросить двимеритовую бомбу, чтобы её эффект игнорировался? Бомба займёт 1 место в лимите алхимии.`,
-            options: [{ id: 'use', label: 'Бросить двимеритовую бомбу' }, { id: 'skip', label: 'Не бросать' }], op: 'dimeritDo', args: { fight: 1, id: bomb, mon: f.mon },
+            options: [{ id: 'use', label: 'Бросить двимеритовую бомбу' }, { id: 'skip', label: 'Не бросать' }], op: 'dimeritDo', args: { fight: 1, id: bomb, mon: bigId(f) },
         });
         return;
     }
-    push(state, F('discApply', { mon: f.mon }));
+    push(state, F('discApply', { mon: bigId(f) }));
 };
 STEPS.dimeritDo = (state, step) => {
     const f = state.fight, p = fp(state);
@@ -513,7 +518,7 @@ STEPS.dimeritDo = (state, step) => {
 /** The large cards of level III monsters for Брукса (the ones of this game, except her own). */
 function levelThreeBig(state) {
     const troll = trailOn(state, 'troll');
-    return Object.keys(BIG).filter(id => MONSTER[id] && MONSTER[id].level === 3 && id !== 'MON-14' && (id !== 'MON-30' || troll));
+    return Object.keys(BIG).filter(id => MONSTER[id] && MONSTER[id].level === 3 && !MONSTER[id].sk && id !== 'MON-14' && (id !== 'MON-30' || troll));
 }
 STEPS.discApply = (state, step) => {
     if (!alive(state)) return;
@@ -561,6 +566,12 @@ STEPS.discApply = (state, step) => {
         else if (p.hand.length) push(state, F('vHandAsk', { ids: p.hand.slice(), n: Math.min(2, p.hand.length), mode: 'bottom', why: 'Способность сброса: нет красной карты — положите 2 карты из руки под низ колоды', title: 'Способность сброса' }));
     }
     if (d.dmgDice) push(state, F('hurtWitcher', { n: Math.max(d.dmgDice, f.dice || 0), notAttack: true }));
+    // Dagon «Призыв водяных»: 1 water card from the hand, otherwise 2 cards from the top of the deck.
+    if (d.waterOrDeck) {
+        const ids = p.hand.filter(id => CARDS[id].terrain === 'water');
+        if (ids.length) push(state, F('vHandAsk', { ids, n: 1, mode: 'discard', why: 'Способность сброса: сбросьте 1 карту с символом водной местности из руки', title: 'Способность сброса' }));
+        else if (p.deck.length) discardDeckTop(state, p, Math.min(d.waterOrDeck, p.deck.length));
+    }
     if (d.elixir && p.elixirs.length) push(state, F('vElixirAsk', { n: d.elixir }));
     if (d.lowerSkill) {
         const opts = SKILLS.filter(s => p.skills[s] > 1 && p.skills[s] < 5);

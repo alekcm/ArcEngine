@@ -9,6 +9,7 @@ import { STEPS, push, ask } from './flow.mjs';
 import { CARDS, LOC, log, fx, shuffle, maxShield, drawCards, removeFrom, randInt } from './util.mjs';
 import { SCHOOLS, TRACK_GOLD, wtrophyCards } from '../data/rules-data.mjs';
 import { hasWitcherTrophy, hasTrophy, hasGear } from './effects.mjs';
+import { skAfterBattle } from './skellige.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
 export const SIDE_KEYS = ['once', 'elixirsUsed', 'usedElixirs', 'usedBombs', 'wTurns', 'lastCombo', 'cur', 'nextW', 'pendingHarpy', 'noAbility'];
@@ -212,6 +213,8 @@ STEPS.duelCleanup = (state) => {
     const a = state.players[f.att], d = state.players[f.def];
     state.lastFight = { kind: 'duel', vs: d.seat, seat: a.seat, result: f.result, winner: f.winner };
     state.fight = null;
+    // «Скеллиге»: Dagon's gifts of both witchers.
+    skAfterBattle(state, [a.seat, d.seat]);
     const back = [];
     for (const p of [a, d]) {
         const s = sides[p.seat];

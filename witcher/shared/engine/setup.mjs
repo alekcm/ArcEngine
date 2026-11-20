@@ -4,6 +4,7 @@ import { bombDeckIds } from '../data/bombs-data.mjs';
 import { setupAttackDeck, onMonsterAppears, vulnOn } from './vuln.mjs';
 import './vtoken.mjs';
 import { setupLegend } from './legend.mjs';
+import { setupSkellige } from './skellige.mjs';
 import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
 import { MASTERS, MUTAGENS, UNIQUE_OF } from '../data/trail-data.mjs';
 import { MONSTER, LOC, CARDS, shuffle, randInt, log, drawCards } from './util.mjs';
@@ -53,9 +54,10 @@ export function createGame(opts) {
     } else if (n <= 3) state.skillTrophies = SKILLTROPHIES.map(t => t.id + '#1');
     else state.skillTrophies = SKILLTROPHIES.flatMap(t => [t.id + '#1', t.id + '#2']);
 
-    // 7. Location tokens: 6 per terrain, Continent locations 1–18.
+    // 7. Location tokens: 6 per terrain, Continent locations 1–18 («Скеллиге»: + the islands 19–21).
+    const lastLoc = state.exp.includes('skellige') ? 21 : 18;
     for (const t of TERRAINS) {
-        state.locPiles[t] = shuffle(state, Object.values(LOC).filter(l => l.n >= 1 && l.n <= 18 && l.terrain === t).map(l => l.n));
+        state.locPiles[t] = shuffle(state, Object.values(LOC).filter(l => l.n >= 1 && l.n <= lastLoc && l.terrain === t).map(l => l.n));
     }
 
     // 8. Monsters.
@@ -84,6 +86,8 @@ export function createGame(opts) {
     // «Легендарная охота»: the legendary monster, its movement deck, the ruin supply (after the
     // base setup so the base RNG sequence is unchanged without the expansion).
     setupLegend(state);
+    // «Скеллиге»: the Skellige decks, ships and the Dagon track (after the base setup as well).
+    setupSkellige(state, n);
 
     // 10. Players.
     lobby.forEach((lp, seat) => {
