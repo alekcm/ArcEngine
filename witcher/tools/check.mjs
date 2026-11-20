@@ -10,6 +10,7 @@ const node = (args) => spawnSync(process.execPath, args, { cwd: path.join(ROOT, 
 const files = (dir) => fs.readdirSync(path.join(ROOT, dir)).filter(f => /\.(m?js)$/.test(f)).map(f => path.join(ROOT, dir, f));
 const STEPS = [
     ['данные из md актуальны', () => node([path.join(ROOT, 'tools/import.mjs'), '--check'])],
+    ['события из md актуальны', () => node([path.join(ROOT, 'tools/events-gen.mjs'), '--check'])],
     ['синтаксис модулей', () => {
         for (const f of [...files('client'), ...files('shared'), ...files('shared/engine'), ...files('shared/data'), path.join(ROOT, 'server.mjs')]) {
             const r = node(['--check', f]); if (r.status) return r;

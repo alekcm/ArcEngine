@@ -1,111 +1,50 @@
-// Exploration and event cards — SLICE. Only a few cards are wired so the whole loop
-// (explore → choice → consequences → quest → event card / gear) can be checked end to end;
-// the remaining cards of Witcher/События/*.md follow the same schema.
+// Exploration and event cards. Texts and effects are GENERATED from Witcher/События/*.md by
+// witcher/tools/events-gen.mjs into events-gen.mjs; this file only merges hand overrides.
 //
-// Texts are the printed ones (Witcher/События/*.md). Effects are data:
-//   { gold: n }            take (+) or discard (−) gold, as far as possible
-//   { skill: 'combat' }     raise a skill by 1
-//   { draw: n }             draw n more (+) / fewer (−) cards in phase III of this turn
-//   { shield: n }           change the shield level (as far as possible)
-//   { elixir: n }           take n elixirs
-//   { gear: 'CONT79-15' }   take an equipment/companion card (kept for the whole game)
-//   { quest: { terrain, event } }  the card becomes a quest: a random location token of that
-//                           terrain; at that location in phase I the player takes `event`
-//   { freeMove: true }      move to an adjacent location without discarding cards, then may
-//                           take its action
-//   { roll: [{ from, to, text, fx: [...] }] }   roll a die, apply the matching branch
+// Effect language (each applied in order, «as far as possible»):
+//   { gold: n }                 take (+) / discard (−) gold
+//   { skill: 'combat'|'defense'|'alchemy'|'spec'|'lowest'|'lowest2'|'any' }   raise skill(s) by 1
+//   { skillDown: skill }        lower a skill by 1
+//   { draw: n }                 draw n more (+) / fewer (−) cards in phase III of this turn
+//   { drawNow: n }              draw n cards from your deck now
+//   { discardHand: n }          discard n cards from hand (your choice)
+//   { shield: n }               change the shield level (−99 = down to 0)
+//   { elixir: n, noLimit? }     take n elixirs;  { elixirLoss: n } discard n (99 = all)
+//   { track: 'any'|'all' }      take a track token (chosen monster) / one of every missing type
+//   { removeCard: 1 }           remove 1 of your cards from the game (hand, deck or discard)
+//   { rowCard: { cost?, leftmost? } }  take a row card (printed cost) into your discard, free
+//   { freeMove: true }          move to an adjacent location without discarding, then its action
+//   { toPhase3: true }          go to phase III at once;  { noExplore: true } no exploring this turn
+//   { event: id }               take numbered event card `id` at once (story or equipment)
+//   { quest: { terrain|loc|school, event, gold? } }  the card becomes a quest
+//   { roll: [{ from, to, text, effect, fx }], by? }  die roll (or `by` a skill / 'level')
+//   { if: { goldMax|elixirMax|shieldMax|trophiesMax }, fx, else? }  conditional
 // An option's `cost` (printed in the option line itself) must be payable to pick it.
 
-/** Exploration decks of the slice: city = «Городские события», outskirts = «События мира». */
-export const EXPLORE_DECKS = {
-    city: ['CITY1-01', 'CITY1-02'],
-    wild: ['CONT81-13', 'CONT81-15'],
+import { GEN_DECKS, GEN_EVENTS, UNSUPPORTED } from './events-gen.mjs';
+
+/**
+ * Exploration decks: every card of «Городские события 1» (city) and «События мира 1» (outskirts)
+ * whose printed effects are fully supported (see tools/events-gen.mjs and UNSUPPORTED).
+ * Every card exists in ONE copy: once resolved it leaves the game (База.md p. 16).
+ */
+export const EXPLORE_DECKS = GEN_DECKS;
+export { UNSUPPORTED };
+
+/** Hand-tuned overrides on top of the generated texts (merged field by field). */
+const OVERRIDES = {
+    'CONT81-15': { questName: 'Брат конюха — солтыс' },
 };
 
-export const EVENTS = {
-    'CITY1-01': {
-        src: 'Городские события 1 · r1c1',
-        intro: 'На одной из улиц вам преграждают дорогу местные стражники.\n«На вас донос, милсдарь. Что ж это вы колдовство творите без санкций Капитула? Свидетели есть».\nОчень скоро вы обнаруживаете себя в застенках местной тюрьмы. Время в замызганной камере тянется медленно, час за часом. Когда один из стражников соизволил принести поесть, вы подмечаете, что кроме вас двоих поблизости нет ни души.',
-        a: {
-            label: 'Напасть на стражника и пробиться на свободу.',
-            outcome: 'Прежде чем упасть лицом в тарелку с овсянкой, стражник даже успел удивиться. Вы смогли отыскать оба своих меча, а вот кошелёк с монетами как в воду канул.',
-            effect: 'Сбросьте 2 золота. Увеличьте свой навык сражения на 1.',
-            fx: [{ gold: -2 }, { skill: 'combat' }],
-        },
-        b: {
-            label: 'Попросить воды. Кто знает, что случится, пока её принесут.',
-            outcome: 'Вскоре в камеру входит важного вида чиновник. Смерив вас полным презрения взглядом, он сообщает, что-де ведьмаки и колдуньи, по его мнению, одного рода дьявольщина — но поскольку донос был ложным и держать вас в застенках не имеет смысла. Более того, вам даже полагается компенсация.',
-            effect: 'Возьмите 2 золота.',
-            fx: [{ gold: 2 }],
-        },
-    },
-    'CITY1-02': {
-        src: 'Городские события 1 · r1c2',
-        intro: 'В местной корчме уже прослышали, что вы не дурак размять кулаки. Только перед вами поставили тарелку горячего горохового супа, как стол тут же накрыла тень. Подняв голову, вы обнаружили, что тень принадлежит бугаю с кулаками размером с кирпичи.\n«Эй, слышь! Подраться не хошь?»',
-        a: {
-            label: 'Позабавить посетителей корчмы и принять вызов.',
-            outcome: 'Противник, как выяснилось, кулаками махать умел — вот только попадать не научился. Драка вышла короткой.',
-            effect: 'Возьмите 2 золота.',
-            fx: [{ gold: 2 }],
-        },
-        b: {
-            label: 'Отказаться: сегодня в планах на вечер не драка, а гороховый суп.',
-            outcome: 'Что ни говори, а гороховый суп в корчме наварили отменный. И кровати у них — не отдых, а одно удовольствие!',
-            effect: 'В фазу III возьмите из своей колоды на 1 карту больше.',
-            fx: [{ draw: 1 }],
-        },
-    },
-    'CONT81-13': {
-        src: 'События мира 1 · r3c1',
-        intro: 'Большак перегородило упавшее дерево. Для вашей лошади оно не помеха — но вот торговцу, чья повозка стоит рядом, его просто так не объехать. Заметив вас, он сетует, что теперь не успеет на рынок и семье придётся голодать.\n«Может, купишь у меня чего? Смотри, есть кастеты всякие, болты арбалетные, шкуры дублёные… Качество хорошее, за недорого отдам!»',
-        a: {
-            label: 'Помочь торговцу сдвинуть дерево.',
-            outcome: 'Прежде чем поспешить на рынок, благодарный купец вручает вам слегка поношенную кольчугу.',
-            effect: 'Увеличьте свой навык защиты на 1. В фазу III возьмите из своей колоды на 1 карту меньше.',
-            fx: [{ skill: 'defense' }, { draw: -1 }],
-        },
-        b: {
-            label: 'Купить кастет. Сбросьте 1 золото.',
-            cost: { gold: 1 },
-            outcome: 'Кастетом каменного голема не забьёшь, но в иной стычке он поможет пересчитать врагу зубы.',
-            effect: 'Возьмите событие 15 — «Кастет».',
-            fx: [{ gear: 'CONT79-15' }],
-        },
-    },
-    'CONT81-15': {
-        src: 'События мира 1 · r3c3', questName: 'Брат конюха — солтыс',
-        intro: 'В конюшне, где вы оставили лошадь, к вам подходит главный конюх. Покраснев от смущения, он говорит, что его двоюродный брат — солтыс в другом поселении, в котором спасу нет от бандитов и вымогателей. Но ежели вдруг случится, что туда залетит ведьмак да посмотрит строго, вот как вы смотрите на него, то они все тут же дадут дёру!',
-        a: {
-            label: 'Пообещать встретиться с солтысом.',
-            outcome: 'Конюх рассыпается в благодарностях и клянётся, что его двоюродный брат щедро заплатит за помощь.',
-            effect: 'Задание: водная локация. В локации: событие 41.',
-            fx: [{ quest: { terrain: 'water', event: 'CONT79-41' } }],
-        },
-        b: {
-            label: 'Ваше дело — охотиться на монстров, а не на людей. Отказать наотрез и потребовать позаботиться о вашей лошади.',
-            outcome: 'Лицо конюха мрачнеет, но он принимает вашу помощь как ни в чём не бывало. Вернувшись на другой день, вы находите её сытой и отдохнувшей.',
-            effect: 'Сбросьте 1 золото. Переместитесь в соседнюю локацию не сбрасывая карты, затем можете выполнить её действие.',
-            fx: [{ gold: -1 }, { freeMove: true }],
-        },
-    },
-    // Numbered event cards («Ивенты Континента — атлас 1»).
-    'CONT79-15': {
-        src: 'Ивенты 1 · r2c7', num: 15, gear: true, name: 'Кастет',
-        text: 'Снаряжение. Один раз за битву: сбросьте 1 карту из руки, чтобы нанести 2 урона.',
-    },
-    'CONT79-41': {
-        src: 'Ивенты 1 · r6c1', num: 41,
-        intro: 'Солтыс важно прогуливается по деревне в вашем обществе, а на закате приглашает распить кружечку-другую в битком набитой местной корчме. Слухи о его знакомстве с ведьмаком наверняка дойдут куда надо: может, в поселении наконец станет поспокойнее.',
-        effect: 'Бросьте кубик:',
-        fx: [{
-            roll: [
-                { from: 1, to: 2, text: 'Не все оказались рады вашему визиту. На выходе из деревни вас поджидают представители местного отребья.', effect: 'Понизьте свой уровень щита на 2. Возьмите 2 золота.', fx: [{ shield: -2 }, { gold: 2 }] },
-                { from: 3, to: 4, text: 'Солтыс щедро вас благодарит.', effect: 'Возьмите 3 золота.', fx: [{ gold: 3 }] },
-                { from: 5, to: 6, text: 'Солтыс благодарит вас за помощь. Местная травница также спешит вознаградить вас за то, что ей больше не придётся лечить столько переломов подряд.', effect: 'Возьмите 3 золота и 2 эликсира.', fx: [{ gold: 3 }, { elixir: 2 }] },
-            ],
-        }],
-    },
-};
+export const EVENTS = {};
+for (const [id, c] of Object.entries(GEN_EVENTS)) EVENTS[id] = { ...c, ...(OVERRIDES[id] || {}) };
+// Quest titles for the HUD: the printed option line that gave the quest, shortened.
+const short = (s) => { s = s.replace(/[«»]/g, '').replace(/\.$/, ''); return s.length > 44 ? s.slice(0, 42).replace(/\s+\S*$/, '') + '…' : s; };
+for (const c of Object.values(EVENTS)) {
+    if (c.questName) continue;
+    const o = ['a', 'b'].map(k => c[k]).find(o => o && JSON.stringify(o.fx).includes('"quest"'));
+    if (o) c.questName = short(o.label);
+}
 
 /** Short label of a quest for the HUD. */
 export const questLabel = (q) => EVENTS[q.id]?.questName || 'Задание';

@@ -32,8 +32,9 @@ export function renderFight() {
     const tot = p && combo.length ? comboTotals(v, p, combo, { free }) : null;
     const cErr = p ? comboError(v, p, combo, { free }) : 'Не ваш ход';
 
-    const last = f.lastAttack ? `<div class="lastatk"><span style="color:var(--dim)">Последняя атака:</span>${attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
-    const lastCombo = f.lastCombo && f.lastCombo.ids.length ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center"><span style="color:var(--dim)">Комбинация:</span>${f.lastCombo.ids.map(id => actionCard(id, { small: true })).join('<span class="arrow">›</span>')}<span class="fx dmg">${icon('sword')}<b>${f.lastCombo.dmg}</b></span></div>` : '';
+    const last = f.lastAttack ? `<div class="lastatk"><span>Последняя атака</span>${attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
+    // The previous combo as one compact line (the cards themselves are in the log and discard).
+    const lastCombo = f.lastCombo && f.lastCombo.ids.length ? `<div class="lastcombo"><span>Прошлая комбинация:</span> ${f.lastCombo.ids.map(id => esc(CARDS[id].name)).join(' › ')} <span class="fx dmg">${icon('sword')}<b>${f.lastCombo.dmg}</b></span></div>` : '';
 
     const comboHtml = combo.length ? combo.map((id, i) => {
         const prev = i > 0 ? CARDS[combo[i - 1]] : null;
@@ -48,6 +49,9 @@ export function renderFight() {
         for (const a of o.active) fbtns.push(btn({ label: esc(a.label), icon: icon(a.key.startsWith('CONT') ? 'combat' : 'trophy'), why: a.err, data: `data-act="${esc(a.key)}"`, small: true }));
     }
 
+    // Hand cards are big (readable without zoom); when they do not fit they overlap like a fan.
+    const handN = p ? p.hand.filter(id => !combo.includes(id)).length : 0;
+    const overlap = handN > 1 ? Math.max(0, (handN * ((window.innerHeight <= 900 ? 214 : 250) + 8) - Math.min(window.innerWidth - 40, 1500)) / (handN - 1)) : 0;
     const hand = p ? p.hand.map((id, i) => {
         if (combo.includes(id)) return '';
         let ok = myStage;
@@ -58,7 +62,7 @@ export function renderFight() {
             if (f.cur && f.cur.onlyOne) { ok = false; why = 'Только 1 карта'; }
         }
         if (ok && !combo.length && f.cur && f.cur.forcedFirst && p.hand.includes(f.cur.forcedFirst) && id !== f.cur.forcedFirst) { ok = false; why = 'Первой должна быть «' + CARDS[f.cur.forcedFirst].name + '»'; }
-        return `<div style="position:relative" ${why ? `title="${esc(why)}"` : ''}>${actionCard(id, { cls: ok ? 'pick can' : 'no' })}<kbd style="position:absolute;left:50%;bottom:-2px;transform:translateX(-50%)">${i + 1}</kbd></div>`;
+        return `<div class="hslot" style="margin-right:${-overlap}px" ${why ? `title="${esc(why)}"` : ''}>${actionCard(id, { cls: (ok ? 'pick can' : 'no') + ' huge' })}<kbd>${i + 1}</kbd></div>`;
     }).join('') : `<span style="color:var(--dim)">Рука ${esc(fighter.name)}: ${fighter.handCount} карт</span>`;
 
     const flog = v.log.filter(l => l.i >= logFrom).slice(-14).map(l => `<div>${esc(l.t)}</div>`).join('');
@@ -73,8 +77,7 @@ export function renderFight() {
         <div class="pool"><div class="stack" id="fPool">${f.lifeCount}</div><div>Запас жизни монстра<div class="lifebar"><i style="width:${lifePct}%"></i></div><small style="color:var(--dim)">сброс атак: ${f.monDiscard.length}</small></div></div>
     </div>
     <div class="center">
-        ${last}
-        <div class="combo" id="fCombo">${comboHtml}</div>
+        <div class="crow">${last}<div class="combo" id="fCombo">${comboHtml}</div></div>
         <div class="totals">${tot ? `<span class="fx dmg">${icon('sword')}<b>${tot.dmg}</b></span><span class="fx shield">${icon('shield')}<b>+${tot.shield}</b></span><span class="fx draw">${icon('draw')}<b>${tot.draw}</b></span>${tot.top ? `<span class="fx top">${icon('top')}<b>${tot.top}</b></span>` : ''}${tot.ret.length ? `<span class="fx ret">${icon('ret')}<b>${tot.ret.length}</b></span>` : ''}${free ? '<span style="color:#9ccff0">Пурга: последняя карта без связки</span>' : ''}` : ''}</div>
         ${myStage ? `<div style="display:flex;gap:8px">${btn({ id: 'fPlay', label: combo.length ? `Разыграть (${combo.length})` : (p.hand.length ? 'Разыграть' : 'Пропустить (рука пуста)'), primary: true, why: cErr, key: 'Enter' })}${combo.length ? btn({ id: 'fClear', label: 'Сбросить выбор', key: 'Backspace' }) : ''}</div>` : ''}
         ${lastCombo}

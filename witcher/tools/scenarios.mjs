@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import { ensureExplore } from '../shared/engine/explore.mjs';
 import { createGame, apply, options, actingSeat } from '../shared/engine/core.mjs';
 import { viewFor } from '../shared/view.mjs';
 import { botCommand } from '../shared/bots.mjs';
@@ -54,6 +55,9 @@ export function exploreScenario(seed = 9) {
     const loc = Object.keys(LOC).map(Number).find(n => LOC[n].terrain === 'water' && st.locPiles.water.includes(n) && ADJ[n].some(m => m !== n && canEnter(st, m)));
     st.locPiles.water.splice(st.locPiles.water.indexOf(loc), 1);
     p.quests.push({ id: 'CONT81-15', terrain: 'water', loc, event: 'CONT79-41' });
+    // The quest card is with the player — not in the deck (every card exists once).
+    const decks = ensureExplore(st);
+    decks.wild = decks.wild.filter(id => id !== 'CONT81-15');
     p.loc = ADJ[loc].find(m => canEnter(st, m));
     return st;
 }

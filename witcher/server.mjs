@@ -20,7 +20,7 @@ import { spawn } from 'node:child_process';
 import { createGame, apply, options, actingSeat } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { botCommand } from './shared/bots.mjs';
-import { SCHOOLS, SCHOOL_ORDER, BOT_NAMES } from './shared/data/rules-data.mjs';
+import { SCHOOLS, SCHOOL_ORDER, BOT_NAMES, normalizeRules } from './shared/data/rules-data.mjs';
 import { MONSTERS } from './shared/data/gen-data.mjs';
 import { objToMesh } from './tools/obj.mjs';
 import { writeScenarios } from './tools/scenarios.mjs';
@@ -66,12 +66,14 @@ const MODEL_FILES = {};
 for (const [k, s] of Object.entries(SCHOOLS)) MODEL_FILES['w-' + k] = path.join(REPO, s.model);
 for (const m of MONSTERS) MODEL_FILES[m.id] = path.join(REPO, 'Witcher', 'Миниатюры монстров', m.model);
 const modelCache = new Map();
-function modelJson(key) {
-    if (modelCache.has(key)) return modelCache.get(key);
+const MODEL_TRIS = 40000;
+function modelJson(key, tris = MODEL_TRIS) {
+    const ck = key + '@' + tris;
+    if (modelCache.has(ck)) return modelCache.get(ck);
     const file = MODEL_FILES[key];
     if (!file || !fs.existsSync(file)) return null;
-    const json = JSON.stringify(objToMesh(fs.readFileSync(file, 'utf8'), { targetTris: key.startsWith('w-') ? 9000 : 7000 }));
-    modelCache.set(key, json);
+    const json = JSON.stringify(objToMesh(fs.readFileSync(file, 'utf8'), { targetTris: tris }));
+    modelCache.set(ck, json);
     return json;
 }
 
@@ -93,7 +95,8 @@ function serve(req, res) {
     }
     let m;
     if ((m = /^\/models\/([A-Za-z0-9-]+)\.json$/.exec(p))) {
-        const j = modelJson(m[1]);
+        const q = Number(new URL(req.url, 'http://x').searchParams.get('tris')) || MODEL_TRIS;
+        const j = modelJson(m[1], Math.max(500, Math.min(60000, q)));
         if (!j) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'max-age=3600' });
         res.end(j);
@@ -169,7 +172,7 @@ class Socket {
 const room = {
     phase: 'lobby',
     seats: [],      // { token, name, school, bot, socket }
-    settings: { randomFirst: false, seed: '' },
+    settings: { randomFirst: false, seed: '', ...normalizeRules('custom') },   // + mode, rules (house rules)
     state: null,
     undo: [],       // { json, seat, label, self }
     chat: [],
@@ -319,6 +322,12 @@ function onMessage(sock, m) {
                 if (m.settings) {
                     if (typeof m.settings.randomFirst === 'boolean') room.settings.randomFirst = m.settings.randomFirst;
                     if (typeof m.settings.seed === 'string') room.settings.seed = m.settings.seed.slice(0, 20);
+                    if (typeof m.settings.mode === 'string' || (m.settings.rules && typeof m.settings.rules === 'object')) {
+                        // The custom choice is remembered separately: MMR forces everything on, and switching back restores it.
+                        const mode = typeof m.settings.mode === 'string' ? m.settings.mode : room.settings.mode;
+                        if (mode === 'custom' && m.settings.rules) room.customRules = { ...(room.customRules || {}), ...m.settings.rules };
+                        Object.assign(room.settings, normalizeRules(mode, room.customRules || {}));
+                    }
                 }
                 if (m.addBot && room.seats.length < MAX_SEATS) {
                     const school = freeSchool();
@@ -338,7 +347,7 @@ function onMessage(sock, m) {
             const order = room.seats.slice();
             if (room.settings.randomFirst) { for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; } }
             room.seats = order;
-            room.state = createGame({ seed, players: room.seats.map(s => ({ name: s.name, school: s.school, bot: s.bot })) });
+            room.state = createGame({ seed, players: room.seats.map(s => ({ name: s.name, school: s.school, bot: s.bot })), mode: room.settings.mode, rules: room.settings.rules });
             room.phase = 'playing'; room.undo = [];
             console.log('Game started:', room.seats.map(s => s.name + '/' + s.school).join(', '));
             broadcastLobby(); broadcastState(); scheduleBots();
@@ -374,7 +383,11 @@ function onMessage(sock, m) {
         }
         case 'load': {
             if (!isHost(sock)) return;
-            if (loadGame(m.name)) { notice('Загружена партия: ' + m.name); for (const c of clients) { const i = seatOf(c); c.send({ t: 'welcome', token: i >= 0 ? room.seats[i].token : null, seat: i, build: BUILD }); } broadcastLobby(); broadcastState(); scheduleBots(); }
+            if (loadGame(m.name)) {
+                // Sandboxes take the lobby's current mode and house rules (to try them out).
+                if (/^Песочница/.test(m.name) && room.state) Object.assign(room.state, normalizeRules(room.settings.mode, room.settings.rules));
+                notice('Загружена партия: ' + m.name); for (const c of clients) { const i = seatOf(c); c.send({ t: 'welcome', token: i >= 0 ? room.seats[i].token : null, seat: i, build: BUILD }); } broadcastLobby(); broadcastState(); scheduleBots();
+            }
             break;
         }
         case 'newGame': {

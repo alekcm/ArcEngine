@@ -3,7 +3,7 @@
 /* global BABYLON */
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { MONSTER } from '/shared/engine/util.mjs';
-import { toonMaterial, inkMini } from './toon.js';
+import { toonMaterial, inkMini, keepOutline } from './toon.js';
 
 // Board pins: pixel coordinates of the location number badges on Игровой стол.jpg.
 const PINS = {
@@ -90,8 +90,9 @@ export class Board {
             t += this.engine.getDeltaTime() / 1000;
             for (const n of this.moveTargets) { const r = this.rings[n]; if (r) { const s = 1 + Math.sin(t * 4 + n) * 0.08; r.scaling.set(s, 1, s); } }
             if (this.activeRing && this.activeRing.isEnabled()) this.activeRing.rotation.y = t * 0.8;
-            for (const k in this.monsters) { const m = this.monsters[k]; if (m.model) m.model.rotation.y = m.baseRot + Math.sin(t * 0.7 + Number(k)) * 0.25; }
         });
+        this.initKeyPan();
+        keepOutline(scene, cam, () => [...Object.values(this.witchers), ...Object.values(this.monsters)].map(x => x.model));
         this.engine.runRenderLoop(() => scene.render());
         window.addEventListener('resize', () => this.engine.resize());
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -318,6 +319,33 @@ export class Board {
         for (const k of Object.keys(this.markers)) if (!keep.has(k)) { this.markers[k].dispose(); delete this.markers[k]; }
     }
 
+    /** WASD (any keyboard layout: physical keys) pans the camera over the table, RTS style. */
+    initKeyPan() {
+        const held = new Set();
+        const PAN = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
+        const typing = (e) => e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+        window.addEventListener('keydown', (e) => { if (PAN[e.code] && !typing(e) && !e.ctrlKey && !e.metaKey && !e.altKey) held.add(e.code); });
+        window.addEventListener('keyup', (e) => held.delete(e.code));
+        window.addEventListener('blur', () => held.clear());
+        this.panHeld = held;
+        let vx = 0, vz = 0;
+        this.scene.onBeforeRenderObservable.add(() => {
+            const cam = this.cam, dt = Math.min(0.1, this.engine.getDeltaTime() / 1000);
+            let f = 0, r = 0;
+            for (const k of held) { f += PAN[k][1]; r += PAN[k][0]; }
+            const speed = 0.55 * cam.radius;             // world units per second, faster when zoomed out
+            const fx = -Math.cos(cam.alpha), fz = -Math.sin(cam.alpha);
+            const rx = -Math.sin(cam.alpha), rz = Math.cos(cam.alpha);
+            const tx = (f * fx + r * rx) * speed, tz = (f * fz + r * rz) * speed;
+            const a = 1 - Math.exp(-dt * 14);           // short ease in/out
+            vx += (tx - vx) * a; vz += (tz - vz) * a;
+            if (Math.abs(vx) + Math.abs(vz) < 1e-3) { vx = vz = 0; return; }
+            if ((f || r) && this.focusObs) { this.scene.onBeforeRenderObservable.remove(this.focusObs); this.focusObs = null; }
+            cam.target.x = Math.max(-10, Math.min(10, cam.target.x + vx * dt));
+            cam.target.z = Math.max(-7.5, Math.min(7.5, cam.target.z + vz * dt));
+        });
+    }
+
     focus(loc, radius = 7.5) {
         // Own tween: assigning cam.target would recompute alpha/beta/radius from the position.
         const cam = this.cam;
@@ -360,7 +388,8 @@ export class Preview {
         const h = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0, 1, 0), s); h.intensity = 0.6;
         const d = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-0.5, -0.8, 0.6), s); d.intensity = 1.6;
         const d2 = new BABYLON.DirectionalLight('d2', new BABYLON.Vector3(0.7, -0.2, -0.6), s); d2.intensity = 0.5; d2.diffuse = new BABYLON.Color3(1, 0.8, 0.55);
-        this.node = null; this.key = null;
+        this.node = null; this.key = null; this.pm = null;
+        keepOutline(s, cam, () => [this.pm]);
         this.engine.runRenderLoop(() => s.render());
         window.addEventListener('resize', () => this.engine.resize());
     }
@@ -376,6 +405,7 @@ export class Preview {
             m.parent = root;
             m.material = toonMaterial(this.scene, 'pvmat', SCHOOLS[school].color);
             inkMini(m, 1);
+            this.pm = m;
         }
         this.node = root;
     }

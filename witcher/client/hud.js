@@ -4,7 +4,7 @@ import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { icon, TERRAIN_COLOR } from './icons.js';
 import { actionCard, monsterCard, elixirCard, eventCard, trophyLabel, artCss, esc, fxText } from './cards.js';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
-import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
 import { movePaymentError } from '/shared/engine/turn.mjs';
 import { isMuted, setMuted, sfx } from './sound.js';
@@ -59,7 +59,13 @@ function renderTop(v) {
     $('topbar').innerHTML = `<span class="round">Раунд ${v.round}</span>
         ${p ? `<span class="who" style="--sc:${SCHOOLS[p.school].color}"><i></i>${esc(p.name)}</span>` : ''}
         <div class="phases">${step(1, 'I. Путь')}${step(2, v.fight ? 'II. Битва' : 'II. Битва / медитация / исследование')}${step(3, 'III. Развитие')}</div>
-        ${v.solo ? '<span style="color:var(--dim)">Одиночная игра</span>' : ''}`;
+        ${v.solo ? '<span style="color:var(--dim)">Одиночная игра</span>' : ''}${modeTag(v)}`;
+}
+/** Mode badge with the active house rules in its tooltip. */
+function modeTag(v) {
+    if (!v.mode) return '';
+    const on = HOUSE_RULES.filter(r => v.rules && v.rules[r.id]).map(r => '• ' + r.name).join('\n');
+    return `<span class="modetag" title="${esc(GAME_MODES[v.mode].name + (on ? '\nПравила стола:\n' + on : '\nБез правил стола'))}">${v.mode === 'mmr' ? 'MMR' : 'Кастомная'}</span>`;
 }
 
 function renderTools() {
@@ -132,7 +138,7 @@ function renderActions(v) {
             for (const c of L.choices) parts.push(btn({ label: `Выследить: ${esc(c.label)}`, icon: icon('track'), why: c.err, data: `data-loc-slot="${c.id}"` }));
             parts.push(btn({ label: 'Только +1 золото', icon: icon('coin'), data: 'data-loc-slot=""' }));
         } else {
-            parts.push(btn({ label: esc(locLabel(L, p)), icon: icon(locIcon(L.kind)), why: L.err, data: 'data-loc="1"', key: 'A' }));
+            parts.push(btn({ label: esc(locLabel(L, p)), icon: icon(locIcon(L.kind)), why: L.err, data: 'data-loc="1"', key: 'T' }));
         }
         parts.push('<span class="sep"></span>');
     }
@@ -141,8 +147,8 @@ function renderActions(v) {
     if ((o.quests || []).length) parts.push('<span class="sep"></span>');
     for (const a of o.phase2) {
         if (a.id === 'meditate' && a.err) continue;
-        const ic = a.id === 'fight' ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' ? 'card' : 'explore';
-        const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'explore-city' ? 'C' : a.id === 'endExplore' ? 'E' : 'W';
+        const ic = a.id === 'fight' ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
+        const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'explore-city' ? 'C' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'E' : 'V';
         let why = a.err;
         if (!why && a.id !== 'fight' && !t.moved && o.moves.length) why = null;
         parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: a.id === 'fight' && !a.err, data: `data-p2="${a.id}"`, key }));
@@ -163,6 +169,7 @@ export function phase2(id) {
     if (a.err) { toast(a.err); return; }
     if (id === 'fight') cmd({ t: 'fight' }, 'битва');
     else if (id === 'endExplore') cmd({ t: 'endExplore' }, 'фаза III');
+    else if (id === 'skipPhase2') cmd({ t: 'skipPhase2' }, 'фаза III');
     else if (id === 'meditate') {
         if (a.trophies.length === 1) cmd({ t: 'meditate', trophy: a.trophies[0] }, 'медитация');
         else openChoice('Медитация', 'Какой трофей навыка взять?', a.trophies.map(tid => ({ id: tid, label: trophyLabel({ kind: 'skill', id: tid }) })), (c) => cmd({ t: 'meditate', trophy: c }, 'медитация'));
@@ -346,15 +353,18 @@ export function openHelp() {
     <p>Битва: жизнь ведьмака — его колода и рука, жизнь монстра — его колода атаки. В свой ход разыграйте комбинацию: каждая следующая карта должна совпадать по цвету с одной из связок предыдущей.</p>
     <table>
     <tr><td><kbd>ЛКМ</kbd> по локации</td><td>переместиться (подсвечены доступные)</td></tr>
+    <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>сдвигать камеру по столу</td></tr>
     <tr><td><kbd>ПКМ</kbd> + тащить / колесо</td><td>сдвиг / масштаб карты; <kbd>Home</kbd> — общий вид, <kbd>Space</kbd> — к активному ведьмаку</td></tr>
-    <tr><td><kbd>A</kbd></td><td>действие локации</td></tr>
-    <tr><td><kbd>F</kbd> / <kbd>M</kbd> / <kbd>C</kbd> / <kbd>W</kbd></td><td>битва / медитация / исследовать город / окрестности</td></tr>
+    <tr><td><kbd>T</kbd></td><td>действие локации</td></tr>
+    <tr><td><kbd>F</kbd> / <kbd>M</kbd> / <kbd>C</kbd> / <kbd>V</kbd></td><td>битва / медитация / исследовать город / окрестности</td></tr>
     <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>выполнить задание / после события — к фазе III</td></tr>
     <tr><td><kbd>R</kbd></td><td>показать ряд карт</td></tr>
     <tr><td><kbd>Enter</kbd></td><td>подтвердить (оплата, комбинация, выбор)</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>отмена / закрыть окно</td></tr>
     <tr><td><kbd>Z</kbd></td><td>отменить своё последнее действие (если оно ничего не открыло)</td></tr>
-    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>в битве — добавить карту руки в комбинацию</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>в битве — добавить карту руки в комбинацию; в событиях — выбрать вариант</td></tr>
+    <tr><td><kbd>Alt</kbd> + наведение</td><td>увеличить карту (ряд, рука, битва)</td></tr>
+    <tr><td>Покупка карты (фаза III)</td><td>только мышью: щёлкните карту ряда</td></tr>
     </table>
     <p style="color:var(--dim);font-size:12px">Арт карт — заглушки. Чтобы поставить свой, положите файл <code>witcher/client/art/&lt;ID карты&gt;.jpg</code> (или .png/.webp) — ID видны в подсказках к картам в режиме разработчика (Ctrl+Shift+I → data-id).</p></div>`;
     el.classList.remove('hidden');

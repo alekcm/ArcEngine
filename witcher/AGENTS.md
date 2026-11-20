@@ -10,8 +10,9 @@ server.mjs              HTTP + WebSocket (свой RFC 6455), комната, л
                         /models/<id>.json — OBJ из Witcher/ → прорежённый меш, /art-index.json
 witcher.bat             запуск (Windows); корневой ../witcher.bat вызывает его
 shared/data/gen-data.mjs   ГЕНЕРИРУЕТСЯ tools/import.mjs из md — руками не править
-shared/data/rules-data.mjs таблицы правил (стартовые ресурсы, модификаторы ряда, школы, действия локаций)
-shared/data/events-data.mjs карты исследования/событий: тексты + эффекты данными (срез)
+shared/data/rules-data.mjs таблицы правил (стартовые ресурсы, ряд, школы, локации), режимы и правила стола
+shared/data/events-gen.mjs  ГЕНЕРИРУЕТСЯ tools/events-gen.mjs из Witcher/События/*.md — руками не править
+shared/data/events-data.mjs карты исследования: язык эффектов (шапка файла), OVERRIDES поверх генерации
 shared/engine/          правила (чистые функции над JSON-состоянием, ГСЧ в состоянии):
   core.mjs              apply(state, seat, cmd), options(state, seat) с причинами, actingSeat
   flow.mjs              очередь шагов state.queue {op,...}, ask() → state.prompt
@@ -29,9 +30,11 @@ client/assets/cards/    рамки, медальоны, глифы, пергам
 client/assets/continent.jpg  поле (вырезано из Witcher/Прочее/Игровой стол.jpg)
 tools/check.mjs         ЕДИНЫЕ ВОРОТА — гонять перед коммитом
 tools/rules.test.mjs    аудит правил со ссылками на страницы + партии ботов 1–5 игроков
-tools/explore.test.mjs  срез исследования/заданий/снаряжения и карт битвы
+tools/explore.test.mjs  исследование/задания/снаряжение, уникальность карт, карты битвы
+tools/modes.test.mjs    режимы партии и правила стола
+tools/events-gen.mjs    md → events-gen.mjs; -v — неподдержанные карты; --check — свежесть (в воротах)
 tools/frames.mjs        разовая нарезка лиц карт из сканов (нужен sharp, не зависимость игры)
-tools/sim.mjs           партии ботов: node witcher/tools/sim.mjs [игр] [игроков]
+tools/sim.mjs           партии ботов: node witcher/tools/sim.mjs [игр] [игроков] (MODE=mmr — все правила стола)
 tools/scenarios.mjs     песочницы (битва, покер, исследование, середина партии) — в лобби как сохранения
 tools/import.mjs obj.mjs  импорт md → данные; OBJ → меш
 ```

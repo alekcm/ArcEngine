@@ -2,7 +2,7 @@
 // instead of the generated placeholder (the server lists the folder in /art-index.json, so
 // there are no 404 probes). Placeholders are deterministic vector compositions — every card
 // id gets its own sky, ridge line, emblem and pattern, so cards stay distinguishable.
-import { CARDS, MONSTER, ATTACK, POTION } from '/shared/engine/util.mjs';
+import { CARDS, MONSTER, ATTACK, POTION, LOC } from '/shared/engine/util.mjs';
 import { COLOR_NAME, TERRAIN_NAME, SKILL_NAME } from '/shared/data/rules-data.mjs';
 import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
@@ -217,9 +217,16 @@ const para = (t) => t.split('\n').map(l => `<p class="${/^«/.test(l) ? 'q' : ''
 const disc = (k) => `<b class="evd">${k === 'a' ? 'А' : 'Б'}</b>`;
 function effectHtml(o) {
     const q = o.fx && o.fx.find(e => e.quest);
-    if (q) return `<div class="evquest">${STAR}<div><b>Задание: ${esc(TERRAIN_NAME[q.quest.terrain].toLowerCase())} локация.</b><br><b>В локации: ${BOOK} ${EVENTS[q.quest.event].num}.</b></div></div>`;
-    return `<p class="eff">${esc(o.effect)}</p>`;
+    if (!q) return `<p class="eff">${br(o.effect)}</p>`;
+    // The printed effect without its quest part, then the quest block (star, place, book number).
+    const rest = (o.effect || '').replace(/(При любом результате: )?Задание:.*$/s, '').trim();
+    const Q = q.quest;
+    const where = Q.terrain ? `${TERRAIN_ADJ[Q.terrain]} локация` : Q.school ? 'локация вашей школы' : `${LOC[Q.loc].name} (${Q.loc})`;
+    const pay = Q.gold ? `сбросьте ${Q.gold} золота, чтобы взять ` : '';
+    return `${rest ? `<p class="eff">${br(rest)}</p>` : ''}<div class="evquest">${STAR}<div><b>Задание: ${esc(where)}.</b><br><b>В локации: ${pay}${BOOK} ${EVENTS[Q.event].num}.</b></div></div>`;
 }
+const TERRAIN_ADJ = { forest: 'лесная', mountain: 'горная', water: 'водная' };
+const br = (s) => esc(s || '').replace(/\n/g, '<br>');
 export function eventCard(id, opts = {}) {
     const ev = EVENTS[id];
     if (!ev) return '';
@@ -227,8 +234,8 @@ export function eventCard(id, opts = {}) {
     if (ev.gear) {
         return `<div class="evcard gear ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(ev.name + ': ' + ev.text)}">
             <div class="evart" style="background-image:${artCss(id, '#6a4a2a', 'combat')}"></div>
-            <div class="evbox"><div class="evkind">Снаряжение</div><p>Положите эту карту перед собой.</p><img class="evdiv" src="${A}event-div.webp" alt="">
-            <div class="evname">${esc(ev.name)}</div><p class="eff"><b>Один раз за битву:</b><br>${esc(ev.text.replace(/^Снаряжение\. Один раз за битву: /, ''))}</p></div></div>`;
+            <div class="evbox"><div class="evkind">${esc(ev.kind || 'Снаряжение')}</div><p>Положите эту карту перед собой.</p><img class="evdiv" src="${A}event-div.webp" alt="">
+            <div class="evname">${esc(ev.name)}</div><p class="eff"><b>Один раз за битву:</b><br>${esc(ev.text.replace(/^(Снаряжение\. )?Один раз за битву:\s*/, ''))}</p></div></div>`;
     }
     let body = para(ev.intro);
     if (ev.a) {
@@ -236,9 +243,16 @@ export function eventCard(id, opts = {}) {
         const res = (k) => `<div class="evres ${st === 'outcome' && opts.pick !== k ? 'off' : ''} ${opts.pick === k ? 'on' : ''}">${disc(k)}<span>${esc(ev[k].outcome)}</span>${effectHtml(ev[k])}</div>`;
         body += line('a') + line('b') + `<img class="evdiv" src="${A}event-div.webp" alt="">`;
         body += st === 'choose' ? `<div class="evhide"><span>Последствия откроются после выбора</span></div>` : res('a') + res('b');
-    } else if (ev.fx && ev.fx[0].roll) {
-        body += `<p class="eff">${esc(ev.effect)}</p>` + ev.fx[0].roll.map(b => `<div class="evroll ${opts.dice ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.from}–${b.to}:</b><div><p>${esc(b.text)}</p><p class="eff">${esc(b.effect)}</p></div></div>`).join('');
+    } else if (ev.fx && ev.fx.some(e => e.roll)) {
+        const r = ev.fx.find(e => e.roll);
+        const head = !r.by ? 'Бросьте кубик:' : r.by === 'level' ? 'По уровню ведьмака:' : `По навыку ${SKILL_GEN_C[r.by]}:`;
+        body += `<p class="eff">${head}</p>` + r.roll.map(b => `<div class="evroll ${opts.dice ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.from === b.to ? b.from : b.from + '–' + b.to}:</b><div>${b.text ? `<p>${esc(b.text)}</p>` : ''}${b.effect ? `<p class="eff">${esc(b.effect)}</p>` : ''}</div></div>`).join('');
+        const tail = ev.effect.split('\n').filter(l => l.startsWith('При любом результате'));
+        if (tail.length) body += `<p class="eff">${br(tail.join('\n'))}</p>`;
+    } else if (ev.effect) {
+        body += `<img class="evdiv" src="${A}event-div.webp" alt="">` + effectHtml(ev);
     }
     return `<div class="evcard ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}">${body}</div>`;
 }
 export { SKILL_NAME };
+const SKILL_GEN_C = { combat: 'сражения', defense: 'защиты', alchemy: 'алхимии', spec: 'специализации' };

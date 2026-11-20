@@ -4,7 +4,7 @@ import { S, $, send, btn } from './ctx.js';
 import { Store } from './store.js';
 import { icon } from './icons.js';
 import { esc } from './cards.js';
-import { SCHOOLS, SCHOOL_ORDER } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SCHOOL_ORDER, GAME_MODES, HOUSE_RULES } from '/shared/data/rules-data.mjs';
 import { Preview } from './board.js';
 
 let preview = null;
@@ -52,6 +52,7 @@ export function renderLobby() {
             ${isHost ? `<div style="margin-top:8px">${btn({ id: 'lBot', label: 'Добавить бота', icon: icon('bot'), small: true, why: L.seats.length >= 5 ? 'Мест больше нет' : null })}</div>` : ''}
             <h3>Партия</h3>
             <div style="color:var(--dim);font-size:13px;margin-bottom:8px">${solo ? 'Одиночная игра (по правилам соло: 3 монстра I–III, победа — убить всех и получить трофей навыка).' : `${L.seats.length} игрока(ов): цель — 4 трофея.`}</div>
+            ${modeHtml(L, isHost)}
             ${isHost ? `<label class="check"><input type="checkbox" id="lRandom" ${L.settings.randomFirst ? 'checked' : ''}> Случайный первый игрок</label>
             <div class="row" style="margin-top:8px"><label>Зерно случайности (необязательно)</label><input id="lSeed" maxlength="20" value="${esc(L.settings.seed || '')}" placeholder="любая строка"></div>` : '<div style="color:var(--dim)">Настройки выбирает хозяин стола.</div>'}
             <h3>Дополнения</h3>
@@ -72,6 +73,8 @@ export function renderLobby() {
     on('lRandom', 'onchange', (e) => send({ t: 'lobby', settings: { randomFirst: e.target.checked } }));
     on('lSeed', 'onchange', (e) => send({ t: 'lobby', settings: { seed: e.target.value } }));
     on('lStart', 'onclick', () => send({ t: 'start' }));
+    for (const b of el.querySelectorAll('[data-mode]')) b.onclick = () => { if (isHost) send({ t: 'lobby', settings: { mode: b.dataset.mode } }); };
+    for (const c of el.querySelectorAll('[data-rule]')) c.onchange = () => send({ t: 'lobby', settings: { rules: { [c.dataset.rule]: c.checked } } });
     // One persistent preview canvas (WebGL contexts are limited), moved into the fresh markup.
     if (!previewBox) {
         previewBox = document.createElement('div');
@@ -85,4 +88,17 @@ export function renderLobby() {
     if (preview) { preview.show(mySchool); preview.engine.stopRenderLoop(); preview.engine.runRenderLoop(() => preview.scene.render()); setTimeout(() => preview.engine.resize(), 0); }
 }
 let previewBox = null;
+
+/** Game creation mode: «Кастомная игра» (house rules toggled freely) or «Игра на MMR» (all on). */
+function modeHtml(L, isHost) {
+    const mode = L.settings.mode || 'custom';
+    const rules = L.settings.rules || {};
+    const tabs = Object.entries(GAME_MODES).map(([id, m]) => `<button class="mode ${mode === id ? 'on' : ''}" data-mode="${id}" ${isHost ? '' : 'disabled'} title="${esc(m.text)}"><b>${esc(m.name)}</b><small>${esc(m.text)}</small></button>`).join('');
+    const list = HOUSE_RULES.map(r => {
+        const locked = !isHost || mode === 'mmr';
+        const why = mode === 'mmr' ? 'В игре на MMR все правила стола включены' : !isHost ? 'Настройки выбирает хозяин стола' : '';
+        return `<label class="check rule ${locked ? 'locked' : ''}" title="${esc(why)}"><input type="checkbox" data-rule="${r.id}" ${rules[r.id] ? 'checked' : ''} ${locked ? 'disabled' : ''}><span><b>${esc(r.name)}</b> — ${esc(r.text)}${r.needsText ? `<em>${esc(r.needsText)}</em>` : ''}</span></label>`;
+    }).join('');
+    return `<div class="modes">${tabs}</div><div class="rules">${list}</div>`;
+}
 export function closeLobbyPreview() { if (preview) { preview.engine.stopRenderLoop(); } }

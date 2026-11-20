@@ -111,6 +111,9 @@ export function botCommand(view, opts = {}) {
     if (med && !med.err) return { t: 'meditate', trophy: med.trophies[0] };
     const ex = o.phase2.filter(x => x.id.startsWith('explore-') && !x.err);
     if (ex.length) return { t: 'explore', deck: ex[Math.floor(R() * ex.length)].id === 'explore-city' ? 'city' : 'wild' };
+    if (fightOpt && !fightOpt.err) return { t: 'fight' };
+    const skip = o.phase2.find(x => x.id === 'skipPhase2' && !x.err);
+    if (skip) return { t: 'skipPhase2' };
     return null;
 }
 
@@ -138,6 +141,8 @@ function answerPrompt(view, p, pr) {
         }
         return { t: 'answer', choice: okOpts[Math.floor(R() * okOpts.length)].id };
     }
+    // House rule: buy back drunk elixirs while keeping 2 gold for training/movement.
+    if (pr.ui === 'elixirReturn') return { t: 'answer', ids: pr.ids.slice(0, Math.max(0, Math.min(pr.max, p.gold - 2))) };
     // cards: discard/remove -> weakest; take -> strongest
     const takeLike = ['deckTop', 'discard', 'row', 'elixirs'].includes(pr.from) && !/Сброс|сбрось|убер/i.test(pr.text || '');
     const sorted = pr.ids.slice().sort((a, b) => takeLike ? value(b) - value(a) : value(a) - value(b));

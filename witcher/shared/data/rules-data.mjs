@@ -81,3 +81,24 @@ export const BOT_NAMES = ['Весемир', 'Ламберт', 'Эскель', '�
 
 /** Base game monster pool: MON-01..28 (28 cards, База.md p. 4). 29 Кащей, 30 Тролль, 31 Сирена are expansions. */
 export const BASE_MONSTERS = Array.from({ length: 28 }, (_, i) => 'MON-' + String(i + 1).padStart(2, '0'));
+
+// ---------------------------------------------------------------------------------------------
+// Game modes and house rules (lobby). «Кастомная игра»: the host toggles each rule freely.
+// «Игра на MMR»: every rule is forced on, so rated games are always played the same way.
+// ---------------------------------------------------------------------------------------------
+export const GAME_MODES = {
+    custom: { name: 'Кастомная игра', text: 'Правила стола выбираются свободно.' },
+    mmr: { name: 'Игра на MMR', text: 'Рейтинговая партия: все правила стола включены и не меняются.' },
+};
+export const HOUSE_RULES = [
+    { id: 'elixirReturn', name: 'Возврат эликсиров', text: 'После битвы каждый выпитый в ней эликсир можно вернуть за 1 золото.' },
+    { id: 'bombs', name: 'Выбор бомбы и восстановление', text: 'Бомбу выбираете при получении; после битвы использованную бомбу можно восстановить за 2 золота.', needs: 'trail', needsText: 'Бомбы — из дополнения «По следу монстра»: правило заработает вместе с ним.' },
+    { id: 'openEvents', name: 'Открытые последствия', text: 'Последствия обоих вариантов карты события видны до выбора.' },
+];
+/** Lobby settings → { mode, rules } with MMR forcing every rule on. */
+export function normalizeRules(mode, rules = {}) {
+    const m = GAME_MODES[mode] ? mode : 'custom';
+    const out = {};
+    for (const r of HOUSE_RULES) out[r.id] = m === 'mmr' ? true : !!rules[r.id];
+    return { mode: m, rules: out };
+}

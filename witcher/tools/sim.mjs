@@ -5,7 +5,7 @@ import { botCommand } from '../shared/bots.mjs';
 import { SCHOOL_ORDER } from '../shared/data/rules-data.mjs';
 
 export function playGame({ players = 3, seed = 1, maxSteps = 20000, verbose = false } = {}) {
-    const state = createGame({ seed, players: Array.from({ length: players }, (_, i) => ({ name: 'Бот ' + (i + 1), school: SCHOOL_ORDER[(i + seed) % 5], bot: 1 })) });
+    const state = createGame({ seed, players: Array.from({ length: players }, (_, i) => ({ name: 'Бот ' + (i + 1), school: SCHOOL_ORDER[(i + seed) % 5], bot: 1 })), mode: process.env.MODE || 'custom' });
     let steps = 0;
     let r = seed * 7919 + 13;
     const rand = () => { r = (r * 1103515245 + 12345) % 2147483648; return r / 2147483648; };

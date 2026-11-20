@@ -175,3 +175,77 @@ test('карты битвы (срез): «Мощный Аард» → «Блок
     // Without the red card the Блок link is unused: no return.
     assert.ok(!comboTotals(st, p, ['W-B-11', 'W-B-01']).ret.includes('W-B-01'));
 });
+
+test('уникальные карты (с. 16): разыгранная карта исследования уходит из игры, пустая колода — причина', () => {
+    const st = solo();
+    const decks = ensureExplore(st);
+    decks.city = ['CITY1-02'];
+    ok(apply(st, 0, { t: 'explore', deck: 'city' }));
+    ok(apply(st, 0, { t: 'answer', choice: 'a' }));
+    ok(apply(st, 0, { t: 'answer', choice: 'ok' }));
+    assert.equal(decks.city.length, 0, 'карта не возвращается под колоду');
+    assert.ok(st.eventsUsed.includes('CITY1-02'));
+    // Next turn of the same player (solo): the city deck is empty — disabled with the reason.
+    while (st.prompt) apply(st, st.prompt.seat, st.prompt.kind === 'choice' ? { t: 'answer', choice: st.prompt.options.find(o => !o.disabled).id } : { t: 'answer', ids: st.prompt.ids.slice(0, st.prompt.min) });
+    const o = options(st, 0);
+    const city = o.phase2.find(x => x.id === 'explore-city');
+    if (city) assert.match(city.err, /закончилась/);
+    assert.equal(apply(st, 0, { t: 'explore', deck: 'city' }).ok, false);
+});
+
+test('уникальные карты: «Кастет» (событие 15) даёт только одна карта, и только одному игроку', () => {
+    const refs = [];
+    const walk = (fx, id) => { for (const e of fx || []) { if (e.event === 'CONT79-15' || e.gear === 'CONT79-15' || (e.quest && e.quest.event === 'CONT79-15')) refs.push(id); if (e.roll) e.roll.forEach(b => walk(b.fx, id)); if (e.if) { walk(e.fx, id); walk(e.else, id); } } };
+    for (const [id, c] of Object.entries(EVENTS)) { walk(c.fx, id); if (c.a) { walk(c.a.fx, id); walk(c.b.fx, id); } }
+    assert.deepEqual(refs, ['CONT81-13']);
+});
+
+test('задания: по названию локации, со стоимостью, затем событие уходит из игры', () => {
+    const st = solo();
+    const p = st.players[0];
+    const quest = Object.entries(EVENTS).find(([, c]) => c.a && [c.a, c.b].some(o => o.fx.some(e => e.quest && e.quest.terrain)));
+    const [id, c] = quest;
+    const k = c.a.fx.some(e => e.quest) ? 'a' : 'b';
+    p.gold = 9;
+    exploreCard(st, id);
+    ok(apply(st, 0, { t: 'answer', choice: k }));
+    let guard = 0;
+    while (st.prompt && guard++ < 20) apply(st, 0, st.prompt.kind === 'choice' ? { t: 'answer', choice: st.prompt.options.find(o => !o.disabled).id } : { t: 'answer', ids: st.prompt.ids.slice(0, st.prompt.min) });
+    const q = p.quests.find(x => x.id === id);
+    assert.ok(q, 'задание у игрока');
+    assert.ok(!st.eventsUsed.includes(id), 'карта задания лежит у игрока, пока не выполнена');
+});
+
+test('все сгенерированные карты исследования разыгрываются обоими вариантами без ошибок', () => {
+    let n = 0;
+    for (const deck of Object.keys(EXPLORE_DECKS)) for (const id of EXPLORE_DECKS[deck]) for (const k of ['a', 'b']) {
+        const st = solo(11 + n);
+        const p = st.players[0];
+        p.gold = 6; p.elixirs.push('POTION-01#90', 'POTION-02#91');
+        exploreCard(st, id);
+        const r = apply(st, 0, { t: 'answer', choice: k });
+        if (!r.ok) { assert.match(r.err, /золота|Недоступно|оплат/i, `${id}${k}: ${r.err}`); continue; }
+        let guard = 0;
+        while (st.prompt && st.prompt.seat === 0 && !/Фаза III/.test(st.prompt.title || '') && guard++ < 40) {
+            const pr = st.prompt;
+            const res = apply(st, 0, pr.kind === 'choice' ? { t: 'answer', choice: pr.options.find(o => !o.disabled).id } : { t: 'answer', ids: pr.ids.slice(0, pr.min) });
+            assert.ok(res.ok, `${id}${k}: ${res.err} (${pr.title})`);
+        }
+        assert.ok(guard < 40, `${id}${k}: зацикливание`);
+        assert.ok(st.eventsUsed.includes(id) || p.quests.some(q => q.id === id), `${id}${k}: карта ушла из игры или стала заданием`);
+        // A quest from this card can be completed: walk there by teleport and take the event.
+        const qi = p.quests.findIndex(q => q.id === id);
+        if (qi >= 0 && st.turn && st.turn.phase === 1) {
+            const evId = p.quests[qi].event;
+            p.loc = p.quests[qi].loc; p.gold = 9;
+            const rq = apply(st, 0, { t: 'quest', i: qi });
+            assert.ok(rq.ok, `${id}${k} quest: ${rq.err}`);
+            guard = 0;
+            while (st.prompt && st.prompt.seat === 0 && guard++ < 40) { const pr = st.prompt; apply(st, 0, pr.kind === 'choice' ? { t: 'answer', choice: pr.options.find(o => !o.disabled).id } : { t: 'answer', ids: pr.ids.slice(0, pr.min) }); }
+            assert.ok(st.eventsUsed.includes(evId), `${id}${k}: событие ${evId} разыграно и ушло из игры`);
+            assert.ok(st.eventsUsed.includes(id), `${id}${k}: выполненное задание ушло из игры`);
+        }
+        n++;
+    }
+    assert.ok(n >= 60, `разыграно ${n} вариантов`);
+});

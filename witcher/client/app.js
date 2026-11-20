@@ -7,7 +7,7 @@ import { Board } from './board.js';
 import { loadArtIndex, esc } from './cards.js';
 import { renderLobby, closeLobbyPreview } from './lobby.js';
 import { renderHud, renderChat, startMove, confirmMove, cancelMove, mapTip, phase2, doLocAction, renderRow, openHelp } from './hud.js';
-import { renderPrompt, promptKey } from './prompt.js';
+import { renderPrompt, promptKey, initZoom } from './prompt.js';
 import { renderFight, fightKey, fightEvents, fightStarted } from './fight.js';
 import { renderPoker, pokerKey } from './poker.js';
 import { sfx } from './sound.js';
@@ -166,13 +166,15 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'Home') { board && board.focus(null); return; }
     if (e.key === ' ') { e.preventDefault(); const p = S.view.turn ? S.view.players[S.view.turn.seat] : me(); if (p && board) board.focus(p.loc, 7.5); return; }
     if (!S.options || !S.options.acting || S.view.fight || S.view.prompt) return;
-    if (k === 'a' || k === 'ф') doLocAction();
-    else if (k === 'f' || k === 'а') phase2('fight');
-    else if (k === 'm' || k === 'ь') phase2('meditate');
-    else if (k === 'c' || k === 'с') phase2('explore-city');
-    else if (k === 'w' || k === 'ц') phase2('explore-wild');
-    else if (k === 'e' || k === 'у') phase2('endExplore');
-    else if (k === 'q' || k === 'й') { const q = S.options && (S.options.quests || []).find(x => !x.err); if (q) cmd({ t: 'quest', i: q.i }, 'задание'); }
+    // Physical keys (any layout). W/A/S/D are reserved for panning the camera (board.js).
+    const c = e.code;
+    if (c === 'KeyT') doLocAction();
+    else if (c === 'KeyF') phase2('fight');
+    else if (c === 'KeyM') phase2('meditate');
+    else if (c === 'KeyC') phase2('explore-city');
+    else if (c === 'KeyV') phase2('explore-wild');
+    else if (c === 'KeyE') phase2(S.options.phase2.some(x => x.id === 'skipPhase2') ? 'skipPhase2' : 'endExplore');
+    else if (c === 'KeyQ') { const q = S.options && (S.options.quests || []).find(x => !x.err); if (q) cmd({ t: 'quest', i: q.i }, 'задание'); }
 });
 
 // Side tabs and chat
@@ -186,6 +188,7 @@ for (const b of document.querySelectorAll('#side .tabs button')) b.onclick = () 
 $('chatForm').onsubmit = (e) => { e.preventDefault(); const i = $('chatInput'); if (i.value.trim()) send({ t: 'chat', text: i.value }); i.value = ''; };
 
 // Debug/test hook (headless screenshots): window.__witcher.
-window.__witcher = { S, send, startMove, confirmMove, phase2 };
+initZoom();
+window.__witcher = { S, send, startMove, confirmMove, phase2, get board() { return board; } };
 
 loadArtIndex().then(connect);

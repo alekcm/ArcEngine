@@ -869,6 +869,24 @@ STEPS.fightCleanup = (state) => {
     state.attackDeck = shuffle(state, Array.from({ length: 20 }, (_, i) => 'MON-ATK-' + String(i + 1).padStart(2, '0')));
     p.deck = shuffle(state, [...p.deck, ...p.discard.splice(0), ...p.hand.splice(0)]);
     log(state, `${p.name}: щит восстановлен до ${p.shield}, все карты перемешаны в колоду`);
+    // House rule «Возврат эликсиров»: each elixir drunk in this fight may be bought back for 1 gold.
+    if (state.rules && state.rules.elixirReturn && f.usedElixirs.length && p.gold > 0) push(state, { op: 'elixirReturnAsk', seat: p.seat, ids: f.usedElixirs.slice() });
+};
+STEPS.elixirReturnAsk = (state, step) => {
+    const p = state.players[step.seat];
+    const ids = step.ids.filter(id => state.elixirDiscard.includes(id));
+    const max = Math.min(ids.length, p.gold);
+    if (!max) return;
+    ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ui: 'elixirReturn', ids, min: 0, max, title: 'Возврат эликсиров', text: `Правило стола: каждый выпитый в этой битве эликсир можно вернуть за 1 золото (у вас ${p.gold}).`, op: 'elixirReturnDo', args: { seat: p.seat } });
+};
+STEPS.elixirReturnDo = (state, step) => {
+    const p = state.players[step.seat];
+    const ids = (step.ids || []).filter(id => state.elixirDiscard.includes(id)).slice(0, p.gold);
+    if (!ids.length) return;
+    for (const id of ids) { removeFrom(state.elixirDiscard, id); p.elixirs.push(id); }
+    p.gold -= ids.length;
+    log(state, `${p.name} возвращает эликсиры за ${ids.length} золота: ${ids.map(id => potionOf(id).name).join(', ')}`, { kind: 'elixir' });
+    push(state, { op: 'elixirLimit', seat: p.seat });
 };
 
 /** Return location tokens of a freed slot (track tokens, hunts, the slot's own token). */

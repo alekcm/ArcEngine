@@ -8,7 +8,7 @@ import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, c
 import { monsterFightError, elixirError, specError, activeEffectError, comboError } from './fight.mjs';
 import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy } from './effects.mjs';
 import { exploreError, questError } from './explore.mjs';
-import { questLabel } from '../data/events-data.mjs';
+import { EXPLORE_DECKS, questLabel } from '../data/events-data.mjs';
 import './setup.mjs';
 
 export { createGame } from './setup.mjs';
@@ -114,7 +114,13 @@ export function options(state, seat) {
     o.phase2.push({ id: 'fight', label: slot ? `Битва: ${MONSTER[slot.mon].name}` : 'Битва с монстром', err: fe });
     const med = meditationOptions(state, p);
     o.phase2.push({ id: 'meditate', label: 'Медитация', err: med.length ? null : 'Нужен навык 5 и свободный трофей за него', trophies: med.map(m => m.id) });
-    for (const d of ['city', 'wild']) o.phase2.push({ id: 'explore-' + d, label: d === 'city' ? 'Исследовать город' : 'Исследовать окрестности', err: exploreError(state, p, d) });
+    for (const d of ['city', 'wild']) {
+        const left = (state.explore || EXPLORE_DECKS)[d].length;
+        o.phase2.push({ id: 'explore-' + d, label: `${d === 'city' ? 'Исследовать город' : 'Исследовать окрестности'} (${left})`, err: exploreError(state, p, d) });
+    }
+    // Phase II is obligatory; when no action is possible here (empty decks, an event forbade
+    // exploring, no monster), the player goes to phase III — «as far as possible».
+    if (o.phase2.every(x => x.err)) o.phase2.push({ id: 'skipPhase2', label: 'Нет действий фазы II → фаза III', err: null });
     return o;
 }
 
@@ -173,6 +179,14 @@ function turnCmd(state, p, cmd) {
         case 'endExplore': {
             if (!t.afterExplore) return err('Сейчас нечего завершать');
             t.phase = 2;
+            push(state, { op: 'phase3' });
+            return ok();
+        }
+        case 'skipPhase2': {
+            const oo = options(state, p.seat);
+            if (!oo.phase2.some(x => x.id === 'skipPhase2')) return err('Есть доступное действие фазы II');
+            t.phase = 2;
+            log(state, `${p.name}: действий фазы II нет — сразу фаза III`);
             push(state, { op: 'phase3' });
             return ok();
         }

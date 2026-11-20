@@ -83,7 +83,8 @@ STEPS.gainElixir = (state, step) => {
         log(state, `${p.name} берёт эликсир «${potionOf(e).name}»${step.why ? ' (' + step.why + ')' : ''}`);
         fx(state, { k: 'elixir', seat: p.seat, id: e });
     }
-    push(state, { op: 'elixirLimit', seat: p.seat });
+    // «Возьмите до 5 эликсиров (игнорируя лимит)»: no limit check for this gain.
+    if (!step.noLimit) push(state, { op: 'elixirLimit', seat: p.seat });
 };
 export function drawElixir(state) {
     if (!state.elixirDeck.length) {

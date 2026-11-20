@@ -24,6 +24,7 @@ export function renderPrompt() {
     if (key !== lastKey) { S.ui.sel = []; lastKey = key; sfx('card'); }
     el.className = '';
     if (pr.kind === 'choice' && pr.ui === 'event') { renderEvent(el, pr); return; }
+    if (pr.kind === 'choice' && pr.ui === 'row') { renderRow(el, pr); return; }
     if (pr.kind === 'choice') {
         const opts = pr.options.map((o, i) => {
             let extra = '';
@@ -43,7 +44,7 @@ export function renderPrompt() {
     const sel = S.ui.sel;
     const cardsHtml = pr.ids.map(id => {
         const s = sel.includes(id);
-        const o = { sel: s, cls: 'pick', small: pr.ids.length > 8 };
+        const o = { sel: s, cls: 'pick' + (pr.from === 'row' ? ' buy' : ''), small: pr.ids.length > 8 };
         if (String(id).startsWith('POTION')) return elixirCard(id, o);
         if (ATTACK[id]) return `<div class="pick ${s ? 'sel' : ''}" data-id="${esc(id)}" style="border-radius:9px">${attackCard(id)}</div>`;
         if (MONSTER[id]) return monsterCard(id, {});
@@ -72,15 +73,61 @@ export function renderPrompt() {
     const skip = $('pSkip'); if (skip) skip.onclick = () => cmd({ t: 'answer', ids: [] }, pr.title);
 }
 
+// Phase III purchase: the row itself, big cards nearly touching; a card is bought by clicking
+// it (mouse only — no number keys). Unaffordable cards are dimmed with the reason under them.
+// Alt + hover enlarges any card (see initZoom).
+function renderRow(el, pr) {
+    const v = S.view;
+    const cards = pr.options.map(o => {
+        const slot = Number(o.id), id = v.row[slot];
+        if (!id) return '';
+        const cost = Math.max(0, CARDS[id].cost + ROW_MODS[slot]);
+        return `<div class="buyslot ${o.disabled ? 'dis' : ''}" data-c="${esc(o.id)}" ${o.disabled ? `title="${esc(o.hint || 'Недоступно')}"` : ''}>
+            ${actionCard(id, { cls: 'buy ' + (o.disabled ? 'no' : 'pick'), cost })}
+            <div class="buycap">${o.disabled ? esc(o.hint || 'Недоступно') : `сбросить ${cost}`}</div></div>`;
+    }).join('');
+    el.innerHTML = `<div class="box rowbox"><h2>${esc(pr.title || 'Выбор')}</h2>${pr.text ? `<p>${esc(pr.text)}</p>` : ''}
+        <div class="buyrow">${cards}</div>
+        <p class="zoomhint">Щёлкните карту, чтобы взять её. Alt + наведение — увеличить карту.</p></div>`;
+    for (const b of el.querySelectorAll('.buyslot:not(.dis)')) b.onclick = () => cmd({ t: 'answer', choice: b.dataset.c }, pr.title);
+}
+
+/** Alt + hover: a large copy of the card under the cursor (buy row, hand, fight). */
+export function initZoom() {
+    let over = null;
+    const box = document.createElement('div');
+    box.id = 'czoom'; box.className = 'hidden';
+    document.body.appendChild(box);
+    const show = (on) => {
+        const c = on && over && over.closest('.card.action, .card.attack');
+        if (!c) { box.className = 'hidden'; box.innerHTML = ''; return; }
+        const copy = c.cloneNode(true);
+        copy.classList.remove('small', 'huge', 'buy', 'sel', 'dim', 'no', 'pick', 'can');
+        copy.classList.add('zoomed');
+        box.innerHTML = ''; box.appendChild(copy);
+        const r = c.getBoundingClientRect();
+        const left = r.left + r.width / 2 > innerWidth / 2 ? Math.max(8, r.left - 380) : Math.min(innerWidth - 372, r.right + 12);
+        box.style.left = left + 'px';
+        box.style.top = Math.max(8, Math.min(innerHeight - 572, r.top + r.height / 2 - 280)) + 'px';
+        box.className = '';
+    };
+    document.addEventListener('mouseover', (e) => { over = e.target; show(e.altKey); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Alt') { e.preventDefault(); show(true); } });
+    document.addEventListener('keyup', (e) => { if (e.key === 'Alt') { e.preventDefault(); show(false); } });
+    window.addEventListener('blur', () => show(false));
+}
+
 // Exploration / event card: the card itself on the left (options are clickable on it, like
 // pointing at the printed line), buttons with the reasons for disabled options on the right.
 function renderEvent(el, pr) {
     const choose = pr.stage === 'choose';
-    const card = eventCard(pr.card, { stage: choose ? 'choose' : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.dice, choose });
+    // House rule «Открытые последствия»: both outcomes are printed before the choice.
+    const open = choose && S.view.rules && S.view.rules.openEvents;
+    const card = eventCard(pr.card, { stage: choose ? (open ? 'full' : 'choose') : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.dice, choose });
     const opts = pr.options.map((o, i) => btn({ label: esc(o.label), why: o.disabled ? (o.hint || 'Недоступно') : null, data: `data-c="${esc(o.id)}"`, key: String(i + 1), primary: !choose && i === 0 })).join('');
     const sub = pr.stage === 'outcome' ? `<p class="eff" style="color:var(--gold2)">${esc(pr.effect || '')}</p>`
         : pr.stage === 'roll' ? `<div style="display:flex;align-items:center;gap:12px"><span class="evdice">${pr.dice}</span><span style="color:var(--dim)">Выпало ${pr.dice} — исход подсвечен на карте</span></div>`
-        : choose ? '<p style="color:var(--dim)">Выберите вариант: щёлкните строку на карте или кнопку.</p>' : '';
+        : choose ? `<p style="color:var(--dim)">Выберите вариант: щёлкните строку на карте или кнопку.${open ? ' Последствия открыты (правило стола).' : ''}</p>` : '';
     el.innerHTML = `<div class="box evbox-wrap">${card}<div class="evside"><h2>${esc(pr.title || 'Событие')}</h2>${sub}<div class="opts">${opts}</div></div></div>`;
     for (const o of pr.options) if (o.disabled) { const line = el.querySelector(`.evopt[data-c="${o.id}"]`); if (line) { line.classList.add('dis'); line.title = o.hint || ''; } }
     for (const b of el.querySelectorAll('[data-c]')) b.onclick = () => {
@@ -92,7 +139,7 @@ function renderEvent(el, pr) {
 export function promptKey(e) {
     const v = S.view, pr = v && v.prompt;
     if (!pr || pr.foreign || pr.kind === 'dice') return false;
-    if (pr.kind === 'choice' && /^[1-9]$/.test(e.key)) {
+    if (pr.kind === 'choice' && pr.ui !== 'row' && /^[1-9]$/.test(e.key)) {
         const o = pr.options[Number(e.key) - 1];
         if (o && !o.disabled) cmd({ t: 'answer', choice: o.id }, pr.title);
         return true;

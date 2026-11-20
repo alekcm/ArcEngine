@@ -1,6 +1,6 @@
 // Game setup (База.md pp. 6–8, solo p. 33).
 import { STARTER, COMMON, POTIONS, SKILLTROPHIES } from '../data/gen-data.mjs';
-import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME } from '../data/rules-data.mjs';
+import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules } from '../data/rules-data.mjs';
 import { MONSTER, LOC, shuffle, randInt, log, drawCards } from './util.mjs';
 import { push, run, ask } from './flow.mjs';
 
@@ -17,6 +17,7 @@ export function createGame(opts) {
         row: [], actionDeck: [], elixirDeck: [], elixirDiscard: [],
         skillTrophies: [], locPiles: {}, slots: [], monsterStacks: { 1: [], 2: [], 3: [] }, chased: { 1: [], 2: [], 3: [] },
         extraStack: [], attackDeck: [], closedTavern: null, winner: null, removedRow: [],
+        ...normalizeRules(opts.mode, opts.rules), eventsUsed: [],
     };
     let order = opts.players.map((p, i) => i);
     if (opts.randomFirst) shuffle(state, order);
