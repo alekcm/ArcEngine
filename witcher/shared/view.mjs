@@ -10,6 +10,7 @@ export function viewFor(state, seat) {
     for (const k of Object.keys(s.locPiles)) s.locPiles[k] = s.locPiles[k].length;
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;
     s.extraStack = s.extraStack.length;
+    if (s.explore) for (const k of Object.keys(s.explore)) s.explore[k] = s.explore[k].length;
     for (const p of s.players) {
         p.deckCount = p.deck.length;
         p.handCount = p.hand.length;

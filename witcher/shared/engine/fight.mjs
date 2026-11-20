@@ -6,7 +6,7 @@ import {
     CARDS, MONSTER, ATTACK, LOC, card, log, fx, drawCards, removeFrom, shuffle, randInt, d6, skillVal, maxShield, clampShield, potionOf,
 } from './util.mjs';
 import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT } from '../data/rules-data.mjs';
-import { hasTrophy, hasWitcherTrophy, hasSkillTrophy } from './effects.mjs';
+import { hasTrophy, hasWitcherTrophy, hasSkillTrophy, ACTIVE_EFFECTS } from './effects.mjs';
 import { SKILL_GEN } from './turn.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
@@ -421,7 +421,7 @@ export function activeEffectError(state, p, key) {
     const f = state.fight;
     if (!f || f.stage !== 'witcher' || f.seat !== p.seat) return 'Только на этапе 1 своего хода битвы';
     if (f.once['a' + key]) return 'Уже использовано в этой битве';
-    const own = key === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : hasTrophy(p, key);
+    const own = key === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : ACTIVE_EFFECTS[key]?.src === 'gear' ? p.gear.includes(key) : hasTrophy(p, key);
     if (!own) return 'Нет такого трофея';
     switch (key) {
         case 'MON-06': case 'MON-26': return p.deck.length ? 'Только если колода пуста' : null;
@@ -430,6 +430,7 @@ export function activeEffectError(state, p, key) {
         case 'MON-11': return p.elixirs.length >= 1 ? null : 'Нужен 1 неиспользованный эликсир';
         case 'MON-10': return p.hand.length && p.discard.length ? null : 'Нужны карта в руке и карта в сбросе';
         case 'MON-14': return p.hand.length ? null : 'Нужна карта в руке';
+        case 'CONT79-15': return p.hand.length ? null : 'Нужна карта в руке';
         case 'MON-21': return p.gold >= 2 && p.discard.length ? null : 'Нужно 2 золота и карта в сбросе';
         case 'MON-28': return p.discard.length ? null : 'Сброс пуст';
         case 'W-griffin': return p.discard.length ? null : 'Сброс пуст';
@@ -451,6 +452,7 @@ STEPS.useActive = (state, step) => {
         case 'MON-11': ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: 1, max: 1, title: 'Трофей «Полуденница»', text: 'Сбросьте 1 эликсир: +2 карты.', op: 'trNoonwraith', args: { fight: 1 } }); break;
         case 'MON-10': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Трофей «Виверна»', text: 'Сбросьте 1 карту из руки…', op: 'trWyvern', args: { fight: 1 } }); break;
         case 'MON-14': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Трофей «Брукса»', text: 'Сбросьте 1 карту из руки, чтобы взять 5 карт.', op: 'trBruxa', args: { fight: 1 } }); break;
+        case 'CONT79-15': ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Кастет', text: 'Сбросьте 1 карту из руки, чтобы нанести 2 урона.', op: 'gearKnuckle', args: { fight: 1 } }); break;
         case 'MON-21': p.gold -= 2; askDiscardPick('Трофей «Мантикора»', 'trTakeDiscard'); break;
         case 'MON-28': askDiscardPick('Трофей «Сколопендроморф»', 'trTakeDiscard'); break;
         case 'W-griffin': {
@@ -488,6 +490,12 @@ STEPS.trBruxa = (state, step) => {
     const p = fp(state);
     removeFrom(p.hand, step.ids[0]); p.discard.push(step.ids[0]);
     const g = drawCards(state, p, 5); log(state, `${p.name}: трофей «Брукса» — +${g} карт(ы)`);
+};
+STEPS.gearKnuckle = (state, step) => {
+    const p = fp(state);
+    removeFrom(p.hand, step.ids[0]); p.discard.push(step.ids[0]);
+    log(state, `${p.name}: кастет — сбрасывает «${CARDS[step.ids[0]].name}»`);
+    push(state, F('dealDamage', { n: 2, src: 'кастет' }));
 };
 STEPS.trTakeDiscard = (state, step) => {
     const p = fp(state);

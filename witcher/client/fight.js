@@ -45,7 +45,7 @@ export function renderFight() {
         for (const e of o.elixirs) { const po = POTION[e.id.split('#')[0]]; fbtns.push(btn({ label: `${esc(po.name)}`, icon: icon('elixir', 'c-forest'), why: e.err, data: `data-el="${esc(e.id)}"`, small: true }).replace('<button', `<button title="${esc(po.text)}"`)); }
         const sc = SCHOOLS[p.school];
         if (p.school === 'cat' || p.school === 'griffin') fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
-        for (const a of o.active) fbtns.push(btn({ label: esc(a.label), icon: icon('trophy'), why: a.err, data: `data-act="${esc(a.key)}"`, small: true }));
+        for (const a of o.active) fbtns.push(btn({ label: esc(a.label), icon: icon(a.key.startsWith('CONT') ? 'combat' : 'trophy'), why: a.err, data: `data-act="${esc(a.key)}"`, small: true }));
     }
 
     const hand = p ? p.hand.map((id, i) => {

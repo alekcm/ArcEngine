@@ -7,7 +7,8 @@ import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from 
 import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER } from './turn.mjs';
 import { monsterFightError, elixirError, specError, activeEffectError, comboError } from './fight.mjs';
 import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy } from './effects.mjs';
-import { exploreError } from './explore.mjs';
+import { exploreError, questError } from './explore.mjs';
+import { questLabel } from '../data/events-data.mjs';
 import './setup.mjs';
 
 export { createGame } from './setup.mjs';
@@ -90,12 +91,19 @@ export function options(state, seat) {
         o.fight = {
             elixirs: p.elixirs.map(id => ({ id, err: elixirError(state, p, id) })),
             spec: specError(state, p),
-            active: Object.keys(ACTIVE_EFFECTS).filter(k => k === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
+            active: Object.keys(ACTIVE_EFFECTS).filter(k => k === 'W-griffin' ? hasWitcherTrophy(p, 'griffin') : ACTIVE_EFFECTS[k].src === 'gear' ? p.gear.includes(k) : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
             mustPlay: p.hand.length > 0,
         };
         return o;
     }
     if (!t || t.seat !== seat || t.phase !== 1) return o;
+    o.quests = p.quests.map((q, i) => ({ i, label: questLabel(q), loc: q.loc, err: questError(state, p, i) }));
+    if (t.afterExplore) {
+        // The event moved the witcher: only the new location's action, then phase III.
+        o.loc = locActionInfo(state, p);
+        o.phase2.push({ id: 'endExplore', label: 'Завершить → фаза III', err: null });
+        return o;
+    }
     for (const n of ADJ[p.loc] || []) {
         if (!canEnter(state, n)) continue;
         o.moves.push({ to: n, terrain: LOC[n].terrain });
@@ -160,7 +168,21 @@ function turnCmd(state, p, cmd) {
     const t = state.turn;
     if (!t || t.seat !== p.seat) return err('Сейчас не ваш ход');
     if (t.phase !== 1) return err('Сейчас не фаза I');
+    if (t.afterExplore && !['loc', 'endExplore'].includes(cmd.t)) return err('После события: только действие локации, затем фаза III');
     switch (cmd.t) {
+        case 'endExplore': {
+            if (!t.afterExplore) return err('Сейчас нечего завершать');
+            t.phase = 2;
+            push(state, { op: 'phase3' });
+            return ok();
+        }
+        case 'quest': {
+            const i = Number(cmd.i);
+            const e = questError(state, p, i);
+            if (e) return err(e);
+            push(state, { op: 'questDone', seat: p.seat, i });
+            return ok();
+        }
         case 'move': {
             const to = Number(cmd.to);
             if (!(ADJ[p.loc] || []).includes(to) || !canEnter(state, to)) return err('Туда нет дороги');

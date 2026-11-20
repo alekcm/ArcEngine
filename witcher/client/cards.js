@@ -5,6 +5,7 @@
 import { CARDS, MONSTER, ATTACK, POTION } from '/shared/engine/util.mjs';
 import { COLOR_NAME, TERRAIN_NAME, SKILL_NAME } from '/shared/data/rules-data.mjs';
 import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
+import { EVENTS } from '/shared/data/events-data.mjs';
 import { icon, CARD_COLOR, TERRAIN_COLOR } from './icons.js';
 
 let ART = {};
@@ -59,15 +60,6 @@ export function artCss(id, base, emblem) {
 }
 
 // ---------------------------------------------------------------------------------------------
-const fxIcons = (f, big = false) => {
-    const out = [];
-    if (f.dmg) out.push(`<span class="fx dmg">${icon('sword')}<b>${f.dmg}</b></span>`);
-    if (f.shield) out.push(`<span class="fx shield">${icon('shield')}<b>${f.shield}</b></span>`);
-    if (f.draw) out.push(`<span class="fx draw">${icon('draw')}<b>${f.draw}</b></span>`);
-    if (f.top) out.push(`<span class="fx top" title="Взять верхнюю карту колоды">${icon('top')}</span>`);
-    if (f.ret) out.push(`<span class="fx ret" title="Вернуть карту в руку">${icon('ret')}</span>`);
-    return out.join('');
-};
 export function fxText(f) {
     const p = [];
     if (f.dmg) p.push(`урон ${f.dmg}`);
@@ -78,24 +70,65 @@ export function fxText(f) {
     return p.join(', ') || 'нет эффекта';
 }
 
+// ---------------------------------------------------------------------------------------------
+// Printed faces 1:1. Every face is laid out in the scan's own pixel space (579 × 899) and scaled
+// with --k, so positions measured on the original cards (tools/frames.mjs, GEO) are used as is.
+// Layer order of an action card: art → link tabs → frame of the card colour (stripe, ornament,
+// map strip, plate, cost box) → terrain medallion, school emblem → icons, name, cost.
+const A = 'assets/cards/';
+const img = (n, cls = '', st = '') => `<img class="${cls}" src="${A}${n}.webp" style="${st}" alt="" draggable="false">`;
+const svgI = (vb, body, cls) => `<svg class="${cls}" viewBox="${vb}" fill="none" stroke="#f4efe3" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+const HAND = '<path d="M13 70V57a2.4 2.4 0 0 1 4.8 0v-4a2.4 2.4 0 0 1 4.8 0v-1a2.4 2.4 0 0 1 4.8 0v2a2.4 2.4 0 0 1 4.8 0v10c0 4-3 7-7 7h-5c-3 0-5-2-7.2-4.5z" fill="#f4efe3" stroke="none"/>';
+// Glyphs not cut from the scans (thin line art) — redrawn after the printed ones.
+const GLYPH_SVG = {
+    tray: () => svgI('0 0 48 20', '<path d="M3 4l5 12h32l5-12"/><path d="M17 4l7 6 7-6"/>', 'g tray'),
+    stack: () => svgI('0 0 48 30', '<path d="M4 8l20-6 20 6-20 6z"/><path d="M4 15l20 6 20-6"/><path d="M4 22l20 6 20-6"/>', 'g stack'),
+    top: () => svgI('0 0 44 76', '<rect x="10" y="3" width="24" height="30" rx="2"/><path d="M15 8v20l14-20v20"/><path d="M22 37v10m-5-5l5 5 5-5"/>' + HAND, 'g top'),
+    ret: () => svgI('0 0 44 76', '<rect x="8" y="3" width="24" height="32" rx="2"/><path d="M20 10v12m0 6v.5"/><path d="M36 46a12 12 0 0 1-8 14"/><path d="M27 55l1 5 5-1"/>' + HAND, 'g ret'),
+};
+/** Strip/tab icon column for an effect, exactly as printed: one slash per damage, shield badge,
+ *  ±N over a tray (1 card) or a stack (several), the "top card" and "return" glyphs. */
+function fxGlyphs(f) {
+    const out = [];
+    for (let i = 0; i < (f.dmg || 0); i++) out.push(img('glyph-slash', 'g slash'));
+    if (f.shield) for (let i = 0; i < f.shield; i++) out.push(img('glyph-shield', 'g shield'));
+    if (f.draw) out.push(`<div class="g draw"><b>${f.draw > 0 ? '+' : '−'}${Math.abs(f.draw)}</b>${Math.abs(f.draw) > 1 ? GLYPH_SVG.stack() : GLYPH_SVG.tray()}</div>`);
+    if (f.top) out.push(GLYPH_SVG.top());
+    if (f.ret) out.push(GLYPH_SVG.ret());
+    return out.join('');
+}
+// Link tab slot per target colour (measured: the tab sits where its colour is, top to bottom).
+const TAB = { green: [100, -14], yellow: [95, 94], purple: [86, 196], blue: [76, 299], red: [66, 402] };
+const nameSize = (name) => Math.min(27, Math.floor(250 / (name.length * 0.56)));
+
 /** Action card (starter or common). opts: {sel, dim, order, small, cost, mod, linkHi} */
 export function actionCard(id, opts = {}) {
     const c = CARDS[id];
     if (!c) return `<div class="card blank"></div>`;
     const col = CARD_COLOR[c.color] || '#777';
-    const links = c.links.map((l, i) => `<div class="link ${opts.linkHi === i ? 'hi' : ''}" style="--lc:${CARD_COLOR[l.color] || '#ccc'}" title="Связка: следующая ${esc(COLOR_NAME[l.color] || 'любая').toLowerCase()} → ${esc(fxText(l.fx))}"><i></i>${fxIcons(l.fx) || '<span class="fx none">—</span>'}</div>`).join('');
     const terr = c.terrain;
     const cost = opts.cost != null ? opts.cost : c.cost;
+    const tabs = c.links.map((l, i) => {
+        const [x, y] = TAB[l.color] || TAB.red;
+        return `<div class="tab ${opts.linkHi === i ? 'hi' : ''}" style="left:${x}px;top:${y}px" title="Связка: следующая ${esc(COLOR_NAME[l.color] || 'любая').toLowerCase()} → ${esc(fxText(l.fx))}">
+            <i style="background-image:url('${A}tab-${l.color}.webp')"></i>
+            <div class="ic ${l.color === 'green' ? 'up' : ''}">${fxGlyphs(l.fx)}</div></div>`;
+    }).join('');
     const tip = `${c.name} — ${COLOR_NAME[c.color]}. ${fxText(c.fx)}. Стоимость ${c.cost}. Местность: ${TERRAIN_NAME[terr]}.` + c.links.map(l => ` Связка (${COLOR_NAME[l.color]}): ${fxText(l.fx)}.`).join('');
+    const cc = cost < c.cost ? 'down' : cost > c.cost ? 'up' : '';
     return `<div class="card action ${opts.small ? 'small' : ''} ${opts.sel ? 'sel' : ''} ${opts.dim ? 'dim' : ''} ${opts.cls || ''}" data-id="${esc(id)}" style="--cc:${col}" title="${esc(tip)}">
-        <div class="art" style="background-image:${artCss(id, col)}"></div>
-        <div class="cost">${icon('coin')}<b>${cost}</b>${opts.mod ? `<s>${opts.mod > 0 ? '+' : ''}${opts.mod}</s>` : ''}</div>
-        <div class="terr" style="--tc:${TERRAIN_COLOR[terr]}">${icon(terr)}</div>
+        <div class="face">
+            <div class="art" style="background-image:${artCss(id, col)}"></div>
+            ${tabs}
+            ${img('frame-' + c.color, 'frame')}
+            ${img('terrain-' + terr, 'terr')}
+            ${c.school ? img('emblem-' + c.school, 'emblem') : ''}
+            <div class="strip">${fxGlyphs(c.fx)}</div>
+            <div class="nm" style="font-size:${nameSize(c.name)}px">${esc(c.name)}</div>
+            <div class="cs ${cc}">${cost}</div>
+        </div>
+        ${opts.mod ? `<div class="cmod ${opts.mod < 0 ? 'down' : 'up'}">${opts.mod > 0 ? '+' : '−'}${Math.abs(opts.mod)}</div>` : ''}
         ${opts.order ? `<div class="order">${opts.order}</div>` : ''}
-        <div class="name">${esc(c.name)}</div>
-        <div class="main">${fxIcons(c.fx) || '<span class="fx none">—</span>'}</div>
-        <div class="links">${links}</div>
-        <div class="kind">${esc(COLOR_NAME[c.color] || '')}</div>
     </div>`;
 }
 
@@ -117,11 +150,34 @@ export function monsterCard(id, opts = {}) {
     </div>`;
 }
 
-export function attackCard(id, type) {
+// Monster attack card: background (frame + both pentagons) cut from the scans; parchment panel
+// is a border-image; texts are the printed ones; icons are the printed glyphs.
+const SKILL_GEN = { combat: 'сражения', defense: 'защиты', alchemy: 'алхимии', spec: 'специализации' };
+const ROMAN = ['I', 'II', 'III'];
+const hex = (lv) => `<svg class="hex" viewBox="0 0 40 46" fill="none" stroke="#f4efe3" stroke-width="3.4" stroke-linejoin="round"><path d="M20 3l15 8.5v23L20 43 5 34.5v-23z"/>${Array.from({ length: lv + 1 }, (_, i) => `<path d="M${20 + (i - lv / 2) * 6} 15v16"/>`).join('')}</svg>`;
+const slashes = (n, cls = '') => Array.from({ length: n }, () => img('glyph-slash', 'g slash ' + cls)).join('');
+function attackSide(e) {
+    let text, icons;
+    if (e.k === 'dmg' && !e.lvl) { text = `Игрок получает ${e.n} урона.`; icons = `<div class="arow">${slashes(e.n)}</div>`; }
+    else if (e.k === 'dmg') { text = `Игрок получает ${e.lvl.join(', ').replace(/, (\d+)$/, ' или $1')} единиц урона в зависимости от уровня монстра.`; icons = levels(e.lvl.map(n => `<span class="pile">${slashes(n, 'sm')}</span>`)); }
+    else if (e.k === 'skill') { text = `Игрок понижает свой навык <b>${SKILL_GEN[e.skill].toUpperCase()}</b> на 1, а также получает 0–2 урона согласно уровню монстра:`; icons = levels(e.lvl.map(n => `<span class="pile">${slashes(n, 'sm')}</span>`)); }
+    else if (e.k === 'dmgSkill') { text = `Игрок получает урон, равный его уровню <b>${SKILL_GEN[e.skill].toUpperCase()}</b>.`; icons = `<div class="arow">${img('glyph-slash', 'g slash')}<span class="eq">=</span>${img('glyph-' + e.skill, 'g skill')}</div>`; }
+    else if (e.k === 'remove') { text = 'Игрок убирает из игры 1 карту из своей руки (если в руке нет карт то верхнюю карту из своей колоды).'; icons = `<div class="arow">${img('glyph-burn', 'g burn')}</div>`; }
+    else if (e.k === 'randDiscard') { text = 'Игрок сбрасывает несколько случайных карт из своей руки в зависимости от уровня монстра:'; icons = levels(e.lvl.map(n => `<span class="x">x${n}</span>`)); }
+    else { text = ''; icons = ''; }
+    return { text, icons, long: text.replace(/<[^>]+>/g, '').length > 30 };
+}
+const levels = (cells) => `<div class="arow lv">${cells.map((c, i) => `<span class="lvc">${hex(i)}<i>:</i>${c}</span>`).join('')}</div>`;
+
+export function attackCard(id, type, opts = {}) {
     const a = ATTACK[id];
     if (!a) return '';
-    const row = (k, ic, label) => `<div class="atk ${type === k ? 'on' : type ? 'off' : ''}">${icon(ic)}<b>${label}</b><span>${esc(a[k + 'Text'])}</span></div>`;
-    return `<div class="card attack" data-id="${esc(id)}">${row('strike', 'strike', 'Удар')}${row('bite', 'bite', 'Укус')}</div>`;
+    const sec = (k) => {
+        const s = attackSide(a[k]);
+        return `<div class="sec ${k} ${type === k ? 'on' : type ? 'off' : ''}"><div class="apanel ${s.long ? 'long' : ''}"><span>${s.text}</span></div><div class="icons">${s.icons}</div></div>`;
+    };
+    return `<div class="card attack ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc('Удар: ' + a.strikeText + '. Укус: ' + a.biteText + '.')}">
+        <div class="face">${img('attack-bg', 'frame')}${sec('strike')}${sec('bite')}</div></div>`;
 }
 
 export function elixirCard(inst, opts = {}) {
@@ -147,5 +203,42 @@ export function trophyLabel(t) {
     if (t.kind === 'skill') { const sk = SKILLTROPHIES.find(s => s.id === String(t.id).split('#')[0]); return sk ? sk.title : 'Навык'; }
     if (t.kind === 'witcher') return 'Трофей ведьмака';
     return '?';
+}
+
+// ---------------------------------------------------------------------------------------------
+// Event cards — the printed layout 1:1: parchment (assets/cards/event-bg.webp, cut from the
+// scans), intro, options А/Б in dark discs, the «—∞✿∞—» divider, outcomes with the effect in
+// bold. stage: 'choose' — outcomes are still covered (in the box game the neighbour reads them
+// only after the choice); 'outcome' — the picked one is lit, the other dimmed; 'full' — all.
+// Equipment cards are art + a parchment box, the art is swappable like any other (art/<ID>.*).
+const STAR = '<svg class="evq" viewBox="0 0 24 24"><path d="M12 1.5l2.3 7.2 7.2 2.3-7.2 2.3L12 20.5l-2.3-7.2L2.5 11l7.2-2.3z" fill="#2a2420"/><path d="M12 6.5l1.2 3.6 3.6 1.2-3.6 1.2L12 16.1l-1.2-3.6-3.6-1.2 3.6-1.2z" fill="#e9dcc3"/></svg>';
+const BOOK = '<svg class="evb" viewBox="0 0 26 20"><path d="M1 3c4-1.6 8-1.4 11.4.8V19C8.6 17 5 16.8 1 18.2zM25 3c-4-1.6-8-1.4-11.4.8V19c3.8-2 7.4-2.2 11.4-.8z" fill="#2a2420"/></svg>';
+const para = (t) => t.split('\n').map(l => `<p class="${/^«/.test(l) ? 'q' : ''}">${esc(l)}</p>`).join('');
+const disc = (k) => `<b class="evd">${k === 'a' ? 'А' : 'Б'}</b>`;
+function effectHtml(o) {
+    const q = o.fx && o.fx.find(e => e.quest);
+    if (q) return `<div class="evquest">${STAR}<div><b>Задание: ${esc(TERRAIN_NAME[q.quest.terrain].toLowerCase())} локация.</b><br><b>В локации: ${BOOK} ${EVENTS[q.quest.event].num}.</b></div></div>`;
+    return `<p class="eff">${esc(o.effect)}</p>`;
+}
+export function eventCard(id, opts = {}) {
+    const ev = EVENTS[id];
+    if (!ev) return '';
+    const st = opts.stage || 'full';
+    if (ev.gear) {
+        return `<div class="evcard gear ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(ev.name + ': ' + ev.text)}">
+            <div class="evart" style="background-image:${artCss(id, '#6a4a2a', 'combat')}"></div>
+            <div class="evbox"><div class="evkind">Снаряжение</div><p>Положите эту карту перед собой.</p><img class="evdiv" src="${A}event-div.webp" alt="">
+            <div class="evname">${esc(ev.name)}</div><p class="eff"><b>Один раз за битву:</b><br>${esc(ev.text.replace(/^Снаряжение\. Один раз за битву: /, ''))}</p></div></div>`;
+    }
+    let body = para(ev.intro);
+    if (ev.a) {
+        const line = (k) => `<div class="evopt ${opts.pick === k ? 'on' : ''}" ${opts.choose ? `data-c="${k}"` : ''}>${disc(k)}<span>${esc(ev[k].label)}</span></div>`;
+        const res = (k) => `<div class="evres ${st === 'outcome' && opts.pick !== k ? 'off' : ''} ${opts.pick === k ? 'on' : ''}">${disc(k)}<span>${esc(ev[k].outcome)}</span>${effectHtml(ev[k])}</div>`;
+        body += line('a') + line('b') + `<img class="evdiv" src="${A}event-div.webp" alt="">`;
+        body += st === 'choose' ? `<div class="evhide"><span>Последствия откроются после выбора</span></div>` : res('a') + res('b');
+    } else if (ev.fx && ev.fx[0].roll) {
+        body += `<p class="eff">${esc(ev.effect)}</p>` + ev.fx[0].roll.map(b => `<div class="evroll ${opts.dice ? (opts.dice >= b.from && opts.dice <= b.to ? 'on' : 'off') : ''}"><b class="rng">${b.from}–${b.to}:</b><div><p>${esc(b.text)}</p><p class="eff">${esc(b.effect)}</p></div></div>`).join('');
+    }
+    return `<div class="evcard ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}">${body}</div>`;
 }
 export { SKILL_NAME };

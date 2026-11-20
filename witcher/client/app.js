@@ -1,7 +1,7 @@
 // Client entry: connection and reconnect, message routing, event feedback (sound, banners,
 // camera), hotkeys. Rendering lives in lobby.js, hud.js, prompt.js, fight.js, poker.js; the 3D
 // table in board.js.
-import { S, $, send, toast, banner, me } from './ctx.js';
+import { S, $, send, cmd, toast, banner, me } from './ctx.js';
 import { Store } from './store.js';
 import { Board } from './board.js';
 import { loadArtIndex, esc } from './cards.js';
@@ -82,6 +82,7 @@ function onState(m) {
     b.syncMonsters(v.slots);
     const markers = [];
     for (const p of v.players) p.hunts.forEach((h, i) => markers.push({ key: `h${p.seat}-${h.loc}`, loc: h.loc, color: SCHOOLS[p.school].color, i }));
+    for (const p of v.players) (p.quests || []).forEach((q, i) => markers.push({ key: `q${p.seat}-${q.id}-${q.loc}`, loc: q.loc, color: SCHOOLS[p.school].color, i: i + p.hunts.length, quest: true }));
     b.syncMarkers(markers);
     const myMoves = S.options && S.options.acting && !v.fight && !v.prompt ? S.options.moves.map(x => x.to) : [];
     b.setMoveTargets(myMoves, v.turn ? v.players[v.turn.seat].loc : null);
@@ -115,6 +116,12 @@ function feedback(events, prev) {
             case 'undo': toast('Действие отменено', 'info'); break;
             case 'win': sfx('win'); break;
             case 'hunt': sfx('coin'); break;
+            case 'explore': sfx('card'); break;
+            case 'gold': sfx('coin'); break;
+            case 'gear': sfx('trophy'); if (e.seat === S.you) banner('Снаряжение', 'Карта остаётся у вас до конца игры', 1600); break;
+            case 'quest': sfx('card'); if (board && prev) setTimeout(() => board.focus(e.loc, 9), 300); break;
+            case 'questDone': sfx('trophy'); break;
+            case 'd6': sfx('dice'); break;
         }
     }
     fightEvents(events);
@@ -164,6 +171,8 @@ window.addEventListener('keydown', (e) => {
     else if (k === 'm' || k === 'ь') phase2('meditate');
     else if (k === 'c' || k === 'с') phase2('explore-city');
     else if (k === 'w' || k === 'ц') phase2('explore-wild');
+    else if (k === 'e' || k === 'у') phase2('endExplore');
+    else if (k === 'q' || k === 'й') { const q = S.options && (S.options.quests || []).find(x => !x.err); if (q) cmd({ t: 'quest', i: q.i }, 'задание'); }
 });
 
 // Side tabs and chat

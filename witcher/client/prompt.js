@@ -2,7 +2,7 @@
 // everyone else sees who is deciding.
 import { S, $, cmd, btn } from './ctx.js';
 import { icon } from './icons.js';
-import { actionCard, elixirCard, attackCard, monsterCard, esc } from './cards.js';
+import { actionCard, elixirCard, attackCard, monsterCard, eventCard, esc } from './cards.js';
 import { CARDS, ATTACK, MONSTER } from '/shared/engine/util.mjs';
 import { ROW_MODS } from '/shared/data/rules-data.mjs';
 import { sfx } from './sound.js';
@@ -20,9 +20,10 @@ export function renderPrompt() {
         lastKey = '';
         return;
     }
-    const key = JSON.stringify([pr.title, pr.ids, pr.options, pr.text]);
+    const key = JSON.stringify([pr.title, pr.ids, pr.options, pr.text, pr.card, pr.stage]);
     if (key !== lastKey) { S.ui.sel = []; lastKey = key; sfx('card'); }
     el.className = '';
+    if (pr.kind === 'choice' && pr.ui === 'event') { renderEvent(el, pr); return; }
     if (pr.kind === 'choice') {
         const opts = pr.options.map((o, i) => {
             let extra = '';
@@ -69,6 +70,23 @@ export function renderPrompt() {
     };
     const ok = $('pOk'); if (ok) ok.onclick = () => cmd({ t: 'answer', ids: sel.slice() }, pr.title);
     const skip = $('pSkip'); if (skip) skip.onclick = () => cmd({ t: 'answer', ids: [] }, pr.title);
+}
+
+// Exploration / event card: the card itself on the left (options are clickable on it, like
+// pointing at the printed line), buttons with the reasons for disabled options on the right.
+function renderEvent(el, pr) {
+    const choose = pr.stage === 'choose';
+    const card = eventCard(pr.card, { stage: choose ? 'choose' : pr.stage === 'outcome' ? 'outcome' : 'full', pick: pr.pick, dice: pr.dice, choose });
+    const opts = pr.options.map((o, i) => btn({ label: esc(o.label), why: o.disabled ? (o.hint || 'Недоступно') : null, data: `data-c="${esc(o.id)}"`, key: String(i + 1), primary: !choose && i === 0 })).join('');
+    const sub = pr.stage === 'outcome' ? `<p class="eff" style="color:var(--gold2)">${esc(pr.effect || '')}</p>`
+        : pr.stage === 'roll' ? `<div style="display:flex;align-items:center;gap:12px"><span class="evdice">${pr.dice}</span><span style="color:var(--dim)">Выпало ${pr.dice} — исход подсвечен на карте</span></div>`
+        : choose ? '<p style="color:var(--dim)">Выберите вариант: щёлкните строку на карте или кнопку.</p>' : '';
+    el.innerHTML = `<div class="box evbox-wrap">${card}<div class="evside"><h2>${esc(pr.title || 'Событие')}</h2>${sub}<div class="opts">${opts}</div></div></div>`;
+    for (const o of pr.options) if (o.disabled) { const line = el.querySelector(`.evopt[data-c="${o.id}"]`); if (line) { line.classList.add('dis'); line.title = o.hint || ''; } }
+    for (const b of el.querySelectorAll('[data-c]')) b.onclick = () => {
+        const o = pr.options.find(x => x.id === b.dataset.c);
+        if (o && !o.disabled) cmd({ t: 'answer', choice: o.id }, pr.title);
+    };
 }
 
 export function promptKey(e) {

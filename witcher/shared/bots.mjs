@@ -59,6 +59,8 @@ export function botCommand(view, opts = {}) {
             if (id === 'POTION-04' && p.shield >= 1 && p.deckCount >= 4) return { t: 'elixir', id: e };
         }
         if (opts.options && opts.options.fight && !opts.options.fight.spec) return { t: 'spec' };
+        const knuckle = opts.options && opts.options.fight && (opts.options.fight.active || []).find(a => a.key === 'CONT79-15' && !a.err);
+        if (knuckle && p.hand.length >= 3) return { t: 'active', key: knuckle.key };
         const ids = bestCombo(view, p);
         return { t: 'combo', ids };
     }
@@ -66,6 +68,17 @@ export function botCommand(view, opts = {}) {
     if (!t || t.seat !== me || t.phase !== 1 || f) return null;
     const o = opts.options;
     if (!o) return null;
+    // Quests: complete whenever standing on the location.
+    const qd = (o.quests || []).find(q => !q.err);
+    if (qd) return { t: 'quest', i: qd.i };
+    if (t.afterExplore) {
+        if (o.loc && !o.loc.err && o.loc.kind !== 'swap' && o.loc.kind !== 'poor') {
+            if (o.loc.kind === 'school') { const c = o.loc.choices.find(x => !x.err); if (c) return { t: 'loc', skill: c.id }; }
+            else if (o.loc.kind === 'hunt') { const c = o.loc.choices.find(x => !x.err); return { t: 'loc', slot: c ? c.id : undefined }; }
+            else return { t: 'loc' };
+        }
+        return { t: 'endExplore' };
+    }
     const here = view.slots.find(s => s.mon && s.token === p.loc);
     const fightOpt = o.phase2.find(x => x.id === 'fight');
     const strong = p.hand.length >= 3 || (here && p.trackTokens[here.terrain]);
@@ -85,6 +98,7 @@ export function botCommand(view, opts = {}) {
             let s = R();
             if (view.slots.some(sl => sl.mon && sl.token === m.to)) s += p.hand.length >= 4 ? 5 : 1;
             if (p.hunts.some(h => h.loc === m.to)) s += 4;
+            if ((p.quests || []).some(q => q.loc === m.to)) s += 3;
             return { ...m, s };
         }).sort((a, b) => b.s - a.s);
         for (const m of targets) {
@@ -95,7 +109,9 @@ export function botCommand(view, opts = {}) {
     if (fightOpt && !fightOpt.err && p.hand.length >= 2) return { t: 'fight' };
     const med = o.phase2.find(x => x.id === 'meditate');
     if (med && !med.err) return { t: 'meditate', trophy: med.trophies[0] };
-    return { t: 'explore', deck: R() < 0.5 ? 'city' : 'wild' };
+    const ex = o.phase2.filter(x => x.id.startsWith('explore-') && !x.err);
+    if (ex.length) return { t: 'explore', deck: ex[Math.floor(R() * ex.length)].id === 'explore-city' ? 'city' : 'wild' };
+    return null;
 }
 
 export function cheapestPayment(view, p, to) {

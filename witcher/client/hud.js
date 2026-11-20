@@ -2,7 +2,8 @@
 // tableau, log/chat, move payment and the map tooltip.
 import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { icon, TERRAIN_COLOR } from './icons.js';
-import { actionCard, monsterCard, elixirCard, trophyLabel, artCss, esc, fxText } from './cards.js';
+import { actionCard, monsterCard, elixirCard, eventCard, trophyLabel, artCss, esc, fxText } from './cards.js';
+import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
 import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
 import { movePaymentError } from '/shared/engine/turn.mjs';
@@ -135,21 +136,25 @@ function renderActions(v) {
         }
         parts.push('<span class="sep"></span>');
     }
+    // Quests (База.md p. 17): optional, in phase I, before or after the location action.
+    for (const q of o.quests || []) parts.push(btn({ label: `Задание: ${esc(q.label)}`, icon: icon('explore'), why: q.err, data: `data-quest="${q.i}"`, primary: !q.err, key: q.err ? '' : 'Q' }));
+    if ((o.quests || []).length) parts.push('<span class="sep"></span>');
     for (const a of o.phase2) {
         if (a.id === 'meditate' && a.err) continue;
-        const ic = a.id === 'fight' ? 'sword' : a.id === 'meditate' ? 'meditate' : 'explore';
-        const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'explore-city' ? 'C' : 'W';
+        const ic = a.id === 'fight' ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' ? 'card' : 'explore';
+        const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'explore-city' ? 'C' : a.id === 'endExplore' ? 'E' : 'W';
         let why = a.err;
         if (!why && a.id !== 'fight' && !t.moved && o.moves.length) why = null;
         parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: a.id === 'fight' && !a.err, data: `data-p2="${a.id}"`, key }));
     }
     box.innerHTML = parts.join('');
-    hint.textContent = !t.moved ? 'Фаза I: переместитесь — кликните подсвеченную локацию на карте (или сразу выберите действие фазы II)'
+    hint.textContent = t.afterExplore ? 'Событие переместило вас: можно выполнить действие этой локации, затем — фаза III' : !t.moved ? 'Фаза I: переместитесь — кликните подсвеченную локацию на карте (или сразу выберите действие фазы II)'
         : L && L.kind && !L.err ? 'Можно выполнить действие локации, затем выберите действие фазы II' : 'Выберите действие фазы II: битва, медитация или исследование';
     for (const b of box.querySelectorAll('[data-loc]')) b.onclick = () => cmd({ t: 'loc' }, 'действие локации');
     for (const b of box.querySelectorAll('[data-loc-skill]')) b.onclick = () => cmd({ t: 'loc', skill: b.dataset.locSkill }, 'тренировка');
     for (const b of box.querySelectorAll('[data-loc-slot]')) b.onclick = () => cmd({ t: 'loc', slot: b.dataset.locSlot === '' ? undefined : Number(b.dataset.locSlot) }, 'выслеживание');
     for (const b of box.querySelectorAll('[data-p2]')) b.onclick = () => phase2(b.dataset.p2);
+    for (const b of box.querySelectorAll('[data-quest]')) b.onclick = () => cmd({ t: 'quest', i: Number(b.dataset.quest) }, 'задание');
 }
 export function phase2(id) {
     const o = S.options; if (!o) return;
@@ -157,6 +162,7 @@ export function phase2(id) {
     if (!a) return;
     if (a.err) { toast(a.err); return; }
     if (id === 'fight') cmd({ t: 'fight' }, 'битва');
+    else if (id === 'endExplore') cmd({ t: 'endExplore' }, 'фаза III');
     else if (id === 'meditate') {
         if (a.trophies.length === 1) cmd({ t: 'meditate', trophy: a.trophies[0] }, 'медитация');
         else openChoice('Медитация', 'Какой трофей навыка взять?', a.trophies.map(tid => ({ id: tid, label: trophyLabel({ kind: 'skill', id: tid }) })), (c) => cmd({ t: 'meditate', trophy: c }, 'медитация'));
@@ -214,6 +220,8 @@ function renderMine(v) {
     el.innerHTML = `<div class="r" style="font-family:var(--serif);font-size:15px;color:${sc.color}"><b style="color:var(--gold2)">${esc(sc.school)}</b> · ${esc(LOC[p.loc].name)}</div>
         <div class="r" style="margin-top:4px;color:var(--dim)">Специализация: ${esc(sc.spec)} (${p.skills.spec})</div>
         <div class="elixirs">${p.elixirs.map(e => { const po = POTION[e.split('#')[0]]; return `<span class="el" title="${esc(po.name + ': ' + po.text)}">${icon('elixir', 'c-forest')}${esc(po.name)}</span>`; }).join('') || '<span style="color:var(--dim);font-size:12px">Эликсиров нет</span>'}</div>
+        ${p.gear.length ? `<div class="gear">${p.gear.map(id => `<span class="el" data-gear="${esc(id)}" title="${esc(EVENTS[id].text)}">${icon('combat')}${esc(EVENTS[id].name)}</span>`).join('')}</div>` : ''}
+        ${p.quests.length ? `<div class="gear quests">${p.quests.map(q => `<span class="el" data-qcard="${esc(q.id)}" title="Задание — ${esc(LOC[q.loc].name)}">${icon('explore')}${esc(questLabel(q))} → ${esc(LOC[q.loc].name)}</span>`).join('')}</div>` : ''}
         ${p.hunts.length ? `<div class="r" style="margin-top:6px;font-size:12px;color:var(--dim)">Задания: ${p.hunts.map(h => `${TERRAIN_NAME[h.terrain]} → ${esc(LOC[h.loc].name)} (${h.gold} зол.)`).join(', ')}</div>` : ''}
         <div class="zones">
             ${btn({ id: 'zDiscard', label: `Сброс ${p.discard.length}`, small: true, icon: icon('card') })}
@@ -223,6 +231,7 @@ function renderMine(v) {
     $('zDiscard').onclick = () => openViewer('Ваш сброс', p.discard.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zRemoved').onclick = () => openViewer('Убраны из игры', p.removed.map(id => actionCard(id, { small: true })).join('') || 'Пусто');
     $('zTroph').onclick = () => openPlayer(p.seat);
+    for (const g of el.querySelectorAll('[data-gear],[data-qcard]')) g.onclick = () => openViewer(g.dataset.gear ? 'Снаряжение' : 'Задание', `<div style="display:flex;gap:14px;justify-content:center">${eventCard(g.dataset.gear || g.dataset.qcard, { stage: 'full' })}</div>`);
 }
 
 let logLen = 0;
@@ -320,6 +329,7 @@ function openPlayer(seat) {
     const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
     openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${SKILL_NAME[s]} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
+        ${p.gear.length || p.quests.length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'full' })}<span style="color:#d8ccb7;font-size:12px">→ ${esc(LOC[q.loc].name)}</span></div>`).join('')}` : ''}
         <h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Сброс (${p.discard.length})</h3>${p.discard.map(id => actionCard(id, { small: true })).join('') || '<span style="color:var(--dim)">Пусто</span>'}`);
 }
 export function openChoice(title, text, options, onPick) {
@@ -339,6 +349,7 @@ export function openHelp() {
     <tr><td><kbd>ПКМ</kbd> + тащить / колесо</td><td>сдвиг / масштаб карты; <kbd>Home</kbd> — общий вид, <kbd>Space</kbd> — к активному ведьмаку</td></tr>
     <tr><td><kbd>A</kbd></td><td>действие локации</td></tr>
     <tr><td><kbd>F</kbd> / <kbd>M</kbd> / <kbd>C</kbd> / <kbd>W</kbd></td><td>битва / медитация / исследовать город / окрестности</td></tr>
+    <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>выполнить задание / после события — к фазе III</td></tr>
     <tr><td><kbd>R</kbd></td><td>показать ряд карт</td></tr>
     <tr><td><kbd>Enter</kbd></td><td>подтвердить (оплата, комбинация, выбор)</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>отмена / закрыть окно</td></tr>

@@ -11,23 +11,28 @@ server.mjs              HTTP + WebSocket (свой RFC 6455), комната, л
 witcher.bat             запуск (Windows); корневой ../witcher.bat вызывает его
 shared/data/gen-data.mjs   ГЕНЕРИРУЕТСЯ tools/import.mjs из md — руками не править
 shared/data/rules-data.mjs таблицы правил (стартовые ресурсы, модификаторы ряда, школы, действия локаций)
+shared/data/events-data.mjs карты исследования/событий: тексты + эффекты данными (срез)
 shared/engine/          правила (чистые функции над JSON-состоянием, ГСЧ в состоянии):
   core.mjs              apply(state, seat, cmd), options(state, seat) с причинами, actingSeat
   flow.mjs              очередь шагов state.queue {op,...}, ask() → state.prompt
   setup.mjs turn.mjs    подготовка; ход, навыки, перемещение, локации, медитация, фаза III, покер
   fight.mjs effects.mjs битва с монстром, эликсиры, специализации, трофеи
-  explore.mjs           исследование (колоды событий — следующий этап)
+  explore.mjs           исследование, задания, карты событий (срез: данные в data/events-data.mjs)
 shared/view.mjs         вид для места: скрытая информация вырезается на сервере
 shared/bots.mjs         боты видят только свой вид и действуют через тот же apply()
 client/                 браузер: app.js (связь, события, клавиши), board.js (Babylon: поле,
                         миниатюры, камера), hud.js, prompt.js, fight.js, poker.js, lobby.js,
                         cards.js (лица карт; арт — client/art/<ID>.*, иначе заглушка), icons.js (SVG),
-                        sound.js (процедурный звук), store.js (Store — не localStorage напрямую)
+                        sound.js (процедурный звук), store.js (Store — не localStorage напрямую),
+                        toon.js (плоский цвет + тушь по выпуклым рёбрам), fonts/ (OFL, LICENSE.md)
+client/assets/cards/    рамки, медальоны, глифы, пергамент — вырезаны tools/frames.mjs из сканов
 client/assets/continent.jpg  поле (вырезано из Witcher/Прочее/Игровой стол.jpg)
 tools/check.mjs         ЕДИНЫЕ ВОРОТА — гонять перед коммитом
 tools/rules.test.mjs    аудит правил со ссылками на страницы + партии ботов 1–5 игроков
+tools/explore.test.mjs  срез исследования/заданий/снаряжения и карт битвы
+tools/frames.mjs        разовая нарезка лиц карт из сканов (нужен sharp, не зависимость игры)
 tools/sim.mjs           партии ботов: node witcher/tools/sim.mjs [игр] [игроков]
-tools/scenarios.mjs     песочницы (битва, покер, середина партии) — в лобби как сохранения
+tools/scenarios.mjs     песочницы (битва, покер, исследование, середина партии) — в лобби как сохранения
 tools/import.mjs obj.mjs  импорт md → данные; OBJ → меш
 ```
 

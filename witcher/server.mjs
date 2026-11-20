@@ -216,6 +216,9 @@ function revealedNothing(before, after) {
     if (before.rng !== after.rng) return false;
     if (before.actionDeck.length !== after.actionDeck.length || before.elixirDeck.length !== after.elixirDeck.length) return false;
     for (let i = 0; i < before.players.length; i++) if (before.players[i].deck.length !== after.players[i].deck.length) return false;
+    // Exploration cards and location tokens (quests) are hidden until drawn.
+    if (JSON.stringify(before.explore || null) !== JSON.stringify(after.explore || null)) return false;
+    if (JSON.stringify(before.locPiles) !== JSON.stringify(after.locPiles)) return false;
     return true;
 }
 
@@ -443,5 +446,5 @@ function listen(port, tries = 0) {
     });
 }
 // Sandbox positions (fight test, poker test, mid-game) are always available in the lobby.
-try { if (!listSaves().some(n => n.startsWith('Песочница'))) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
+try { if (!listSaves().includes('Песочница — исследование')) writeScenarios(); } catch (e) { console.warn('scenarios:', e.message); }
 listen(PORT_BASE);

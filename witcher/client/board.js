@@ -3,6 +3,7 @@
 /* global BABYLON */
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { MONSTER } from '/shared/engine/util.mjs';
+import { toonMaterial, inkMini } from './toon.js';
 
 // Board pins: pixel coordinates of the location number badges on Игровой стол.jpg.
 const PINS = {
@@ -27,10 +28,22 @@ async function fetchMesh(key) {
 function buildMesh(scene, data, name) {
     const m = new BABYLON.Mesh(name, scene);
     const vd = new BABYLON.VertexData();
-    vd.positions = data.p;
-    vd.indices = data.i;
+    // OBJ is right-handed with counter-clockwise front faces; Babylon is left-handed and takes
+    // clockwise ones. Mirroring z converts the handedness (the model is not mirrored on screen),
+    // and the winding check below covers the rare OBJ exported clockwise.
+    const p = data.p.slice();
+    for (let k = 2; k < p.length; k += 3) p[k] = -p[k];
+    const idx = data.i.slice();
+    let vol = 0;
+    for (let t = 0; t < idx.length; t += 3) {
+        const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+        vol += p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
+    }
+    if (vol > 0) for (let t = 0; t < idx.length; t += 3) { const x = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = x; }
+    vd.positions = p;
+    vd.indices = idx;
     const normals = [];
-    BABYLON.VertexData.ComputeNormals(data.p, data.i, normals);
+    BABYLON.VertexData.ComputeNormals(p, idx, normals);
     vd.normals = normals;
     vd.applyToMesh(m);
     return m;
@@ -196,10 +209,8 @@ export class Board {
             model.parent = root; model.position.y = 0.034;
             model.scaling.setAll(scale);
             model.isPickable = false;
-            const mm = new BABYLON.StandardMaterial(name + 'mm', this.scene);
-            mm.diffuseColor = BABYLON.Color3.FromHexString(color);
-            mm.specularColor = new BABYLON.Color3(0.25, 0.22, 0.18); mm.specularPower = 24;
-            model.material = mm;
+            model.material = toonMaterial(this.scene, name + 'mm', color);
+            inkMini(model, scale);
             this.shadows.addShadowCaster(model);
             model.receiveShadows = true;
         }
@@ -295,7 +306,8 @@ export class Board {
         for (const mk of list) {
             const key = mk.key; keep.add(key);
             if (this.markers[key]) continue;
-            const c = BABYLON.MeshBuilder.CreateCylinder('mk' + key, { diameter: 0.26, height: 0.05, tessellation: 24 }, this.scene);
+            // Hunting quests: a round token; event quests: a square token (like the cardboard ones).
+            const c = BABYLON.MeshBuilder.CreateCylinder('mk' + key, { diameter: mk.quest ? 0.3 : 0.26, height: 0.05, tessellation: mk.quest ? 4 : 24 }, this.scene);
             const m = new BABYLON.StandardMaterial('mkm' + key, this.scene);
             m.diffuseColor = BABYLON.Color3.FromHexString(mk.color); m.emissiveColor = BABYLON.Color3.FromHexString(mk.color).scale(0.25);
             c.material = m; c.isPickable = false;
@@ -337,7 +349,7 @@ export class Board {
     }
 }
 
-/** Rotating preview of one witcher miniature (lobby). */
+/** Preview of one witcher miniature (lobby); turned by dragging, never by itself. */
 export class Preview {
     constructor(canvas) {
         this.engine = new BABYLON.Engine(canvas, true, { antialias: true });
@@ -349,7 +361,6 @@ export class Preview {
         const d = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-0.5, -0.8, 0.6), s); d.intensity = 1.6;
         const d2 = new BABYLON.DirectionalLight('d2', new BABYLON.Vector3(0.7, -0.2, -0.6), s); d2.intensity = 0.5; d2.diffuse = new BABYLON.Color3(1, 0.8, 0.55);
         this.node = null; this.key = null;
-        s.onBeforeRenderObservable.add(() => { if (this.node) this.node.rotation.y += this.engine.getDeltaTime() / 2600; });
         this.engine.runRenderLoop(() => s.render());
         window.addEventListener('resize', () => this.engine.resize());
     }
@@ -363,9 +374,8 @@ export class Preview {
         if (data) {
             const m = buildMesh(this.scene, data, 'pvm');
             m.parent = root;
-            const mat = new BABYLON.StandardMaterial('pvmat', this.scene);
-            mat.diffuseColor = BABYLON.Color3.FromHexString(SCHOOLS[school].color); mat.specularColor = new BABYLON.Color3(0.3, 0.27, 0.22);
-            m.material = mat;
+            m.material = toonMaterial(this.scene, 'pvmat', SCHOOLS[school].color);
+            inkMini(m, 1);
         }
         this.node = root;
     }
