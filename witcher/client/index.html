@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Ведьмак: Старый мир</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="style.css">
+    <script src="/libs/babylon.js"></script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="lobby" class="overlay hidden"></div>
+
+<div id="hud" class="hidden">
+    <div id="players"></div>
+    <div id="topbar" class="panel"></div>
+    <div id="tools"></div>
+    <div id="monsters"></div>
+    <div id="row" class="panel"></div>
+    <div id="bottom">
+        <div id="hint"></div>
+        <div id="actions" class="panel"></div>
+        <div id="hand"></div>
+    </div>
+    <div id="mine" class="panel"></div>
+    <div id="side" class="panel">
+        <div class="tabs"><button data-tab="log" class="on">Журнал</button><button data-tab="chat">Чат</button></div>
+        <div id="log"></div>
+        <div id="chat" class="hidden"></div>
+        <form id="chatForm" class="hidden"><input id="chatInput" maxlength="200" placeholder="Сообщение"><button class="btn small">Отправить</button></form>
+    </div>
+</div>
+<div id="pay" class="panel hidden"></div>
+<div id="modal" class="hidden"></div>
+<div id="fight" class="hidden"></div>
+<div id="poker" class="hidden"></div>
+<div id="viewer" class="overlay hidden"></div>
+<div id="help" class="overlay hidden"></div>
+<div id="gameover" class="overlay hidden"></div>
+<div id="maptip" class="hidden"></div>
+<div id="banner"><b></b><span></span></div>
+<div id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

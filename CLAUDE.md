@@ -28,6 +28,17 @@ Objects (импорт FBX/GLB, гизмо, свойства объектов, а
 | проверка правки глазами и числами: панель браузера, `Debug3D` (удержание вида, кадры без rAF, замер, линтер сцены, отладочные режимы), замер цены кадра, воспроизведение состояния пользователя | `claude/skills/verify/SKILL.md` |
 | перенос прототипа в Unity: `tools/export-unity.mjs`, пакет `unity/com.arcengine.runtime` (C#), отчёт `MIGRATION.md`, тег `arc-base` — до переноса не нужен | `claude/skills/unity-port/SKILL.md` |
 
+## Ведьмак: Старый мир (`witcher/`)
+
+Компьютерная версия настольной игры — отдельно от набора, на сервере Node без зависимостей.
+Карта папки и правила работы — `witcher/AGENTS.md`; статус и решения — `docs/witcher/`.
+
+```
+witcher.bat                          # сервер + браузер, порт 8095 (или следующий свободный)
+node witcher/tools/check.mjs         # единые ворота: данные из md, синтаксис, аудит правил, партии ботов
+node witcher/tools/import.mjs        # пересобрать shared/data/gen-data.mjs из Witcher/**/*.md
+```
+
 ## Запуск и сборка
 
 ```

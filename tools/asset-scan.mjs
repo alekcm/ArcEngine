@@ -29,6 +29,7 @@ export const CODE_FILES = [
 // What definitely does not go into the build.
 export const BUILD_EXCLUDE = [
   'tools', 'build', 'dist', '.git', '.claude', 'claude', '_utils', 'tests', 'unity',
+  'witcher', 'Witcher', 'witcher.bat', 'docs',  // the Witcher port is a separate game with its own server
   'CLAUDE.md', 'run.bat', 'build.bat', 'check.bat', 'upload.bat', 'editor.bat', 'README.md', 'tsconfig.json', 'globals.d.ts',
 ];
 
