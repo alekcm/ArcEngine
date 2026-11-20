@@ -15,6 +15,7 @@ import { BIG } from '../data/vuln-data.mjs';
 import { SKILL_VALUE } from '../data/rules-data.mjs';
 import { isSpecial, freshAttackDeck, onMonsterAppears, restrictError, endOfTurnDiscards, afterCombo25, vulnOn, specialName } from './vuln.mjs';
 import { isDuel, otherSeat, onceOf, duelKo } from './duel.mjs';
+import { ARMOR, LEGEND, LEG_ATTACK } from '../data/legend-data.mjs';
 import { vtFirstWitcherTurn, vtBeforeMonster, vtAfterMonster, vtM1, vtComboBonus, vtDrawBonus, vtLife, vulnReset } from './vtoken.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
@@ -63,6 +64,29 @@ STEPS.fightStart = (state, step) => {
         { op: 'trapCheck', seat: p.seat, on: 'fightStart' },
         F('mushroomAsk'), F('vtStart'), F('preLife'), F('vtPre'), F('formLife'), F('postLife'), F('vtPost'), F('firstTurn'));
 };
+
+/** «Легендарная охота» (p. 6): the legendary fight — the base fight with its own combat deck,
+ *  armor by the trophy track, the first turn by the ruin tokens, no vulnerability tokens. */
+STEPS.legendFightStart = (state, step) => {
+    const p = state.players[step.seat];
+    const L = state.legend;
+    const mon = MONSTER[L.mon];
+    const n = state.players.length;
+    const controller = n === 1 ? null : (p.seat - 1 + n) % n;
+    state.turn.phase = 2;
+    state.fight = {
+        kind: 'monster', legend: true, seat: p.seat, slot: null, mon: mon.id, level: mon.level, terrain: LOC[L.loc].terrain, loc: L.loc,
+        controller, chooser: controller, life: [], monDiscard: [], turn: null, wTurns: 0, mTurns: 0,
+        elixirsUsed: 0, usedElixirs: [], usedBombs: [], once: {}, cur: null, lastCombo: null, lastAttack: null, stage: 'busy', over: null,
+        track: false, pendingHarpy: false, vuln: false, dice: 0, nextW: null, nextM: null, mCur: null, whole: {},
+        armorBase: legendArmor(state, p),
+    };
+    log(state, `${p.name} вступает в битву с легендарным монстром: ${mon.name} (броня ${state.fight.armorBase})`, { kind: 'fight' });
+    fx(state, { k: 'fightStart', seat: p.seat, mon: mon.id });
+    push(state, { op: 'trapCheck', seat: p.seat, on: 'fightStart' }, F('mushroomAsk'), F('preLife'), F('formLife'), F('postLife'), F('firstTurn'));
+};
+/** Armor of the legendary monster: the memo side, by the attacker's trophy track division. */
+export function legendArmor(state, p) { return ARMOR[state.legend.side][Math.max(0, Math.min(4, p.track))]; }
 
 STEPS.archesporeAsk = (state) => {
     const p = fp(state);
@@ -133,6 +157,16 @@ STEPS.formLife = (state) => {
     p.deck.push(...p.discard.splice(0));
     shuffle(state, p.deck);
     const mon = MONSTER[f.mon];
+    if (f.legend) {
+        // All 20 legendary combat cards; 1 discarded per ruin token of the attacker (solo: per 2).
+        f.life = shuffle(state, Object.keys(LEG_ATTACK));
+        const ruins = (p.ruins || []).length;
+        const k = Math.min(f.life.length - 1, state.solo ? Math.floor(ruins / 2) : ruins);
+        if (k) { f.monDiscard.push(...f.life.splice(0, k)); log(state, `Жетоны руин у ${p.name}: ${ruins} — из запаса жизни легендарного монстра сброшено ${k}`); }
+        log(state, `Запасы жизней: ${p.name} — ${p.deck.length + p.hand.length} карт, ${mon.name} — ${f.life.length}`);
+        fx(state, { k: 'lifeFormed', seat: p.seat });
+        return;
+    }
     shuffle(state, state.attackDeck);
     f.life = state.attackDeck.splice(0, vtLife(state, mon.life));
     log(state, `Запасы жизней: ${p.name} — ${p.deck.length + p.hand.length} карт, ${mon.name} — ${f.life.length}`);
@@ -180,6 +214,13 @@ STEPS.discardFromHandDo = (state, step) => {
 
 STEPS.firstTurn = (state) => {
     const f = state.fight;
+    if (f.legend) {
+        const r = (fp(state).ruins || []).length;
+        if (r) { log(state, `Есть жетоны руин (${r}) — ведьмак ходит первым`); push(state, F('witcherTurn')); }
+        else if (hasGear(fp(state), 'CONT79-23')) { log(state, 'Кая: в битве с монстром ведьмак всегда ходит первым'); push(state, F('witcherTurn')); }
+        else { log(state, 'Жетонов руин нет — первым ходит легендарный монстр'); push(state, F('monsterTurn')); }
+        return;
+    }
     if (f.track) { log(state, 'Есть жетон следа — ведьмак ходит первым'); push(state, F('witcherTurn')); }
     else if (f.vt && f.vt.first) { log(state, `Уязвимость ${['I', 'II', 'III', 'IV', 'V', 'VI'][f.vt.first - 1]}: ведьмак ходит первым`); push(state, F('witcherTurn')); }
     else if (hasGear(fp(state), 'CONT79-23')) { log(state, 'Кая: в битве с монстром ведьмак всегда ходит первым'); push(state, F('witcherTurn')); }
@@ -207,17 +248,20 @@ function hitMonster(state, n, src, opts = {}) {
     // Card by card: damage the monster ignores this turn (discard abilities, special attacks), and a
     // special combat card leaving the pool stops the damage until its discard ability is resolved.
     const mine = cur && f.turn === 'witcher';
-    let k = 0, ignored = 0, special = null;
+    let k = 0, ignored = 0, special = null, capped = 0;
     while (n > 0 && f.life.length) {
         n--;
-        if (mine && cur.ign && ignorePoint(cur.ign)) { ignored++; continue; }
+        if (mine && cur.ign && ignorePoint(cur.ign)) { ignored++; if (f.legend) cur.armorUsed = (cur.armorUsed || 0) + 1; continue; }
+        // Голем: «игрок не может нанести более 5 урона за ход битвы».
+        if (mine && ab(f) === 'LEG-GOLEM' && cur.dmgDealt + k >= 5) { capped = n + 1; break; }
         const id = f.life.shift();
         f.monDiscard.push(id);
         k++;
         if (f.vuln && mine && isSpecial(id)) { special = id; break; }
     }
     if (cur) cur.dmgDealt += k;
-    if (ignored) log(state, `Монстр игнорирует ${ignored} урона`);
+    if (ignored) log(state, f.legend ? `Броня легендарного монстра поглощает ${ignored} урона` : `Монстр игнорирует ${ignored} урона`);
+    if (capped) log(state, `Голем: за ход битвы нельзя нанести больше 5 урона (${capped} урона пропадает)`);
     if (k) {
         log(state, `${p.name} наносит ${k} урона${src ? ' (' + src + ')' : ''}: у монстра осталось ${f.life.length}`);
         fx(state, { k: 'monsterHit', n: k, left: f.life.length });
@@ -328,6 +372,14 @@ STEPS.witcherTurn = (state) => {
         // «Уязвимости и особые атаки»: restrictions of this turn and the discard-ability bookkeeping.
         r, ign: { all: false, n: r.ignoreDmg || 0, half: false, hc: 0 }, harpy: [], takenBack: [], comboDone: false, after25: 0, mistTop: 0, noDrawFx: false,
     };
+    if (f.legend) {
+        // Armor: the first N points of damage of this witcher turn are absorbed (restored each turn).
+        f.cur.armor = f.armorBase + (r.armorPlus || 0);
+        f.cur.ign.n += f.cur.armor;
+        f.cur.specBefore = !!f.once.spec;
+        f.cur.kitBefore = f.usedElixirs.length + (f.usedBombs || []).length;
+        if (r.armorPlus) log(state, `Броня легендарного монстра в этот ход +${r.armorPlus} (${f.cur.armor})`);
+    }
     fx(state, { k: 'fightTurn', who: 'witcher', n: f.wTurns });
     if (r.skip) {
         log(state, `${p.name} пропускает свой ход битвы (особая атака)`);
@@ -356,7 +408,25 @@ STEPS.witcherTurn = (state) => {
         const vt1 = vtFirstWitcherTurn(state);
         if (vt1.length) { push(state, ...vt1, F('witcherTurnRest')); return; }
     }
+    if (ab(f) === 'LEG-GAUNTER') { push(state, F('gaunterAsk'), F('witcherTurnRest')); return; }
     witcherTurnRest(state);
+};
+/** Гюнтер О’Дим: at the start of each witcher turn — armor +1 or a combo of only 1 card. */
+STEPS.gaunterAsk = (state) => {
+    if (!alive(state)) return;
+    const p = fp(state);
+    if (p.bot || p.away) { push(state, F('gaunterDo', { pick: p.hand.length <= 2 ? 'one' : 'armor' })); return; }
+    ask(state, {
+        seat: p.seat, kind: 'choice', title: 'Гюнтер О’Дим', text: 'Выберите условие этого хода битвы.',
+        options: [{ id: 'armor', label: `Броня монстра +1 (${state.fight.cur.armor + 1})` }, { id: 'one', label: 'Комбинация только из 1 карты' }],
+        op: 'gaunterDo', args: { fight: 1 },
+    });
+};
+STEPS.gaunterDo = (state, step) => {
+    const f = state.fight;
+    const pick = step.pick || step.choice;
+    if (pick === 'one') { f.cur.r = { ...(f.cur.r || {}), maxCombo: Math.min(1, (f.cur.r && f.cur.r.maxCombo) ?? 1) }; log(state, 'Гюнтер О’Дим: в этот ход — комбинация только из 1 карты'); }
+    else { f.cur.armor++; f.cur.ign.n++; log(state, `Гюнтер О’Дим: в этот ход броня +1 (${f.cur.armor})`); }
 };
 STEPS.witcherTurnRest = (state) => { if (alive(state)) witcherTurnRest(state); };
 function witcherTurnRest(state) {
@@ -861,6 +931,7 @@ export function comboError(state, p, ids, opts = {}) {
         if (fr.needBlue && !chain.some(id => isColor(CARDS[id], 'blue'))) return 'Уязвимость: добавить карту можно, только если в комбинации есть синяя';
     }
     if (f.cur.onlyOne && chain.length > 1) return 'Чёрная кровь: комбинация только из 1 карты';
+    if (ab(f) === 'LEG-FIEND' && new Set(ids.map(id => CARDS[id].color)).size > 3) return 'Пугач: карты не более чем 3 цветов за ход';
     const re = restrictError(f, p, ids);
     if (re) return re;
     const blood = opts.blood == null ? null : opts.blood;
@@ -999,6 +1070,10 @@ export function comboTotals(state, p, ids, opts = {}) {
         if (ab(f) === 'MON-28' && t.colors.has('blue') && t.dmg > 0) t.dmg -= 1;
         if (R.colorLess) for (const id of chain) if (R.colorLess.some(col => isColor(CARDS[id], col)) && t.byCard[id] > 0) t.dmg = Math.max(0, t.dmg - 1);
         if (R.needYellow && !t.colors.has('yellow')) t.dmg = Math.max(0, t.dmg - R.needYellow);
+        // «Легендарная охота»: Кейран (blue −1), Пугач II (−2), Ледяной великан IV (−2 without blue).
+        if (ab(f) === 'LEG-KAYRAN' && t.colors.has('blue') && t.dmg > 0) t.dmg -= 1;
+        if (R.dmgLess) t.dmg = Math.max(0, t.dmg - R.dmgLess);
+        if (R.needBlue && !t.colors.has('blue')) t.dmg = Math.max(0, t.dmg - R.needBlue);
         if (R.dmgCap != null) t.dmg = Math.min(t.dmg, R.dmgCap);
     }
     return t;
@@ -1105,6 +1180,8 @@ STEPS.comboAfterDamage = (state, step) => {
     if (ab(f) === 'MON-09' && n > 1) n -= 1;
     if (hasGear(p, 'CONT79-31') && f.wTurns === 1 && !f.once.g31) { f.once.g31 = true; n += 2; log(state, `${p.name}: кожаные сапоги — +2 карты`); }
     n += vtDrawBonus(state, step.ids);
+    if (ab(f) === 'LEG-CYCLOPS' && f.once.spec && !f.cur.specBefore) { n -= 3; log(state, 'Циклоп: специализация использована — на 3 карты меньше'); }
+    if (ab(f) === 'LEG-TOAD' && f.usedElixirs.length + (f.usedBombs || []).length > f.cur.kitBefore) { n -= 2; log(state, 'Гигантская жаба: использован эликсир или бомба — на 2 карты меньше'); }
     // Решающий удар: «возьмите 0 карт», no effect can change it.
     if (step.fixedDraw != null && !f.cur.noDrawFx) { n = step.fixedDraw; log(state, 'Решающий удар: в конце хода — 0 карт'); }
     // Special attacks: «не более N карт» / «берёт 0 карт» — not changeable by other effects.
@@ -1178,6 +1255,13 @@ STEPS.monsterTurn = (state) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
     if (f.mTurns === 0) { const vm = vtBeforeMonster(state); if (vm.length) { f.stage = 'busy'; push(state, ...vm, F('monsterTurn')); return; } }
+    // Ледяной великан: at the start of its first turn the witcher discards the top 4 deck cards (no deck: from the hand).
+    if (f.mTurns === 0 && ab(f) === 'LEG-ICEGIANT' && !f.once.ice) {
+        f.once.ice = true; f.stage = 'busy';
+        log(state, 'Ледяной великан: в начале его первого хода игрок сбрасывает 4 карты с верха колоды', { kind: 'attack' });
+        push(state, F('spOp', { o: { k: 'deckTop', n: 4, orHand: 'any' } }), F('monsterTurn'));
+        return;
+    }
     // Оскар: before the monster's first turn, look at its top 2 cards: one to its discard.
     if (f.mTurns === 0 && hasGear(p, 'CONT79-18') && !f.once.g18 && f.life.length) {
         f.once.g18 = true;
@@ -1243,6 +1327,8 @@ function cardLoss(state, p, a, level) {
     let loss = Math.max(0, dmg - p.shield);
     if (a.k === 'randDiscard') loss += a.lvl[level - 1];
     if (a.k === 'remove') loss += 1;
+    if (a.k === 'deckTop') loss += a.n;
+    if (a.k === 'special') loss += 4;
     return loss;
 }
 function attackDamage(state, p, a, level) {
@@ -1350,8 +1436,13 @@ STEPS.applyAttack = (state, step) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
     const a = ATTACK[f.lastAttack.id][step.type];
+    // «Легендарная охота»: «монстр совершает свою N-ю особую атаку» (from its large card).
+    if (a.k === 'special') { f.lastAttack.n = a.n; f.lastAttack.name = LEGEND[f.mon] ? LEGEND[f.mon].attacks[a.n - 1].name : ''; push(state, F('spAttack', { n: a.n })); return; }
     let dmg = attackDamage(state, p, a, f.level);
     const seq = [];
+    // Скрытый: its first attack additionally deals damage = the attacker's ruin tokens.
+    if (ab(f) === 'LEG-UNSEEN' && f.mTurns === 1 && (p.ruins || []).length) { dmg += p.ruins.length; log(state, `Скрытый: первая атака дополнительно наносит ${p.ruins.length} урона (жетоны руин)`); }
+    if (a.k === 'deckTop') seq.push(F('spOp', { o: a }));
     const ignFx = vtM1(f, 'ignFx');
     if (ignFx && (a.k === 'skill' || a.k === 'remove' || a.k === 'randDiscard')) log(state, 'Уязвимость: эффекты атаки, кроме урона, игнорируются');
     if (a.k === 'skill' && !ignFx) seq.push({ op: 'lowerSkill', seat: p.seat, skill: a.skill, fight: 1 });
@@ -1502,6 +1593,7 @@ STEPS.fightConsequences = (state) => {
     if (isDuel(state)) { push(state, { op: 'duelConsequences' }); return; }
     const f = state.fight, p = fp(state);
     const mon = MONSTER[f.mon];
+    if (f.legend) { legendConsequences(state, f, p, mon); return; }
     const slot = state.slots[f.slot];
     let result;
     const steps = [];
@@ -1550,6 +1642,23 @@ STEPS.fightConsequences = (state) => {
     steps.push({ op: 'phase3' });
     push(state, ...steps);
 };
+/** «Легендарная охота» (p. 7): a win wins the game; otherwise a ruin token from the supply with
+ *  its bonus instead of the usual consequences, then the usual end of the fight and phase III. */
+function legendConsequences(state, f, p, mon) {
+    const win = f.over === 'win';
+    f.result = win ? 'win' : 'lose';
+    fx(state, { k: 'fightEnd', seat: p.seat, result: f.result, mon: mon.id });
+    if (win) {
+        log(state, `${p.name} побеждает легендарного монстра: ${mon.name}!`, { kind: 'victory' });
+        push(state, { op: 'fightCleanup' }, { op: 'gameOver', seat: p.seat, legend: true });
+        return;
+    }
+    log(state, `${p.name} не смог победить легендарного монстра (${mon.name}): жетон руин из запаса вместо обычных последствий`, { kind: 'defeat' });
+    const steps = [{ op: 'ruinFromPool', seat: p.seat }, { op: 'fightCleanup' }];
+    if (f.elixirsUsed) steps.push({ op: 'trapCheck', seat: p.seat, on: 'fightEnd' });
+    steps.push({ op: 'phase3' });
+    push(state, ...steps);
+}
 STEPS.fightCleanup = (state) => {
     const f = state.fight;
     if (!f) return;

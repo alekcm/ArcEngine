@@ -170,6 +170,9 @@ export const NEXT_TEXT = {
     combatLess: (n) => `навык сражения −${n}`,
     randomFirst: () => 'первая карта — случайная из руки',
     deckFirst: () => 'первая карта — верхняя из колоды',
+    dmgLess: (n) => `урон комбинации −${n}`,
+    needBlue: (n) => `без синей карты урон −${n}`,
+    armorPlus: (n) => `броня монстра +${n}`,
 };
 export const COLOR_WORD = { blue: 'синие', red: 'красные', green: 'зелёные', purple: 'фиолетовые', yellow: 'жёлтые' };
 export function nextText(r) {

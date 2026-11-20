@@ -12,6 +12,8 @@ import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy, hasGear, trainCost, GEAR_M
 import { exploreError, questError, eventComboError, effectSteps } from './explore.mjs';
 import { questLabel } from '../data/events-data.mjs';
 import './setup.mjs';
+import { chaseError, legendFightError } from './legend.mjs';
+import { LEGEND } from '../data/legend-data.mjs';
 
 export { createGame } from './setup.mjs';
 
@@ -38,6 +40,7 @@ export function locActionInfo(state, p) {
     if (!t || t.seat !== p.seat || t.phase !== 1) { info.err = 'Только в фазе I своего хода'; return info; }
     if (!t.moved) { info.err = 'Сначала нужно переместиться хотя бы раз'; return info; }
     if (t.usedLoc.includes(p.loc)) { info.err = 'Действие этой локации уже выполнено в этот ход'; return info; }
+    if (state.legend && state.legend.loc === p.loc) { info.err = `${LEGEND[state.legend.mon].name} закрывает действие этой локации — прогоните его`; return info; }
     switch (act.kind) {
         case 'raise': {
             const v = p.skills[act.skill];
@@ -131,6 +134,12 @@ export function options(state, seat) {
     const fe = monsterFightError(state, p);
     const slot = state.slots.find(s => s.mon && s.token === p.loc);
     o.phase2.push({ id: 'fight', label: slot ? `Битва: ${MONSTER[slot.mon].name}` : 'Битва с монстром', err: fe });
+    // «Легендарная охота»: the legendary fight and «Прогнать» (phase I).
+    if (state.legend) {
+        const L = state.legend;
+        o.phase2.push({ id: 'legend', label: `Битва: ${LEGEND[L.mon].name} (легендарный)`, err: legendFightError(state, p) });
+        o.chase = { err: chaseError(state, p), here: p.loc === L.loc };
+    }
     // Битва ведьмаков (p. 20): every other witcher in the location is a possible target.
     if (!state.solo) for (const q of state.players) {
         if (q.seat === p.seat || q.loc !== p.loc) continue;
@@ -194,6 +203,12 @@ function answer(state, seat, cmd) {
     return ok();
 }
 
+/** End of phase I: secret cards, then («Легендарная охота») the ruin token of this location. */
+function endPhase1(state, p) {
+    push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+    if (state.legend) push(state, { op: 'ruinPickup', seat: p.seat });
+}
+
 function turnCmd(state, p, cmd) {
     const t = state.turn;
     if (!t || t.seat !== p.seat) return err('Сейчас не ваш ход');
@@ -212,7 +227,7 @@ function turnCmd(state, p, cmd) {
             t.phase = 2;
             log(state, `${p.name}: действий фазы II нет — сразу фаза III`);
             push(state, { op: 'phase3' });
-            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+            endPhase1(state, p);
             return ok();
         }
         case 'gearMove': {
@@ -288,11 +303,24 @@ function turnCmd(state, p, cmd) {
             }
             return ok();
         }
+        case 'chase': {
+            const e = chaseError(state, p);
+            if (e) return err(e);
+            push(state, { op: 'chaseAsk', seat: p.seat });
+            return ok();
+        }
+        case 'legend': {
+            const e = legendFightError(state, p);
+            if (e) return err(e);
+            push(state, { op: 'legendFightStart', seat: p.seat });
+            endPhase1(state, p);
+            return ok();
+        }
         case 'fight': {
             const e = monsterFightError(state, p);
             if (e) return err(e);
             push(state, { op: 'fightStart', seat: p.seat });
-            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+            endPhase1(state, p);
             return ok();
         }
         case 'duel': {
@@ -300,7 +328,7 @@ function turnCmd(state, p, cmd) {
             const e = duelError(state, p, target);
             if (e) return err(e);
             push(state, { op: 'duelStart', seat: p.seat, target });
-            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+            endPhase1(state, p);
             return ok();
         }
         case 'wpoker': {
@@ -317,7 +345,7 @@ function turnCmd(state, p, cmd) {
             if (!tr) return err(med.length ? 'Выберите трофей' : 'Медитация недоступна');
             t.phase = 2;
             push(state, { op: 'meditate', seat: p.seat, trophy: tr.id });
-            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+            endPhase1(state, p);
             return ok();
         }
         case 'explore': {
@@ -325,7 +353,7 @@ function turnCmd(state, p, cmd) {
             if (e) return err(e);
             t.phase = 2;
             push(state, { op: 'exploreStart', seat: p.seat, deck: cmd.deck });
-            push(state, { op: 'trapCheck', seat: p.seat, on: 'endPhase1' });
+            endPhase1(state, p);
             return ok();
         }
     }

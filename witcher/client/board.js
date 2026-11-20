@@ -283,6 +283,26 @@ export class Board {
             }
         }
     }
+    /** «Легендарная охота»: the legendary monster's figure (larger, a golden base); slides when it moves. */
+    async syncLegend(L) {
+        const cur = this.legend;
+        if (!L) { if (cur && cur.root) this.vanish(cur.root); this.legend = null; return; }
+        const at = () => pinWorld(L.loc).add(new BABYLON.Vector3(-0.55, 0, 0.3));
+        if (cur && cur.mon === L.mon) {
+            if (cur.loc !== L.loc && cur.root) { cur.loc = L.loc; this.slide(cur.root, at()); }
+            cur.loc = L.loc;
+            return;
+        }
+        if (cur && cur.loading) return;
+        const m = this.legend = { mon: L.mon, loc: L.loc, loading: true };
+        const made = await this.makeModel(L.mon, '#8a6a3a', 0.8, 'legend');
+        if (this.legend !== m) { made.root.dispose(); return; }
+        Object.assign(m, made, { loading: false, baseRot: Math.PI * 0.85 });
+        made.base.material.diffuseColor = BABYLON.Color3.FromHexString('#8c6a2a');
+        if (made.model) made.model.material.diffuseColor = new BABYLON.Color3(0.62, 0.5, 0.38);
+        made.root.position = pinWorld(m.loc).add(new BABYLON.Vector3(-0.55, 0, 0.3));
+        this.appear(made.root);
+    }
     appear(node) {
         let t = 0; node.scaling.setAll(0.01);
         const obs = this.scene.onBeforeRenderObservable.add(() => {
@@ -309,11 +329,11 @@ export class Board {
             if (this.markers[key]) continue;
             // Hunting quests: a round token; event quests: a square token (like the cardboard ones).
             // Vulnerability tokens: a thicker hexagon on the other side of the location pin.
-            const c = BABYLON.MeshBuilder.CreateCylinder('mk' + key, { diameter: mk.vuln ? 0.34 : mk.quest ? 0.3 : 0.26, height: mk.vuln ? 0.08 : 0.05, tessellation: mk.vuln ? 6 : mk.quest ? 4 : 24 }, this.scene);
+            const c = BABYLON.MeshBuilder.CreateCylinder('mk' + key, { diameter: mk.ruin ? 0.36 : mk.vuln ? 0.34 : mk.quest ? 0.3 : 0.26, height: mk.ruin ? 0.09 : mk.vuln ? 0.08 : 0.05, tessellation: mk.ruin ? 9 : mk.vuln ? 6 : mk.quest ? 4 : 24 }, this.scene);
             const m = new BABYLON.StandardMaterial('mkm' + key, this.scene);
             m.diffuseColor = BABYLON.Color3.FromHexString(mk.color); m.emissiveColor = BABYLON.Color3.FromHexString(mk.color).scale(0.25);
             c.material = m; c.isPickable = false;
-            c.position = pinWorld(mk.loc).add(mk.vuln ? new BABYLON.Vector3(0.42, 0.04, -0.05) : new BABYLON.Vector3(-0.42 + (mk.i || 0) * 0.14, 0.03 + (mk.i || 0) * 0.05, -0.05));
+            c.position = pinWorld(mk.loc).add(mk.ruin ? new BABYLON.Vector3(0.05, 0.045, 0.45) : mk.vuln ? new BABYLON.Vector3(0.42, 0.04, -0.05) : new BABYLON.Vector3(-0.42 + (mk.i || 0) * 0.14, 0.03 + (mk.i || 0) * 0.05, -0.05));
             this.shadows.addShadowCaster(c);
             this.markers[key] = c;
         }

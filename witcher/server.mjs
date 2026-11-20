@@ -21,7 +21,7 @@ import { createGame, apply, options, actingSeat } from './shared/engine/core.mjs
 import { viewFor } from './shared/view.mjs';
 import { botCommand } from './shared/bots.mjs';
 import { SCHOOLS, SCHOOL_ORDER, BOT_NAMES, normalizeRules, normalizeExp } from './shared/data/rules-data.mjs';
-import { MONSTERS } from './shared/data/gen-data.mjs';
+import { MONSTERS, LEGENDS } from './shared/data/gen-data.mjs';
 import { objToMesh } from './tools/obj.mjs';
 import { writeScenarios, SCENARIO_NAMES } from './tools/scenarios.mjs';
 
@@ -65,6 +65,7 @@ const BUILD = buildStamp();
 const MODEL_FILES = {};
 for (const [k, s] of Object.entries(SCHOOLS)) MODEL_FILES['w-' + k] = path.join(REPO, s.model);
 for (const m of MONSTERS) MODEL_FILES[m.id] = path.join(REPO, 'Witcher', 'Миниатюры монстров', m.model);
+for (const m of LEGENDS) MODEL_FILES[m.id] = path.join(REPO, 'Witcher', 'Легендарные монстры', m.model);
 const modelCache = new Map();
 const MODEL_TRIS = 40000;
 function modelJson(key, tris = MODEL_TRIS) {

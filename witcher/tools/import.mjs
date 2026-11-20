@@ -262,6 +262,10 @@ export function buildData() {
         witcherTrophies: importWitcherTrophies(),
         board: importBoard(),
         bigCards: importBigCards(),
+        legends: importLegends(),
+        legAttacks: importLegAttacks(),
+        legMoves: importLegMoves(),
+        ruins: importRuins(),
     };
     if (starter.length !== 70) fail('expected 70 starter cards, got ' + starter.length);
     if (common.length !== 90) fail('expected 90 common cards, got ' + common.length);
@@ -291,6 +295,97 @@ function importBigCards() {
         out.push({ id: BIG_OF[nn] || 'MON-' + String(nn).padStart(2, '0'), name, cell, discard: { name: discKey.split(' — ')[1], text: sec[discKey] }, attacks, vulns });
     }
     if (out.length !== 29) fail('expected 29 large monster cards, got ' + out.length);
+    return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// «Легендарная охота» (Книги правил/Легендарная охота.md; Легендарные монстры/*.md): 8 large cards
+// (Кейран — «Набор монстров»), 20 combat cards, 12 movement cards, 24 ruin tokens.
+// ---------------------------------------------------------------------------------------------
+const LEGEND_KEY = { golem: 'golem', cyclops: 'cyclops', toad: 'toad', fiend: 'fiend', unseen: 'unseen', 'ice-giant': 'icegiant', gaunter: 'gaunter', kayran: 'kayran' };
+function importLegends() {
+    const md = read('Легендарные монстры/Легендарные монстры.md');
+    const out = [];
+    const clean = (s) => s.replace(/\s+/g, ' ').trim();
+    for (const line of md.split('\n')) {
+        const m = /^\| \[([^\]]+)\]\(#([a-z-]+)\) \| (r\dc\d) \| (\d+) \| \[[^\]]+\]\(<?([^)>]+)>?\) \|$/.exec(line);
+        if (!m) continue;
+        out.push({ id: 'LEG-' + LEGEND_KEY[m[2]].toUpperCase(), key: LEGEND_KEY[m[2]], name: m[1], cell: m[3], start: Number(m[4]), model: decodeURI(m[5]) });
+    }
+    for (const L of out) {
+        const anchor = Object.keys(LEGEND_KEY).find(k => LEGEND_KEY[k] === L.key);
+        const body = (md.split(`<a id="${anchor}"></a>`)[1] || fail('legend section ' + L.name)).split(/\n<a id=|\n## Важные/)[0];
+        const ab = /\n\*\*(В течение всей битвы|В первый ход легендарного монстра|В начале первого хода легендарного монстра)(:?)\*\*:?\s*([^\n]+)/.exec(body) || fail('legend ability ' + L.name);
+        L.ability = clean(ab[1] + (ab[2] ? ': ' : ' ') + ab[3]).replace(/^(В течение всей битвы): ?/, '$1: ');
+        L.attacks = body.split(/\n### /).slice(1).map(part => {
+            const [h, ...b] = part.split('\n');
+            const text = clean(b.join('\n').replace(/\| Номер локации[\s\S]*$|\| Местность[\s\S]*$/, ''));
+            return { name: h.replace(/^[IV]+ — /, '').trim(), text };
+        });
+        // Damage tables of Гюнтер III / Кейран III.
+        const tbl = [...body.matchAll(/^\| ([^|]+) \| (\d+) \|$/gm)].filter(x => !/---/.test(x[1])).map(x => [x[1].trim(), Number(x[2])]);
+        if (tbl.length) L.table = tbl;
+        if (L.attacks.length !== 4) fail('4 attacks for ' + L.name);
+    }
+    if (out.length !== 8) fail('expected 8 legendary monsters, got ' + out.length);
+    return out;
+}
+function parseLegAttack(t, id) {
+    let m;
+    if ((m = /^Урон (\d)$/.exec(t))) return { k: 'dmg', n: Number(m[1]) };
+    if ((m = /^Сброс (\d)$/.exec(t))) return { k: 'deckTop', n: Number(m[1]), orHand: 'any' };
+    if ((m = /^Особая (I|II|III|IV)$/.exec(t))) return { k: 'special', n: ['I', 'II', 'III', 'IV'].indexOf(m[1]) + 1 };
+    return fail(`unknown legendary attack "${t}" in ${id}`);
+}
+function importLegAttacks() {
+    const md = read('Легендарные монстры/Атаки.md');
+    const out = [];
+    for (const line of md.split('\n')) {
+        if (!line.startsWith('| <a id="lm-atk-')) continue;
+        const c = cells(line);
+        const id = stripAnchor(c[0]);
+        out.push({ id, cell: c[1], strike: parseLegAttack(c[2], id), bite: parseLegAttack(c[3], id), strikeText: c[2], biteText: c[3] });
+    }
+    if (out.length !== 20) fail('expected 20 legendary combat cards');
+    return out;
+}
+function importLegMoves() {
+    const md = read('Легендарные монстры/Движение.md');
+    const out = [];
+    for (const line of md.split('\n')) {
+        if (!line.startsWith('| <a id="lm-move-')) continue;
+        const c = cells(line);
+        out.push({ id: stripAnchor(c[0]), cell: c[1], main: Number(c[2]), second: Number(c[3]), pts: c.slice(4, 9).map(Number) });
+    }
+    if (out.length !== 12 || out.some(x => x.pts.length !== 5 || x.pts.some(isNaN))) fail('expected 12 legendary movement cards');
+    return out;
+}
+const RUIN_FX = {
+    '[ЭЛИКСИР:+2]': { elixir: 2 },
+    '[ЭЛИКСИР:+1]; [ФАЗА-III:ДОБОР:+1]': { elixir: 1, draw3: 1 },
+    '[ЗОЛОТО:+2]': { gold: 2 },
+    '[ЗОЛОТО:+1]; [ФАЗА-III:ДОБОР:+1]': { gold: 1, draw3: 1 },
+    '[ЩИТ:−1]; [ФАЗА-III:ДОБОР:+2]': { shieldDown: 1, draw3: 2 },
+    '[КАРТА-В-СБРОС:СТОИМОСТЬ-0]; [ФАЗА-III:ДОБОР:−1]': { zeroCard: true, draw3: -1 },
+    '[СРАЖЕНИЕ:+1]; [ФАЗА-III:ДОБОР:−1]': { skill: 'combat', draw3: -1 },
+    '[ЗАЩИТА:+1]; [ФАЗА-III:ДОБОР:−1]': { skill: 'defense', draw3: -1 },
+    '[АЛХИМИЯ:+1]; [ФАЗА-III:ДОБОР:−1]': { skill: 'alchemy', draw3: -1 },
+    '[СПЕЦИАЛИЗАЦИЯ:+1]; [ФАЗА-III:ДОБОР:−1]': { skill: 'spec', draw3: -1 },
+    '[ЩИТ:=0]; [ЛЮБОЙ-НАВЫК:+1]': { shield0: true, skill: 'any' },
+};
+function importRuins() {
+    const md = read('Легендарные монстры/Руины.md');
+    const out = [];
+    for (const line of md.split('\n')) {
+        if (!line.startsWith('| <a id="ruin-')) continue;
+        const c = cells(line);
+        const id = stripAnchor(c[0]);
+        const icons = c[2].replace(/`/g, '');
+        const fx = RUIN_FX[icons] || fail(`unknown ruin bonus ${icons} (${id})`);
+        const file = (/\(<([^>]+)>\)/.exec(c[1]) || fail('ruin file ' + id))[1];
+        out.push({ id, file, fx, text: c[3] });
+    }
+    if (out.length !== 24) fail('expected 24 ruin tokens');
     return out;
 }
 

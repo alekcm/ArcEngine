@@ -15,6 +15,7 @@ import { MONSTER, LOC } from '/shared/engine/util.mjs';
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
+import { RUIN } from '/shared/data/legend-data.mjs';
 
 let board = null;
 function ensureBoard() {
@@ -89,7 +90,10 @@ function onState(m) {
     for (const tr of v.traps || []) markers.push({ key: `t${tr.id}`, loc: tr.loc, color: SCHOOLS[v.players[tr.owner].school].color, i: 3 + markers.filter(m => m.loc === tr.loc).length, quest: true });
     // «Уязвимости и особые атаки»: face-down vulnerability tokens (a dark-red hexagon).
     for (const vt of v.vulnBoard || []) markers.push({ key: `v${vt.terrain}-${vt.loc}`, loc: vt.loc, color: '#8a2a22', vuln: true });
+    // «Легендарная охота»: face-down ruin tokens (a grey stone) and the legendary monster.
+    for (const loc of (v.legend && v.legend.ruins) || []) markers.push({ key: `r${loc}`, loc, color: '#8c8272', ruin: true });
     b.syncMarkers(markers);
+    b.syncLegend(v.legend);
     const myMoves = S.options && S.options.acting && !v.fight && !v.prompt ? S.options.moves.map(x => x.to) : [];
     b.setMoveTargets(myMoves, v.turn ? v.players[v.turn.seat].loc : null);
 
@@ -130,6 +134,11 @@ function feedback(events, prev) {
             case 'questDone': sfx('trophy'); break;
             case 'd6': sfx('dice'); break;
             case 'mutagenGain': sfx('elixir'); if (e.seat === S.you && MUTAGEN[e.id]) banner('Мутаген — ' + MUTAGEN[e.id].name, 'Срабатывает раз за битву', 1800); break;
+            // «Легендарная охота»
+            case 'legendCard': sfx('roar', 0.05); toast(`Легендарный монстр: ${e.pts} очк. перемещения`, 'info'); break;
+            case 'legendMove': if (board && prev) board.focus(e.to, 9); break;
+            case 'ruin': sfx('card'); if (e.seat === S.you) banner('Жетон руин', (RUIN[e.id] || {}).text || '', 2200); else toast(`${v.players[e.seat].name} получает жетон руин`, 'info'); break;
+            case 'lost': sfx('lose'); break;
             case 'mutagen': sfx('elixir'); if (MUTAGEN[e.id]) toast(`${v.players[e.seat].name}: ${MUTAGEN[e.id].name}`, 'info'); break;
         }
     }
@@ -142,8 +151,10 @@ function renderGameOver() {
     if (el.dataset.closed === String(v.round)) return;
     const w = v.winner != null ? v.players[v.winner] : null;
     const rank = v.soloRank ? `<p style="font-size:18px">${esc(v.soloRank)}</p>` : '';
-    el.innerHTML = `<div class="box"><h1>${w ? (w.seat === S.you ? 'Победа!' : esc(w.name) + ' побеждает') : 'Игра окончена'}</h1>
-        ${w ? `<p>${esc(SCHOOLS[w.school].school)} собирает ${w.track} трофея за ${w.turns} ход(ов).</p>` : ''}${rank}
+    const leg = v.legend ? MONSTER[v.legend.mon] : null;
+    el.innerHTML = `<div class="box"><h1>${w ? (w.seat === S.you ? 'Победа!' : esc(w.name) + ' побеждает') : v.lost ? 'Поражение' : 'Игра окончена'}</h1>
+        ${w ? `<p>${leg ? `${esc(SCHOOLS[w.school].school)} побеждает легендарного монстра — ${esc(leg.name)} — за ${w.turns} ход(ов).` : `${esc(SCHOOLS[w.school].school)} собирает ${w.track} трофея за ${w.turns} ход(ов).`}</p>` : ''}
+        ${v.lost && leg ? `<p>Карты перемещения закончились: ${esc(leg.name)} ввергает Континент в хаос.</p>` : ''}${rank}
         <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
         <button class="btn" id="goClose">Посмотреть стол</button>${S.host ? '<button class="btn primary" id="goNew">Новая партия</button>' : ''}</div></div>`;
     el.classList.remove('hidden');

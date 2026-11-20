@@ -8,7 +8,7 @@ import { nextText, ROMAN, vulnText } from '/shared/data/vuln-data.mjs';
 import { restrictError } from '/shared/engine/vuln.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { bombOf } from '/shared/data/bombs-data.mjs';
-import { CARDS, MONSTER, POTION } from '/shared/engine/util.mjs';
+import { CARDS, MONSTER, POTION, ATTACK } from '/shared/engine/util.mjs';
 import { SCHOOLS, SPEC_TABLE, trailOn } from '/shared/data/rules-data.mjs';
 import { linkIndex, comboTotals, comboError, bloodFx, wlinkIndex } from '/shared/engine/fight.mjs';
 import { onceOf } from '/shared/engine/duel.mjs';
@@ -27,6 +27,13 @@ const mutOpts = () => ({ mutOff: S.ui.mutOff || [], mut8: S.ui.mut8 || 'dmg' });
  *  colour) or the index of the card joined by the blood link. */
 const bloodAt = () => (typeof S.ui.blood === 'number' && S.ui.blood < (S.ui.combo || []).length) ? S.ui.blood : null;
 
+/** Number of the special attack the last monster card triggered (a special card or a legendary «N-я особая атака» side). */
+function spN(la) {
+    if (!la) return null;
+    if (la.n) return la.n;
+    const a = ATTACK[la.id], side = a && la.type && a[la.type];
+    return side && side.k === 'special' ? side.n : null;
+}
 export function renderFight() {
     const v = S.view, el = $('fight');
     const f = v && v.fight;
@@ -64,7 +71,7 @@ export function renderFight() {
 
     const last = f.lastAttack ? `<div class="lastatk"><span>${f.lastAttack.type === 'special' ? 'Особая атака' : 'Последняя атака'}</span>${f.lastAttack.type === 'special' ? specialCard(f.lastAttack.id, f.mon) : attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
     // «Уязвимости и особые атаки»: restrictions in force now / next turn, monster's next turn, whole fight.
-    const rulesNow = f.vuln ? [
+    const rulesNow = (f.vuln || f.legend) ? [
         ...nextText(f.cur && f.stage === 'witcher' ? f.cur.r : null).map(t => `<span title="Действует в этом ходу битвы">${esc(t)}</span>`),
         ...nextText(f.nextW).map(t => `<span class="next" title="Следующий ход ведьмака">след. ход: ${esc(t)}</span>`),
         ...(f.nextM && f.nextM.chooseType ? ['<span class="next">след. ход монстра: тип атаки выбирается после открытия карты</span>'] : []),
@@ -130,10 +137,11 @@ export function renderFight() {
         <span class="turnbadge ${f.stage === 'witcher' && (!duel || mine) ? 'me' : ''}">${duel ? `Ходит ${esc(v.players[f.seat].name)} · ход ${Math.max(1, f.wTurns)}` : f.stage === 'witcher' ? `Ход ведьмака ${Math.max(1, f.wTurns)}` : 'Ход монстра'}</span>
         ${duel && (f.bets || []).length ? `<span class="turnbadge" title="Ставки игроков, не участвующих в битве">${icon('coin')} ставки: ${f.bets.map(b => `${esc(v.players[b.seat].name)} → ${esc(v.players[b.on === 'att' ? f.att : f.def].name)}`).join(', ')}</span>` : ''}
         ${f.track ? `<span class="turnbadge">${icon('track')} жетон следа: ведьмак ходит первым</span>` : ''}
+        ${f.legend ? `<span class="turnbadge" title="Урон за каждый ход битвы игрока снижается на уровень брони (памятка «Легендарной охоты», по шкале трофеев)">${icon('shield')} броня ${f.armorBase}${f.cur && f.turn === 'witcher' && f.cur.armor !== f.armorBase ? ` (в этом ходу ${f.cur.armor})` : ''}</span>` : ''}
         <span class="turnbadge" title="Лимит по навыку алхимии">${trailOn(v, 'bombs') ? 'Эликсиры и бомбы' : 'Эликсиры'}: ${f.elixirsUsed}</span>
         ${f.noAbility ? '<span class="turnbadge">Чёртов гриб: способность монстра не действует</span>' : ''}${f.moonDust ? '<span class="turnbadge">Лунная пыль: тип следующей атаки можно сменить</span>' : ''}</div>
     ${duel ? oppPanel(v, f, opp) : `<div class="mon">
-        <div id="fMonCard">${f.vuln ? bigMonsterCard(f.mon, { life: f.lifeCount, dice: f.dice, cls: 'infight', hi: f.lastAttack && f.lastAttack.type === 'special' && f.stage !== 'witcher' ? f.lastAttack.n : null }) : monsterCard(f.mon, { big: true, life: f.lifeCount })}</div>
+        <div id="fMonCard">${f.vuln || f.legend ? bigMonsterCard(f.mon, { life: f.lifeCount, dice: f.dice, cls: 'infight', armor: f.legend ? (f.cur && f.turn === 'witcher' ? Math.max(0, f.cur.armor - (f.cur.armorUsed || 0)) : f.armorBase) : null, hi: f.stage !== 'witcher' ? spN(f.lastAttack) : null }) : monsterCard(f.mon, { big: true, life: f.lifeCount })}</div>
         <div class="pool"><div class="stack" id="fPool">${f.lifeCount}</div><div>Запас жизни монстра<div class="lifebar"><i style="width:${lifePct}%"></i></div><small style="color:var(--dim)">сброс атак: ${f.monDiscard.length}</small></div></div>
     </div>`}
     <div class="center">
@@ -288,7 +296,8 @@ function renderResult(el, r) {
     }
     const m = MONSTER[r.mon];
     const who = v.players[r.seat];
-    const text = r.result === 'win' ? `${who.name} побеждает: ${m.name}. +2 золота и трофей.`
+    const text = m.legend ? (r.result === 'win' ? `${who.name} побеждает легендарного монстра — ${m.name} — и выигрывает партию!` : `${who.name} не смог победить: ${m.name}. Вместо обычных последствий — жетон руин из запаса и его бонус.`)
+        : r.result === 'win' ? `${who.name} побеждает: ${m.name}. +2 золота и трофей.`
         : r.result === 'chase' ? `${m.name} отступает (в колоде атак осталось не больше 1 карты). ${who.name}: +2 золота и базовая карта; монстр заменён.`
         : `${who.name} теряет сознание. Монстр остаётся; ведьмак получает жетон следа и базовую карту.`;
     el.innerHTML = `<div class="result"><div>${monsterCard(r.mon, { big: true })}</div>

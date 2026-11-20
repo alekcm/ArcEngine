@@ -9,6 +9,7 @@ import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { BIG, SPECIAL, ROMAN as VROMAN } from '/shared/data/vuln-data.mjs';
+import { LEGEND, LEG_ATTACK, LEG_MOVE, RUIN } from '/shared/data/legend-data.mjs';
 import { icon, CARD_COLOR, TERRAIN_COLOR } from './icons.js';
 
 let ART = {};
@@ -171,6 +172,7 @@ export function cardBack(kind = 'action', label = '') {
 export function monsterCard(id, opts = {}) {
     const m = MONSTER[id];
     if (!m) return '';
+    if (LEGEND[id]) return legendCard(id, opts);
     const lv = ['', 'I', 'II', 'III'][m.level];
     return `<div class="card monster lv${m.level} ${opts.big ? 'big' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(m.name + '. ' + m.ability)}">
         <div class="art" style="background-image:${artCss(id, '#5a2a2a', 'skull')}"></div>
@@ -187,6 +189,7 @@ export function monsterCard(id, opts = {}) {
 // vulnerabilities I–VI. `opts.hi` — the number of the attack to highlight, `opts.dice` — dice on it.
 const claws = (n) => `<span class="claws">${Array.from({ length: n }, () => '<i></i>').join('')}</span>`;
 export function bigMonsterCard(id, opts = {}) {
+    if (LEGEND[id]) return legendCard(id, opts);
     const m = MONSTER[id], b = BIG[id];
     if (!m || !b) return monsterCard(id, opts);
     const lv = ['', 'I', 'II', 'III'][m.level];
@@ -240,7 +243,35 @@ function attackSide(e) {
 }
 const levels = (cells) => `<div class="arow lv">${cells.map((c, i) => `<span class="lvc">${hex(i)}<i>:</i>${c}</span>`).join('')}</div>`;
 
+// «Легендарная охота»: the large legendary card, the combat / movement cards and the ruin tokens
+// are shown as printed (Легендарные монстры/*.jpg, cut by tools/art.mjs legend).
+export function legendCard(id, opts = {}) {
+    const L = LEGEND[id];
+    if (!L) return '';
+    const title = `${L.name}. Начальная локация ${L.start}. ${L.ability}\n` + L.attacks.map((a, i) => `${VROMAN[i]} «${a.name}»: ${a.text}`).join('\n');
+    return `<div class="card legendbig ${opts.big || opts.cls ? '' : 'small'} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(title)}" style="background-image:${artCss(id, '#3a2420', 'skull')}">
+        ${opts.life != null ? `<div class="life">${icon('card')}<b>${opts.life}</b></div>` : ''}
+        ${opts.hi ? `<div class="lg-hi" style="top:${[4, 27, 50, 74][opts.hi - 1]}%"></div>` : ''}
+        ${opts.armor != null ? `<div class="lg-armor" title="Броня легендарного монстра в этом ходу битвы">${icon('shield')}<b>${opts.armor}</b></div>` : ''}
+    </div>`;
+}
+export function legendAttackCard(id, type, opts = {}) {
+    const a = LEG_ATTACK[id];
+    if (!a) return '';
+    return `<div class="card attack printed ${opts.small ? 'small' : ''} ${type ? 'pick-' + type : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc('Удар: ' + a.strikeText + '. Укус: ' + a.biteText + '.')}" style="background-image:${artCss(id, '#2a2a3a', 'skull')}"></div>`;
+}
+export function legendMoveCard(id, opts = {}) {
+    const m = LEG_MOVE[id];
+    if (!m) return '';
+    return `<div class="card attack printed ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="${esc(`Перемещение: к локации ${m.main}, затем к ${m.second}; очки по числу игроков 1–5: ${m.pts.join('/')}`)}" style="background-image:${artCss(id, '#2a2a3a', 'spec')}"></div>`;
+}
+export function ruinToken(id, opts = {}) {
+    const r = RUIN[id];
+    return `<div class="ruin ${opts.cls || ''}" ${r ? `data-id="${esc(id)}" title="${esc(r.text)}" style="background-image:${artCss(id, '#555', 'skull')}"` : 'title="Жетон руин (лицом вниз)"'}></div>`;
+}
+
 export function attackCard(id, type, opts = {}) {
+    if (LEG_ATTACK[id]) return legendAttackCard(id, type, opts);
     const a = ATTACK[id];
     if (!a) return '';
     const sec = (k) => {

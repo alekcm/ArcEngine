@@ -110,7 +110,9 @@ export const HOUSE_RULES = [
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
 /** Expansions that can already be switched on in the lobby. */
 export const TRAIL_PART_IDS = ['bombs', 'manticore', 'troll', 'mutagens', 'unique', 'masters', 'vuln'];
-export const EXPANSIONS_READY = ['ciri', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
+export const EXPANSIONS_READY = ['legendary', 'ciri', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
+/** «Легендарная охота» settings carried in the expansion list (see legend-data.mjs legendOpts). */
+const LEGEND_SUB = /^legendary:(B|mon:(golem|cyclops|toad|fiend|unseen|icegiant|gaunter|kayran)|solo:(easy|normal|hard))$/;
 /** Keeps known ids; the «По следу монстра» parts only together with 'trail'. A bare 'trail'
  *  (saves made before the parts existed) means the bombs only. */
 export function normalizeExp(exp) {
@@ -118,6 +120,13 @@ export function normalizeExp(exp) {
     let out = EXPANSIONS_READY.filter(x => exp.includes(x));
     if (!out.includes('trail')) out = out.filter(x => !x.startsWith('trail:'));
     else if (!out.some(x => x.startsWith('trail:'))) out.push('trail:bombs');
+    if (out.includes('legendary')) {
+        // One monster / one difficulty at most (the last one wins).
+        const subs = exp.filter(x => typeof x === 'string' && LEGEND_SUB.test(x));
+        const mon = subs.filter(x => x.startsWith('legendary:mon:')).pop();
+        const solo = subs.filter(x => x.startsWith('legendary:solo:')).pop();
+        out.push(...(subs.includes('legendary:B') ? ['legendary:B'] : []), ...(mon ? [mon] : []), ...(solo ? [solo] : []));
+    }
     return out;
 }
 /** Is a «По следу монстра» part on? `s` is a state/view (with .exp) or an exp array. */

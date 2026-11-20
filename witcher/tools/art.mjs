@@ -19,7 +19,7 @@ import path from 'node:path';
 import url from 'node:url';
 import { createRequire } from 'node:module';
 import { CARDS } from '../shared/engine/util.mjs';
-import { MONSTERS, POTIONS } from '../shared/data/gen-data.mjs';
+import { MONSTERS, POTIONS, LEGENDS, LEGATTACKS, LEGMOVES, RUINS } from '../shared/data/gen-data.mjs';
 import { EVENTS } from '../shared/data/events-data.mjs';
 import { BOMBS } from '../shared/data/bombs-data.mjs';
 import { MASTERS, UNIQUES, MUTAGENS } from '../shared/data/trail-data.mjs';
@@ -42,6 +42,9 @@ const ATLAS = {
     MUT: 'Доп колоды/Мутагены.jpg',
     EV1: 'События/Ивенты 1.jpg',
     EV2: 'События/Ивенты 2.jpg',
+    LEG: 'Легендарные монстры/Легендарные монстры.jpg',
+    LATK: 'Легендарные монстры/Атаки.jpg',
+    LMOVE: 'Легендарные монстры/Движение.jpg',
 };
 const cellOf = (c) => { const m = /^r(\d+)c(\d+)$/.exec(c); return [+m[1], +m[2]]; };
 const atlases = new Map();
@@ -51,11 +54,11 @@ async function atlas(k) {
     return atlases.get(k);
 }
 /** Cut a rectangle of cell (r, c) and save it as webp of the given width. */
-async function cut(k, cell, box, file, width) {
+async function cut(k, cell, box, file, width, cw = W, ch = H) {
     const { data, info } = await atlas(k);
     const [r, c] = cellOf(cell);
     await sharp(data, { raw: { width: info.width, height: info.height, channels: 3 }, limitInputPixels: false })
-        .extract({ left: (c - 1) * W + box.x, top: (r - 1) * H + box.y, width: box.w, height: box.h })
+        .extract({ left: (c - 1) * cw + box.x, top: (r - 1) * ch + box.y, width: box.w, height: box.h })
         .resize({ width }).webp({ quality: 78 }).toFile(path.join(OUT, file));
 }
 
@@ -106,7 +109,16 @@ async function witcherTrophies() {
     }
     console.log('трофеи ведьмаков: 28');
 }
+/** «Легендарная охота»: large cards (929 × 1160 cells), combat and movement cards, ruin tokens — as printed. */
+async function legend() {
+    for (const l of LEGENDS) await cut('LEG', l.cell, { x: 0, y: 0, w: 929, h: 1160 }, `${l.id}.webp`, 640, 929, 1160);
+    for (const a of LEGATTACKS) await cut('LATK', a.cell, { x: 0, y: 0, w: W, h: H }, `${a.id}.webp`, 420);
+    for (const m of LEGMOVES) await cut('LMOVE', m.cell, { x: 0, y: 0, w: W, h: H }, `${m.id}.webp`, 420);
+    for (const r of RUINS) await sharp(path.join(SRC, 'Легендарные монстры', r.file)).resize({ width: 200 }).webp({ quality: 80 }).toFile(path.join(OUT, `${r.id}.webp`));
+    console.log('легендарная охота:', LEGENDS.length + LEGATTACKS.length + LEGMOVES.length + RUINS.length);
+}
 const only = process.argv[2];
+if (only === 'legend') await legend();
 if (only === 'wtrophies') await witcherTrophies();
 if (!only || only === 'actions') await actions();
 if (!only || only === 'monsters') await monsters();

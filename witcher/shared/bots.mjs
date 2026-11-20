@@ -8,6 +8,7 @@ import { linkIndex, comboTotals, comboError, elixirError } from './engine/fight.
 import { movePaymentError } from './engine/turn.mjs';
 import { findChain } from './engine/vuln.mjs';
 import { trainCost, hasWitcherTrophy } from './engine/effects.mjs';
+import { ARMOR } from './data/legend-data.mjs';
 
 export const cardValue = (id) => {
     const c = CARDS[id];
@@ -113,6 +114,9 @@ export function botCommand(view, opts = {}) {
     const fightOpt = o.phase2.find(x => x.id === 'fight');
     const here = view.slots.find(s => s.mon && s.token === p.loc);
     if (fightOpt && !fightOpt.err && here && winChance(view, p, here) >= FIGHT_NOW) return { t: 'fight' };
+    // «Легендарная охота»: the legendary monster here and the odds are good — that wins the game.
+    const legOpt = o.phase2.find(x => x.id === 'legend' && !x.err);
+    if (legOpt && legendChance(view, p) >= legendNeed(view)) return { t: 'legend' };
     const duel = duelTarget(view, p, o);
     if (duel != null && (t.moved || !o.moves.length)) return { t: 'duel', seat: duel };
     // Route: the best goal on the map (monsters, quests, hunting tokens, useful actions), one
@@ -127,6 +131,8 @@ function phase2(view, p, o, fightOpt, here) {
     const canFight = fightOpt && !fightOpt.err;
     const wc = canFight && here ? winChance(view, p, here) : 0;
     const med = o.phase2.find(x => x.id === 'meditate');
+    const leg = o.phase2.find(x => x.id === 'legend' && !x.err);
+    if (leg && legendChance(view, p) >= legendNeed(view)) return { t: 'legend' };
     if (canFight && wc >= 0.7) return { t: 'fight' };
     if (med && !med.err) return { t: 'meditate', trophy: med.trophies[0] };
     if (canFight && wc >= 0.3) return { t: 'fight' };
@@ -136,9 +142,28 @@ function phase2(view, p, o, fightOpt, here) {
     // Phase II is obligatory: when a witcher fight is the only action left, it is fought.
     const anyDuel = o.phase2.find(x => x.id.startsWith('duel-') && !x.err);
     if (anyDuel) return { t: 'duel', seat: anyDuel.seat };
+    // A lost legendary fight still gives a ruin token (and the deck is reshuffled anyway).
+    if (o.phase2.some(x => x.id === 'legend' && !x.err)) return { t: 'legend' };
     const skip = o.phase2.find(x => x.id === 'skipPhase2' && !x.err);
     if (skip) return { t: 'skipPhase2' };
     return null;
+}
+/** «Легендарная охота»: chance against the legendary monster — like winChance, with 20 life
+ *  cards minus ruins, the first turn for any ruin, and the armor absorbing damage every turn. */
+export function legendChance(view, p, handLoss = 0) {
+    const L = view.legend;
+    if (!L) return 0;
+    const ruins = p.ruins ? p.ruins.length : (p.ruinCount || 0);
+    const armor = ARMOR[L.side][Math.max(0, Math.min(4, p.track))];
+    let hp = Math.max(0, p.hand.length - handLoss) + (p.deckCount || 0) + p.shield + (p.skills.combat - 1) * 0.5 + (p.level - 3) * 0.75;
+    hp += (view.solo ? Math.floor(ruins / 2) : ruins) * 1.2 + (ruins ? 3 : 0) - armor * 3 - 4;
+    return 1 / (1 + Math.exp(-(hp - 15) / 2));
+}
+/** The odds a bot wants: lower when the solo movement deck runs out. */
+function legendNeed(view) {
+    const L = view.legend;
+    if (view.solo && L) return L.moveDeck <= 1 ? 0 : L.moveDeck <= 3 ? 0.3 : 0.55;
+    return 0.55;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -209,6 +234,7 @@ function actionValue(view, p, n) {
     if (!a) return 0;
     const t = view.turn;
     if (t.usedLoc.includes(n)) return 0;
+    if (view.legend && view.legend.loc === n) return 0;   // the legendary monster blocks the action
     switch (a.kind) {
         case 'raise': return p.skills[a.skill] < 5 && p.skills[a.skill] <= p.level ? 6 + (p.skills[a.skill] === p.level ? 2 : 0) : 0;
         case 'school': {
@@ -257,6 +283,16 @@ function goalValue(view, p, n, d, reach) {
     if (reach && !SCHOOL_HOMES.has(n) && view.closedTavern !== n && view.players.some(q => q.loc === n && duelWorth(view, p, q, d))) v += 9;
     if ((p.quests || []).some(q => q.loc === n)) v += 5;
     v += actionValue(view, p, n);
+    // «Легендарная охота»: the legendary monster (the game's goal) and ruin tokens (bonus + easier fight).
+    if (view.legend) {
+        if (view.legend.loc === n) {
+            const wc = legendChance(view, p, reach ? d : 0);
+            v += 24 * wc * (wc >= legendNeed(view) ? 1 : 0.3);
+            // Solo: the movement deck is the clock — the last turns go to the monster whatever the odds.
+            if (view.solo && view.legend.moveDeck <= 2) v += 30;
+        }
+        if (reach && view.legend.ruins.includes(n)) v += 3.5;
+    }
     return v;
 }
 function planStep(view, p, o) {
@@ -278,7 +314,8 @@ function planStep(view, p, o) {
     // Staying is worth something too: the value of the current place for phase II.
     const stay = (() => {
         const slot = view.slots.find(s => s.mon && s.token === p.loc);
-        return slot && fightable(view, p, slot) ? 16 * winChance(view, p, slot) : 0;
+        const leg = view.legend && view.legend.loc === p.loc ? 24 * legendChance(view, p) * (legendChance(view, p) >= legendNeed(view) ? 1 : 0.3) : 0;
+        return Math.max(leg, slot && fightable(view, p, slot) ? 16 * winChance(view, p, slot) : 0);
     })();
     if (!best || best.score <= Math.max(1, stay)) return null;
     // A far goal: spend only the cards above 3 (phase III draws back up to 3 anyway).

@@ -207,6 +207,22 @@ export function vulnScenario(seed = 21) {
     return st;
 }
 const MONSTER_LEVEL = (id) => MONSTER[id].level;
+/** «Легендарная охота»: Кейран (памятка А) in the player's location after a few moves — ruins on
+ *  the board and three ruin tokens with the player (−3 cards of the monster's life pool), 1 trophy. */
+export function legendScenario(seed = 31) {
+    const st = createGame({ seed, exp: ['legendary', 'legendary:mon:kayran'], players: [{ name: 'Игрок', school: 'wolf' }, { name: 'Ламберт', school: 'cat', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0], L = st.legend;
+    // Ruins left behind on its way (two neighbours of the start) and three taken by the player.
+    for (const loc of ADJ[L.loc].filter(n => n !== L.loc).slice(0, 2)) L.ruins[loc] = L.ruinPool.shift();
+    p.ruins.push(L.ruinPool.shift(), L.ruinPool.shift(), L.ruinPool.shift());
+    p.loc = L.loc;
+    st.turn.moved = true;
+    p.skills.combat = 3; p.skills.defense = 3; p.skills.alchemy = 2; p.skills.spec = 2; p.shield = 3; p.level = 3; p.gold = 4;
+    p.trophies.push({ kind: 'skill', id: st.skillTrophies.shift() }); p.track = 1;
+    p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift());
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -254,8 +270,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — легендарная охота', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — легендарная охота', legendScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

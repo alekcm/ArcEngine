@@ -3,6 +3,7 @@ import { STARTER, COMMON, POTIONS, SKILLTROPHIES } from '../data/gen-data.mjs';
 import { bombDeckIds } from '../data/bombs-data.mjs';
 import { setupAttackDeck, onMonsterAppears, vulnOn } from './vuln.mjs';
 import './vtoken.mjs';
+import { setupLegend } from './legend.mjs';
 import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
 import { MASTERS, MUTAGENS, UNIQUE_OF } from '../data/trail-data.mjs';
 import { MONSTER, LOC, CARDS, shuffle, randInt, log, drawCards } from './util.mjs';
@@ -80,6 +81,10 @@ export function createGame(opts) {
     setupAttackDeck(state);
     for (const s of state.slots) if (s.mon) onMonsterAppears(state, s.mon);
 
+    // «Легендарная охота»: the legendary monster, its movement deck, the ruin supply (after the
+    // base setup so the base RNG sequence is unchanged without the expansion).
+    setupLegend(state);
+
     // 10. Players.
     lobby.forEach((lp, seat) => {
         const school = SCHOOLS[lp.school] ? lp.school : 'wolf';
@@ -92,6 +97,7 @@ export function createGame(opts) {
             skills: { combat: 1, defense: 1, alchemy: 1, spec: 1 }, level: 1, shield: 1,
             trophies: [], track: 0, witcherTrophies: n - 1, trackTokens: { forest: null, mountain: null, water: null },
             hunts: [], quests: [], gear: [], keeps: [], mutagens: [], monstersDefeated: 0, turns: 0,
+            ...(state.exp.includes('legendary') ? { ruins: [] } : {}),
         };
         state.players.push(p);
         drawCards(state, p, cards);

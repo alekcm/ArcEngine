@@ -41,6 +41,8 @@ STEPS.nextPlayer = (state) => {
     const next = (state.turn.seat + 1) % n;
     if (next === 0) state.round++;
     push(state, { op: 'startTurn', seat: next });
+    // «Легендарная охота»: the last player ends the turn — the legendary monster moves.
+    if (next === 0 && state.legend) push(state, { op: 'legendMove' });
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -55,7 +57,7 @@ STEPS.raiseSkill = (state, step) => {
     const after = [];
     if (step.skill === 'defense') { p.shield = Math.min(maxShield(state, p), p.shield + 1); }
     if (step.skill === 'alchemy') after.push({ op: 'gainElixir', seat: p.seat, n: 1, why: 'навык алхимии' }, { op: 'trapCheck', seat: p.seat, on: 'skillUp', skill: 'alchemy' });
-    after.push({ op: 'levelCheck', seat: p.seat });
+    after.push({ op: 'levelCheck', seat: p.seat, ...(step.noLevelCards ? { noCards: true } : {}) });
     push(state, ...after);
 };
 STEPS.lowerSkill = (state, step) => {
@@ -71,6 +73,12 @@ STEPS.levelCheck = (state, step) => {
     const p = state.players[step.seat];
     while (p.level < 5 && Object.values(p.skills).every(v => v > p.level)) {
         p.level++;
+        // Ruin tokens («Легендарная охота»): «не берите карты за это» (no mutagens instead either).
+        if (step.noCards) {
+            log(state, `${p.name} достигает ${p.level}-го уровня ведьмака (без карт — бонус руин)`, { kind: 'level' });
+            fx(state, { k: 'level', seat: p.seat, v: p.level });
+            continue;
+        }
         // «По следу монстра», мутагены: mutagens instead of the cards for the new level.
         if (trailOn(state, 'mutagens')) {
             const m = MUTAGEN_GAIN[p.level] || 0;
@@ -162,6 +170,15 @@ STEPS.gainTrophy = (state, step) => {
     const p = state.players[step.seat];
     p.trophies.push({ kind: step.kind, id: step.id, ...(step.card ? { card: step.card } : {}) });
     const meditation = step.kind === 'skill';
+    if (state.legend) {
+        // «Легендарная охота»: the top division does not end the game; the token stops there.
+        if (p.track >= TROPHIES_TO_WIN) { log(state, `${p.name}: жетон трофеев уже на верхнем делении`); return; }
+        p.track++;
+        fx(state, { k: 'trophy', seat: p.seat, kind: step.kind, id: step.id, track: p.track });
+        const ex = EXHAUST[p.track] || 0;
+        if (ex > 0) push(state, { op: 'exhaustAsk', seat: p.seat, n: ex });
+        return;
+    }
     if (meditation && p.track + 1 >= TROPHIES_TO_WIN && !state.solo) {
         log(state, `${p.name} получает трофей за медитацию, но победить медитацией нельзя: жетон трофеев не двигается`);
         return;
@@ -195,7 +212,7 @@ STEPS.gameOver = (state, step) => {
     state.stage = 'over';
     state.prompt = null;
     const p = state.players[step.seat];
-    log(state, state.solo ? `Победа! ${p.name} справился за ${p.turns} ход(ов)` : `${p.name} собирает ${TROPHIES_TO_WIN} трофея и побеждает!`, { kind: 'win' });
+    log(state, step.legend ? `${p.name} побеждает легендарного монстра и выигрывает партию!${state.solo ? ` (ходов: ${p.turns})` : ''}` : state.solo ? `Победа! ${p.name} справился за ${p.turns} ход(ов)` : `${p.name} собирает ${TROPHIES_TO_WIN} трофея и побеждает!`, { kind: 'win' });
     fx(state, { k: 'win', seat: step.seat });
 };
 

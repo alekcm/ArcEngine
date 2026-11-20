@@ -17,6 +17,12 @@ export function viewFor(state, seat) {
     if (s.vulnBoard) s.vulnBoard = s.vulnBoard.map(x => ({ terrain: x.terrain, loc: x.loc }));
     if (s.vulnPiles) s.vulnPiles = Object.fromEntries(Object.entries(s.vulnPiles).map(([k, a]) => [k, a.length]));
     for (const k of Object.keys(s.locPiles)) s.locPiles[k] = s.locPiles[k].length;
+    // «Легендарная охота»: ruin tokens lie face down (board and supply), the movement deck is secret.
+    if (s.legend) {
+        s.legend.moveDeck = s.legend.moveDeck.length;
+        s.legend.ruinPool = s.legend.ruinPool.length;
+        s.legend.ruins = Object.keys(s.legend.ruins).map(Number);
+    }
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;
     s.extraStack = s.extraStack.length;
     if (s.explore) for (const k of Object.keys(s.explore)) s.explore[k] = s.explore[k].length;
@@ -29,6 +35,7 @@ export function viewFor(state, seat) {
         for (const t of Object.keys(p.trackTokens)) p.trackTokens[t] = p.trackTokens[t] != null;
         // Secret event cards («не показывайте её другим игрокам»): only their count is public.
         p.secretCount = (p.secrets || []).length;
+        if (p.ruins) { p.ruinCount = p.ruins.length; if (p.seat !== seat) delete p.ruins; }
         if (p.seat !== seat) delete p.secrets;
     }
     // Quest tokens of «Цири и доп. события»: everyone sees where they lie, the event number only

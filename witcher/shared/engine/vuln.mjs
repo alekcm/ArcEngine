@@ -7,6 +7,7 @@ import { CARDS, MONSTER, log, fx, removeFrom, shuffle, randInt, d6, clampShield,
 import { trailOn, SKILLS, SKILL_NAME } from '../data/rules-data.mjs';
 import { ATTACKS, DISCARD, BIG, SPECIALS, SPECIAL, isSpecial, ROMAN } from '../data/vuln-data.mjs';
 import { bombOf } from '../data/bombs-data.mjs';
+import { LEGEND, LEG_SPECIAL, legTableDamage } from '../data/legend-data.mjs';
 import { F, fp, alive, hitMonster, gainShield, loseShield, onAttackDiscard, linkIndex } from './fight.mjs';
 import { vtM1, vtIgnoredSpecial, vtIgnoreDiscard } from './vtoken.mjs';
 
@@ -47,7 +48,7 @@ export function onMonsterAppears(state, id) {
 // Rule merging (restrictions of the next witcher turn, the next monster turn, the whole fight)
 // ---------------------------------------------------------------------------------------------
 const MIN = ['maxCombo', 'drawCap', 'dmgCap', 'shieldCap'];
-const SUM = ['drawLess', 'ignoreDmg', 'needYellow', 'combatLess', 'defLess', 'plus'];
+const SUM = ['drawLess', 'ignoreDmg', 'needYellow', 'combatLess', 'defLess', 'plus', 'dmgLess', 'needBlue', 'armorPlus'];
 export function mergeRules(a, b) {
     const o = { ...(a || {}) };
     for (const [k, v] of Object.entries(b || {})) {
@@ -76,12 +77,14 @@ export function restrictError(f, p, ids) {
 // ---------------------------------------------------------------------------------------------
 // Special attacks (a special card revealed during the monster's attack)
 // ---------------------------------------------------------------------------------------------
-export function specialName(monId, n) { const b = BIG[monId]; return b ? b.attacks[n - 1].name : ''; }
+/** The large card with the special attacks: «По следу монстра» or a legendary monster. */
+const bigOf = (monId) => BIG[monId] || LEGEND[monId];
+export function specialName(monId, n) { const b = bigOf(monId); return b ? b.attacks[n - 1].name : ''; }
 STEPS.spAttack = (state, step) => {
     if (!alive(state)) return;
     const f = state.fight;
-    const ops = (ATTACKS[f.mon] || [])[step.n - 1] || [];
-    const b = BIG[f.mon];
+    const ops = (ATTACKS[f.mon] || LEG_SPECIAL[f.mon] || [])[step.n - 1] || [];
+    const b = bigOf(f.mon);
     if (vtIgnoredSpecial(f, step.n)) {
         log(state, `${MONSTER[f.mon].name}: особая атака ${ROMAN[step.n - 1]} «${b.attacks[step.n - 1].name}» игнорируется (уязвимость)`, { kind: 'attack' });
         push(state, F('afterMonsterTurn'));
@@ -99,6 +102,7 @@ function attackExtra(state) {
     if (f.mCur && f.mCur.plus) { extra += f.mCur.plus; why.push(`Кухарка +${f.mCur.plus}`); }
     if (f.mon === 'MON-14' && !f.noAbility && f.poolAtStart <= 2) { extra += 2; why.push('Брукса +2'); }
     if (f.mon === 'MON-30' && !f.noAbility && f.mTurns === 1) { extra += 3; why.push('Тролль +3'); }
+    if (f.mon === 'LEG-UNSEEN' && !f.noAbility && f.mTurns === 1 && (p.ruins || []).length) { extra += p.ruins.length; why.push(`Скрытый +${p.ruins.length} (руины)`); }
     return { extra, why, p };
 }
 /** Damage of a special attack: the first damage of the attack carries the monster's modifiers. */
@@ -135,7 +139,7 @@ STEPS.spEnd = (state) => {
 };
 const vulnCount = (state, p) => (p.vulns || []).filter(v => v.terrain === state.fight.terrain).length;
 
-const DMG_OPS = ['dmg', 'dmgHand', 'dmgElixirs', 'dmgShield0', 'dmgDie', 'dmgDice', 'dmgTrack', 'dmgVuln', 'dmgVulnLess'];
+const DMG_OPS = ['dmg', 'dmgHand', 'dmgElixirs', 'dmgShield0', 'dmgDie', 'dmgDice', 'dmgTrack', 'dmgVuln', 'dmgVulnLess', 'dmgTrophies', 'dmgKit', 'dmgRuinsBoard', 'dmgTable'];
 /** Vulnerability: after the special card is revealed the witcher may pick the special attack. */
 STEPS.vtSpChoose = (state, step) => {
     const f = state.fight, p = fp(state);
@@ -184,6 +188,24 @@ STEPS.spOp = (state, step) => {
             return hurt(own && other ? 1 : 4);
         }
         case 'dmgVuln': return hurt(vulnCount(state, p) + (op.plus || 0));
+        // «Легендарная охота» (legend-data.mjs).
+        case 'dmgTrophies': return hurt(Math.max(op.min || 0, p.trophies.length * op.mult));
+        case 'dmgKit': return hurt(Math.max(op.min || 0, (p.elixirs.length + (p.bombs || []).length) * op.mult));
+        case 'dmgRuinsBoard': { const n = state.legend ? Object.keys(state.legend.ruins).length : 0; log(state, `Жетонов руин на поле: ${n}`); return hurt(n); }
+        case 'dmgTable': {
+            const loc = state.legend ? state.legend.loc : f.loc;
+            const n = legTableDamage(f.mon, loc, f.terrain);
+            log(state, op.by === 'loc' ? `Монстр в локации ${loc}: ${n} урона` : `Местность локации монстра: ${n} урона`);
+            return hurt(n);
+        }
+        case 'reshuffleTop': {
+            const id = f.lastAttack && f.lastAttack.id;
+            if (!id || !removeFrom(f.monDiscard, id)) return;
+            f.life.splice(randInt(state, f.life.length + 1), 0, id);
+            log(state, `Только что открытая боевая карта замешана обратно в запас жизни монстра (${f.life.length})`);
+            fx(state, { k: 'monsterHeal', n: 1, left: f.life.length });
+            return;
+        }
         case 'dmgVulnLess': return hurt(Math.max(0, op.base - vulnCount(state, p)));
         case 'randCorner': {
             let id = null, fromDeck = false;

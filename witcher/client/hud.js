@@ -3,9 +3,10 @@
 import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { icon, TERRAIN_COLOR } from './icons.js';
-import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, trophyCard, artCss, esc, fxText, bigMonsterCard, bigMonsterBack } from './cards.js';
+import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, trophyCard, artCss, esc, fxText, bigMonsterCard, bigMonsterBack, legendCard, ruinToken } from './cards.js';
 import { BIG, ROMAN as VROMAN, vulnText } from '/shared/data/vuln-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
+import { ARMOR } from '/shared/data/legend-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
 import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES, trailOn } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
@@ -54,11 +55,12 @@ function renderPlayers(v) {
                 ${(p.bombs || []).length ? `<span title="Бомбы: ${esc(p.bombs.map(b => bombOf(b).name).join(', '))}" class="c-bomb">${icon('bomb')}${p.bombs.length}</span>` : ''}
                 ${(p.mutagens || []).length ? `<span title="Мутагены: ${esc(p.mutagens.map(m => MUTAGEN[m].name).join(', '))}" style="color:#9fd6e6">${icon('alchemy')}${p.mutagens.length}</span>` : ''}
                 ${(p.vulns || []).length ? `<span class="c-vuln" title="Жетоны уязвимостей (лицом вверх): ${esc(p.vulns.map(x => TERRAIN_NAME[x.terrain] + ' ' + VROMAN[x.n - 1]).join(', '))}">${icon('skull')}${p.vulns.length}</span>` : ''}
+                ${v.legend ? `<span title="Жетоны руин: каждый сбрасывает карту из запаса жизни легендарного монстра" style="color:#c8b898">${icon('skull')}${p.ruinCount != null ? p.ruinCount : (p.ruins || []).length}</span>` : ''}
                 ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
             <div class="skills">${SKILLS.map(s => `<span title="${SKILL_NAME[s]}">${icon(skillIc[s])}${p.skills[s]}</span>`).join('')}</div>
-            <div class="troph" title="${esc(p.trophies.map(trophyLabel).join(', ') || 'Трофеев нет')}">${tr}<small>${p.track}/${WIN} трофеев</small></div>
+            <div class="troph" title="${esc(p.trophies.map(trophyLabel).join(', ') || 'Трофеев нет')}">${tr}<small>${p.track}/${WIN} трофеев${v.legend ? ` · броня ${ARMOR[v.legend.side][Math.min(4, p.track)]}` : ''}</small></div>
         </div>`;
     }).join('');
     for (const el of $('players').querySelectorAll('.pl')) el.onclick = () => openPlayer(Number(el.dataset.seat));
@@ -103,8 +105,22 @@ function renderTools() {
 
 /** Numbers of my vulnerability tokens of a terrain. */
 const myVulns = (v, terrain) => ((me() || {}).vulns || []).filter(x => x.terrain === terrain).map(x => x.n);
+function legendSlot(v) {
+    const L = v.legend;
+    if (!L) return '';
+    const m = MONSTER[L.mon], p = me();
+    const arm = ARMOR[L.side];
+    const myArmor = p ? arm[Math.max(0, Math.min(4, p.track))] : null;
+    const mine = p ? (p.ruins || []) : [];
+    return `<div class="mslot panel legend" data-legend="1" style="--tc:#b07a2a" title="${esc(m.name + ': ' + m.ability)}">
+        <div class="mini" style="background-image:${artCss(L.mon, '#5a3a2a', 'skull')}"></div>
+        <div class="inf"><b>${esc(m.name)} <span class="lvb" title="Памятка «Легендарной охоты», сторона ${L.side}: броня по шкале трофеев ${arm.join('/')}">${L.side}</span></b>
+        <small>${icon('move')}${esc(LOC[L.loc].name)} · ${icon('shield')}броня ${arm.join('/')}${myArmor != null ? ` (для вас ${myArmor})` : ''}</small>
+        <small>${icon('deck')}перемещение: ${L.moveDeck}${L.solo ? ' (одиночная — без замешивания)' : ''} · руины на поле ${L.ruins.length}, в запасе ${L.ruinPool}</small>
+        ${mine.length ? `<div class="ruins-row" title="Ваши жетоны руин: каждый сбрасывает 1 карту из запаса жизни монстра${v.solo ? ' (одиночная игра — 1 за каждые 2)' : ''}">${mine.map(id => ruinToken(id)).join('')}</div>` : ''}</div></div>`;
+}
 function renderMonsters(v) {
-    $('monsters').innerHTML = v.slots.map((s, i) => {
+    $('monsters').innerHTML = legendSlot(v) + v.slots.map((s, i) => {
         if (!s.mon) return `<div class="mslot panel" style="--tc:${TERRAIN_COLOR[s.terrain]}"><div class="mini" style="background:#0005"></div><div class="inf"><b style="color:var(--dim)">Нет монстра</b><small>${icon(s.terrain, 'c-' + s.terrain)}${TERRAIN_NAME[s.terrain]}</small></div></div>`;
         const m = MONSTER[s.mon];
         const vb = (v.vulnBoard || []).find(x => x.terrain === s.terrain);
@@ -115,6 +131,12 @@ function renderMonsters(v) {
             <div class="inf"><b>${esc(m.name)} <span class="lvb">${['', 'I', 'II', 'III'][m.level]}</span></b>
             <small>${icon(s.terrain, 'c-' + s.terrain)}${esc(LOC[s.token] ? LOC[s.token].name : '?')} · жизнь ${m.life} ${hunters}${vulnTxt}</small></div></div>`;
     }).join('');
+    for (const el of $('monsters').querySelectorAll('.mslot[data-legend]')) el.onclick = () => {
+        const L = S.view.legend; if (!L) return;
+        S.board && S.board.focus(L.loc);
+        openViewer(MONSTER[L.mon].name + ' — легендарный монстр', `<div class="legview">${legendCard(L.mon, { big: true })}
+            <p>Броня (сторона ${L.side}) по числу трофеев 0–4: ${ARMOR[L.side].join(' / ')} — столько урона поглощается в каждом вашем ходу битвы. Запас жизни: 20 боевых карт минус ваши жетоны руин. Победа над монстром — победа в игре.</p></div>`);
+    };
     for (const el of $('monsters').querySelectorAll('.mslot[data-slot]')) {
         const s = v.slots[Number(el.dataset.slot)];
         el.onclick = () => { S.board && S.board.focus(s.token); openViewer(MONSTER[s.mon].name, trailOn(S.view, 'vuln') && BIG[s.mon] ? `<div class="bigpair">${bigMonsterCard(s.mon)}${bigMonsterBack(s.mon, { have: myVulns(v, s.terrain) })}</div>` : monsterCard(s.mon, { big: true, trophy: true })); };
@@ -165,16 +187,19 @@ function renderActions(v) {
     // Kept cards that move the witcher (Лошадь, гильдия купцов): once per turn, in phase I.
     for (const g of o.gearMoves || []) parts.push(btn({ label: esc(g.label), icon: icon('move'), why: g.err, data: `data-gmove="${esc(g.key)}"` }));
     if ((o.gearMoves || []).length) parts.push('<span class="sep"></span>');
+    // «Легендарная охота»: «Прогнать» (phase I, only where the legend stands).
+    if (o.chase && o.chase.here) parts.push(btn({ label: 'Прогнать монстра (сбросить 1 карту)', icon: icon('move'), why: o.chase.err, data: 'data-chase="1"' }), '<span class="sep"></span>');
     // Poker with witchers met here (pp. 13–14): phase I, after moving in.
     for (const k of o.pokers || []) parts.push(btn({ label: esc(k.label), icon: icon('poker'), why: k.err, data: `data-wpoker="${k.seat}"` }));
     if ((o.pokers || []).length) parts.push('<span class="sep"></span>');
     for (const a of o.phase2) {
         if (a.id === 'meditate' && a.err) continue;
-        const ic = a.id === 'fight' || a.id.startsWith('duel-') ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
+        if (a.id === 'legend' && a.err && !(v.legend && v.legend.loc === p.loc)) continue;
+        const ic = a.id === 'fight' || a.id === 'legend' || a.id.startsWith('duel-') ? 'sword' : a.id === 'meditate' ? 'meditate' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'card' : 'explore';
         const key = a.id === 'fight' ? 'F' : a.id === 'meditate' ? 'M' : a.id === 'endExplore' || a.id === 'skipPhase2' ? 'E' : '';   // exploring: mouse only
         let why = a.err;
         if (!why && a.id !== 'fight' && !t.moved && o.moves.length) why = null;
-        parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: a.id === 'fight' && !a.err, data: `data-p2="${a.id}"`, key }));
+        parts.push(btn({ label: esc(a.label), icon: icon(ic), why, primary: (a.id === 'fight' || a.id === 'legend') && !a.err, data: `data-p2="${a.id}"`, key }));
     }
     box.innerHTML = parts.join('');
     hint.textContent = t.afterExplore ? 'Событие переместило вас: можно выполнить действие этой локации, затем — фаза III' : !t.moved ? 'Фаза I: переместитесь — кликните подсвеченную локацию на карте (или сразу выберите действие фазы II)'
@@ -185,6 +210,7 @@ function renderActions(v) {
     for (const b of box.querySelectorAll('[data-p2]')) b.onclick = () => phase2(b.dataset.p2);
     for (const b of box.querySelectorAll('[data-wpoker]')) b.onclick = () => cmd({ t: 'wpoker', seat: Number(b.dataset.wpoker) }, 'покер');
     for (const b of box.querySelectorAll('[data-gmove]')) b.onclick = () => cmd({ t: 'gearMove', key: b.dataset.gmove }, 'перемещение');
+    for (const b of box.querySelectorAll('[data-chase]')) b.onclick = () => cmd({ t: 'chase' }, 'прогнать');
     for (const b of box.querySelectorAll('[data-quest]')) b.onclick = () => cmd({ t: 'quest', i: Number(b.dataset.quest) }, 'задание');
 }
 export function phase2(id) {
@@ -193,6 +219,7 @@ export function phase2(id) {
     if (!a) return;
     if (a.err) { toast(a.err); return; }
     if (id === 'fight') cmd({ t: 'fight' }, 'битва');
+    else if (id === 'legend') cmd({ t: 'legend' }, 'битва с легендарным монстром');
     else if (id.startsWith('duel-')) cmd({ t: 'duel', seat: a.seat }, 'битва ведьмаков');
     else if (id === 'endExplore') cmd({ t: 'endExplore' }, 'фаза III');
     else if (id === 'skipPhase2') cmd({ t: 'skipPhase2' }, 'фаза III');

@@ -1,11 +1,13 @@
 // Shared helpers of the rules engine: seeded RNG kept inside the state, card lookup, logging.
-import { STARTER, COMMON, MONSTERS, ATTACKS, POTIONS, BOARD } from '../data/gen-data.mjs';
+import { STARTER, COMMON, MONSTERS, ATTACKS, POTIONS, BOARD, LEGENDS, LEGATTACKS } from '../data/gen-data.mjs';
 import { SKILL_VALUE, HAND_LIMIT } from '../data/rules-data.mjs';
 import { MASTERS, UNIQUES } from '../data/trail-data.mjs';
 
 export const CARDS = Object.fromEntries([...STARTER, ...COMMON, ...MASTERS, ...UNIQUES].map(c => [c.id, c]));
-export const MONSTER = Object.fromEntries(MONSTERS.map(m => [m.id, m]));
-export const ATTACK = Object.fromEntries(ATTACKS.map(a => [a.id, a]));
+// «Легендарная охота»: the legendary monsters share the lookup (level III for the level-indexed
+// texts, life = the 20 legendary combat cards) and their combat cards share ATTACK.
+export const MONSTER = Object.fromEntries([...MONSTERS, ...LEGENDS.map(l => ({ ...l, level: 3, life: LEGATTACKS.length, legend: true }))].map(m => [m.id, m]));
+export const ATTACK = Object.fromEntries([...ATTACKS, ...LEGATTACKS].map(a => [a.id, a]));
 export const POTION = Object.fromEntries(POTIONS.map(p => [p.id, p]));
 export const LOC = Object.fromEntries(BOARD.locs.map(l => [l.n, l]));
 export const ADJ = BOARD.adj;
