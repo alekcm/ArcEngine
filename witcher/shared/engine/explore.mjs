@@ -13,12 +13,12 @@
 //     player takes the numbered event card;
 //   * equipment / companions are kept for the rest of the game (Кастет is a fight action).
 import { STEPS, push, ask, later } from './flow.mjs';
-import { LOC, ADJ, CARDS, MONSTER, log, fx, d6, shuffle, clampShield, drawCards, removeFrom, potionOf } from './util.mjs';
+import { LOC, ADJ, CARDS, MONSTER, log, fx, d6, shuffle, clampShield, drawCards, removeFrom, potionOf, homeOf, rowOf, rowDeckOf, clearRowCard } from './util.mjs';
 import { keepOf } from './effects.mjs';
 import { comboTotals, linkIndex } from './fight.mjs';
-import { TERRAIN_NAME, SKILL_NAME, SCHOOLS, COLOR_NAME } from '../data/rules-data.mjs';
+import { TERRAIN_NAME, SKILL_NAME, SCHOOLS, COLOR_NAME, skillName, isMage } from '../data/rules-data.mjs';
 import { EXPLORE_DECKS, EXP_DECKS, EVENTS, questLabel } from '../data/events-data.mjs';
-import { canEnter, refillRow, SKILL_GEN } from './turn.mjs';
+import { canEnter, refillRow, SKILL_GEN, skillGen } from './turn.mjs';
 import { skEventFx } from './skellige.mjs';
 
 export const EXPLORE_READY = true;
@@ -195,7 +195,7 @@ STEPS.eventFx = (state, step) => {
     }
     if (e.skill) {
         // CONT79-43: «если этот навык уже на максимальном уровне — увеличьте любой».
-        if (e.orAny && SKILLS.includes(e.skill) && p.skills[e.skill] >= 5) { log(state, `${p.name}: навык ${SKILL_GEN[e.skill]} уже 5 — вместо него любой навык`); push(state, { op: 'eventSkillPick', seat: p.seat, mode: 'any', left: 1, done: [] }); }
+        if (e.orAny && SKILLS.includes(e.skill) && p.skills[e.skill] >= 5) { log(state, `${p.name}: навык ${skillGen(p, e.skill)} уже 5 — вместо него любой навык`); push(state, { op: 'eventSkillPick', seat: p.seat, mode: 'any', left: 1, done: [] }); }
         else if (SKILLS.includes(e.skill)) push(state, { op: 'raiseSkill', seat: p.seat, skill: e.skill, why: 'событие' });
         // SK-EX-50D: «Понизьте любой свой навык на 1. Затем увеличьте любой другой свой навык на 1».
         else if (e.skill === 'anyOther') push(state, { op: 'eventSkillPick', seat: p.seat, mode: 'any', left: 1, done: t && t.lastLowered ? [t.lastLowered] : [] });
@@ -294,7 +294,7 @@ STEPS.eventFx = (state, step) => {
         const c = e.if;
         const okc = (c.goldMax == null || p.gold <= c.goldMax) && (c.elixirMax == null || p.elixirs.length <= c.elixirMax)
             && (c.shieldMax == null || p.shield <= c.shieldMax) && (c.trophiesMax == null || p.trophies.length <= c.trophiesMax)
-            && (c.ownSchool == null || (p.loc === SCHOOLS[p.school].home) === c.ownSchool)
+            && (c.ownSchool == null || (p.loc === homeOf(p)) === c.ownSchool)
             && (c.trackOf == null || p.trackTokens[c.trackOf] != null)
             && (c.pokerVs == null || ((state.lastPoker && state.lastPoker.seat === p.seat ? state.lastPoker.vs : state.lastPokerB && state.lastPokerB.seat === p.seat ? state.lastPokerB.vs : 'town') === c.pokerVs));
         log(state, `${p.name}: условие ${okc ? 'выполнено' : 'не выполнено'}`);
@@ -315,11 +315,11 @@ STEPS.eventFx = (state, step) => {
             // «Умножьте уровень навыка на 2, затем бросьте кубик и прибавьте» (CONT79-36/48/55).
             const die = d6(state); fx(state, { k: 'd6', v: die, seat: p.seat });
             r = p.skills[e.by] * 2 + die;
-            log(state, `${p.name}: навык ${SKILL_GEN[e.by]} ${p.skills[e.by]} × 2 + кубик ${die} = ${r}`, { kind: 'explore' });
+            log(state, `${p.name}: навык ${skillGen(p, e.by)} ${p.skills[e.by]} × 2 + кубик ${die} = ${r}`, { kind: 'explore' });
             show = { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: e.by, x2: p.skills[e.by], die };
         } else {
             if (!e.by) { r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat }); log(state, `${p.name} бросает кубик: ${r}`, { kind: 'explore' }); }
-            else { r = e.by === 'level' ? p.level : p.skills[e.by]; log(state, `${p.name}: ${e.by === 'level' ? 'уровень ведьмака' : 'навык ' + SKILL_GEN[e.by]} ${r}`, { kind: 'explore' }); }
+            else { r = e.by === 'level' ? p.level : p.skills[e.by]; log(state, `${p.name}: ${e.by === 'level' ? 'уровень ведьмака' : 'навык ' + skillGen(p, e.by)} ${r}`, { kind: 'explore' }); }
             show = { op: 'eventRollShow', seat: p.seat, r, card: step.card, by: e.by || null };
         }
         const br = e.roll.find(b => r >= b.from && r <= b.to) || (r < e.roll[0].from ? e.roll[0] : e.roll[e.roll.length - 1]);
@@ -365,9 +365,11 @@ STEPS.eventComboDo = (state, step) => {
     const p = state.players[step.seat];
     const ids = step.ids || [];
     const t = comboTotals(state, p, ids);
+    // «Чародеи»: «щит» of a mage is the energy — its symbols on the cards count here.
+    if (t.energyEnd != null) t.shield += Math.max(0, t.energyEnd - t.energyStart);
     for (const id of ids) removeFrom(p.hand, id);
     p.discard.push(...ids);
-    if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')} — урон ${t.dmg}, щит +${t.shield}`, { kind: 'combo' });
+    if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')} — урон ${t.dmg}, ${t.energyEnd != null ? 'энергия' : 'щит'} +${t.shield}`, { kind: 'combo' });
     fx(state, { k: 'combo', seat: p.seat, ids });
     // «Примените только урон, а остальные эффекты проигнорируйте» (Скеллиге).
     if (t.shield && !step.e.dmgOnly) { p.shield += t.shield; clampShield(state, p); }
@@ -384,7 +386,8 @@ export function eventComboError(ids) {
     return null;
 }
 STEPS.eventRollShow = (state, step) => {
-    const title = step.by === 'combo' ? `Урон комбинации: ${step.r}` : step.by === 'elixirs' ? `Сброшено эликсиров: ${step.r}` : step.x2 != null ? `${SKILL_NAME[step.by]} ${step.x2} × 2 + кубик ${step.die} = ${step.r}` : !step.by ? `Бросок кубика: ${step.r}` : step.by === 'level' ? `Уровень ведьмака: ${step.r}` : `Навык ${SKILL_GEN[step.by]}: ${step.r}`;
+    const rp = state.players[step.seat];
+    const title = step.by === 'combo' ? `Урон комбинации: ${step.r}` : step.by === 'elixirs' ? `Сброшено эликсиров: ${step.r}` : step.x2 != null ? `${skillName(rp, step.by)} ${step.x2} × 2 + кубик ${step.die} = ${step.r}` : !step.by ? `Бросок кубика: ${step.r}` : step.by === 'level' ? `Уровень ${isMage(rp) ? 'чародея' : 'ведьмака'}: ${step.r}` : `Навык ${skillGen(rp, step.by)}: ${step.r}`;
     ask(state, { seat: step.seat, kind: 'choice', ui: 'event', stage: 'roll', card: step.card, title, dice: step.x2 != null ? step.die : step.r, sum: step.x2 != null ? step.r : undefined, rollKind: step.by === 'combo' || step.by === 'elixirs' ? step.by : undefined, options: [{ id: 'ok', label: 'Продолжить' }], op: 'noop', args: {} });
 };
 STEPS.noop = () => {};
@@ -401,7 +404,7 @@ STEPS.eventSkillPick = (state, step) => {
     ask(state, {
         seat: p.seat, kind: 'choice', title: step.mode === 'lowest' ? 'Навык наименьшего уровня' : 'Любой навык',
         text: 'Выберите навык, который повышается на 1.',
-        options: cand.map(s => ({ id: s, label: `${SKILL_NAME[s]} ${p.skills[s]} → ${p.skills[s] + 1}` })),
+        options: cand.map(s => ({ id: s, label: `${skillName(p, s)} ${p.skills[s]} → ${p.skills[s] + 1}` })),
         op: 'eventSkillDo', args: { seat: p.seat, mode: step.mode, left: step.left, done: step.done },
     });
 };
@@ -423,7 +426,7 @@ STEPS.eventSkillDownPick = (state, step) => {
     const cand = SKILLS.filter(s => p.skills[s] > 1 && p.skills[s] < 5);
     if (!cand.length) { log(state, `${p.name}: ни один навык не понижается`); return; }
     if (cand.length === 1 || p.bot || p.away) { const s = cand.slice().sort((a, b) => p.skills[b] - p.skills[a])[0]; push(state, { op: 'eventSkillDownDo', seat: p.seat, choice: s }); return; }
-    ask(state, { seat: p.seat, kind: 'choice', title: 'Понизьте навык', text: 'Выберите навык, который понижается на 1.', options: cand.map(s => ({ id: s, label: `${SKILL_NAME[s]} ${p.skills[s]} → ${p.skills[s] - 1}` })), op: 'eventSkillDownDo', args: { seat: p.seat } });
+    ask(state, { seat: p.seat, kind: 'choice', title: 'Понизьте навык', text: 'Выберите навык, который понижается на 1.', options: cand.map(s => ({ id: s, label: `${skillName(p, s)} ${p.skills[s]} → ${p.skills[s] - 1}` })), op: 'eventSkillDownDo', args: { seat: p.seat } });
 };
 STEPS.eventSkillDownDo = (state, step) => {
     if (state.turn) state.turn.lastLowered = step.choice;
@@ -514,14 +517,15 @@ STEPS.eventRemoveDo = (state, step) => {
 STEPS.eventRowCard = (state, step) => {
     const p = state.players[step.seat];
     const fit = (id) => id && (step.cost == null || CARDS[id].cost === step.cost);
-    let cand = state.row.filter(fit);
+    let cand = rowOf(state, p).filter(fit);
+    const deck = rowDeckOf(state, p);
     if (step.leftmost && cand.length) cand = [cand[0]];
     if (!cand.length) {
         const revealed = [];
         let got = null;
-        while (state.actionDeck.length) { const id = state.actionDeck.shift(); if (fit(id)) { got = id; break; } revealed.push(id); }
-        state.actionDeck.push(...revealed);
-        shuffle(state, state.actionDeck);
+        while (deck.length) { const id = deck.shift(); if (fit(id)) { got = id; break; } revealed.push(id); }
+        deck.push(...revealed);
+        shuffle(state, deck);
         if (got) { p.discard.push(got); log(state, `${p.name} берёт «${CARDS[got].name}» из колоды карт действий в сброс`); fx(state, { k: 'gain', seat: p.seat, id: got, to: 'discard' }); }
         else log(state, `${p.name}: подходящей карты нет`);
         return;
@@ -532,8 +536,7 @@ STEPS.eventRowCard = (state, step) => {
 STEPS.eventRowDo = (state, step) => {
     const p = state.players[step.seat];
     const id = step.ids[0];
-    const i = state.row.indexOf(id);
-    if (i >= 0) state.row[i] = null;
+    clearRowCard(state, id);
     p.discard.push(id);
     fx(state, { k: 'gain', seat: p.seat, id, to: 'discard' });
     log(state, `${p.name} берёт «${CARDS[id].name}» из ряда в сброс`);
@@ -580,7 +583,7 @@ STEPS.questStart = (state, step) => {
     const q = step.q;
     let loc, terrain = null;
     if (q.loc) loc = q.loc;
-    else if (q.school) loc = SCHOOLS[p.school].home;
+    else if (q.school) loc = homeOf(p);
     else {
         terrain = q.terrain;
         if (!state.locPiles[terrain].length) terrain = Object.keys(state.locPiles).find(k => state.locPiles[k].length);
@@ -588,7 +591,7 @@ STEPS.questStart = (state, step) => {
         loc = state.locPiles[terrain].pop();
     }
     // «Локация вашей школы или школы другого игрока»: any school of the table.
-    const locs = q.school === 'any' ? [...new Set(state.players.map(x => SCHOOLS[x.school].home))] : null;
+    const locs = q.school === 'any' ? [...new Set(state.players.map(x => homeOf(x)))] : null;
     p.quests.push({ id: step.id, terrain, loc, event: q.event, gold: q.gold || 0, ...(q.cards ? { cards: q.cards } : {}), ...(locs && locs.length > 1 ? { locs } : {}) });
     log(state, `${p.name} получает задание «${questLabel({ id: step.id })}»: ${LOC[loc].name}${terrain ? ' (' + TERRAIN_NAME[terrain].toLowerCase() + ')' : ''}`, { kind: 'explore' });
     fx(state, { k: 'quest', seat: p.seat, loc });
@@ -635,7 +638,7 @@ STEPS.trapPlace = (state, step) => {
     if (!EVENTS[tr.event] || state.eventsUsed.includes(tr.event)) { log(state, `Событие ${EVENTS[tr.event] ? EVENTS[tr.event].num : '?'} уже в игре — жетон задания не кладётся`); return; }
     const put = (loc, terrain) => push(state, { op: 'trapPut', seat: p.seat, trap: tr, loc, terrain: terrain || null });
     if (tr.where === 'here') return put(p.loc);
-    if (tr.where === 'school') return put(SCHOOLS[p.school].home);
+    if (tr.where === 'school') return put(homeOf(p));
     if (tr.where === 'adj' || tr.where === 'any') {
         const locs = tr.where === 'adj' ? (ADJ[p.loc] || []).filter(n => canEnter(state, n)) : Object.keys(LOC).map(Number).filter(n => n !== p.loc && !LOC[n].dagon && canEnter(state, n));
         ask(state, {

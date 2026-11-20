@@ -9,7 +9,7 @@ import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { ARMOR } from '/shared/data/legend-data.mjs';
 import { GIFT, GIFT_SECOND, TRACK_TOP, calmRange, dangerRange } from '/shared/data/skellige-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
-import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES, trailOn } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SKILLS, SKILL_NAME, skillName, isMage, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES, trailOn } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
 import { movePaymentError } from '/shared/engine/turn.mjs';
 import { isMuted, setMuted, sfx } from './sound.js';
@@ -51,7 +51,7 @@ function renderPlayers(v) {
                 <span class="c-gold" title="Золото">${icon('coin')}${p.gold}</span>
                 <span title="Карты в руке">${icon('hand')}${p.handCount}</span>
                 <span title="Колода">${icon('deck')}${p.deckCount}</span>
-                <span class="c-shield" title="Щит">${icon('shield')}${p.shield}</span>
+                ${isMage(p) ? `<span class="c-shield" title="Энергия (вне битвы — до уровня мудрости)">${icon('spec')}${p.shield}</span>` : `<span class="c-shield" title="Щит">${icon('shield')}${p.shield}</span>`}
                 <span title="Эликсиры" style="color:#7fd0b4">${icon('elixir')}${p.elixirs.length}</span>
                 ${(p.bombs || []).length ? `<span title="Бомбы: ${esc(p.bombs.map(b => bombOf(b).name).join(', '))}" class="c-bomb">${icon('bomb')}${p.bombs.length}</span>` : ''}
                 ${(p.mutagens || []).length ? `<span title="Мутагены: ${esc(p.mutagens.map(m => MUTAGEN[m].name).join(', '))}" style="color:#9fd6e6">${icon('alchemy')}${p.mutagens.length}</span>` : ''}
@@ -62,7 +62,7 @@ function renderPlayers(v) {
                 ${p.secretCount ? `<span title="Тайные события (зачитает другому игроку)">${icon('card')}${p.secretCount}</span>` : ''}
                 <span class="tracks">${tracks}</span>
             </div>
-            <div class="skills">${SKILLS.map(s => `<span title="${SKILL_NAME[s]}">${icon(skillIc[s])}${p.skills[s]}</span>`).join('')}</div>
+            <div class="skills">${SKILLS.map(s => `<span title="${skillName(p, s)}">${icon(skillIc[s])}${p.skills[s]}</span>`).join('')}</div>
             <div class="troph" title="${esc(p.trophies.map(trophyLabel).join(', ') || 'Трофеев нет')}">${tr}<small>${p.track}/${WIN} трофеев${v.legend ? ` · броня ${ARMOR[v.legend.side][Math.min(4, p.track)]}` : ''}</small></div>
         </div>`;
     }).join('');
@@ -164,8 +164,12 @@ export function renderRow(v) {
     const el = $('row');
     el.classList.toggle('open', !!S.ui.rowOpen);
     if (!S.ui.rowOpen) return;
-    el.innerHTML = `<div class="ttl"><span>Ряд карт · модификаторы стоимости слева направо</span><span>${icon('deck')} ${v.actionDeck}</span></div>
-        <div class="cards">${v.row.map((id, i) => id ? actionCard(id, { small: true, cost: Math.max(0, CARDS[id].cost + ROW_MODS[i]), mod: ROW_MODS[i] }) : '<div class="card small blank" style="opacity:.2"></div>').join('')}</div>`;
+    const cells = (row) => row.map((id, i) => id ? actionCard(id, { small: true, cost: Math.max(0, CARDS[id].cost + ROW_MODS[i]), mod: ROW_MODS[i] }) : '<div class="card small blank" style="opacity:.2"></div>').join('');
+    // «Чародеи» (mixed game): the mage row lies above the normal one; taking a card removes the
+    // card of the same position from the other row.
+    el.innerHTML = (v.mrow ? `<div class="ttl"><span>Ряд чародеев · карта той же позиции в другом ряду уходит из игры</span><span>${icon('deck')} ${v.mactionDeck}</span></div>
+        <div class="cards">${cells(v.mrow)}</div>` : '') + `<div class="ttl"><span>${v.mrow ? 'Ряд ведьмаков' : 'Ряд карт'} · модификаторы стоимости слева направо</span><span>${icon('deck')} ${v.actionDeck}</span></div>
+        <div class="cards">${cells(v.row)}</div>`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -251,7 +255,7 @@ export function phase2(id) {
 }
 function locLabel(L, p) {
     switch (L.kind) {
-        case 'raise': return `${LOC[p.loc].name}: ${SKILL_NAME[L.skill]} +1`;
+        case 'raise': return `${LOC[p.loc].name}: ${skillName(p, L.skill)} +1`;
         case 'poker': return `${LOC[p.loc].name}: покер с горожанами`;
         case 'elixir': return `${LOC[p.loc].name}: взять эликсир`;
         case 'poor': return `${LOC[p.loc].name}: нищие кварталы`;
@@ -428,7 +432,7 @@ function openPlayer(seat) {
     const p = S.view.players[seat];
     const sc = SCHOOLS[p.school];
     const trophies = p.trophies.map(t => `<div style="display:flex;flex-direction:column;gap:4px;align-items:center">${t.kind === 'monster' ? monsterCard(t.id, { trophy: true, cls: 'trophy-card' }) : t.kind === 'witcher' ? trophyCard(t) : `<div class="card skilltrophy"><div class="name" style="top:20%">${esc(trophyLabel(t))}</div></div>`}</div>`).join('');
-    openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${SKILL_NAME[s]} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
+    openViewer(`${p.name} — ${sc.school}`, `<div style="width:100%;color:#d8ccb7;margin-bottom:8px">Уровень ${p.level}. ${SKILLS.map(s => `${skillName(p, s)} ${p.skills[s]}`).join(', ')}. Трофеи ведьмаков в запасе: ${p.witcherTrophies}. Побеждено монстров: ${p.monstersDefeated}.</div>
         <h3 style="width:100%;margin:6px 0;color:var(--gold)">Трофеи (${p.track}/${WIN})</h3>${trophies || '<span style="color:var(--dim)">Пока нет</span>'}
         ${(p.mutagens || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Мутагены (${p.mutagens.length})</h3>${p.mutagens.map(id => mutagenCard(id)).join('')}` : ''}
         ${p.gear.length || p.quests.length || (p.keeps || []).length ? `<h3 style="width:100%;margin:12px 0 6px;color:var(--gold)">Снаряжение, спутники и задания</h3>${p.gear.map(id => eventCard(id, { small: true })).join('')}${(p.keeps || []).map(k => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(k.card, { small: true, stage: 'outcome', pick: k.id.slice(-1) === 'A' ? 'a' : 'b' })}<span style="color:#d8ccb7;font-size:12px">${esc(k.name)}</span></div>`).join('')}${p.quests.map(q => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${eventCard(q.id, { small: true, stage: 'outcome', pick: questPick(q.id) })}<span style="color:#d8ccb7;font-size:12px">→ ${esc((q.locs || [q.loc]).map(n => LOC[n].name).join(' / '))}</span></div>`).join('')}` : ''}

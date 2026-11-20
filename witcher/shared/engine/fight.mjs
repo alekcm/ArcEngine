@@ -3,9 +3,9 @@
 // trophies. Every fight step is tagged { fight: 1 } so the end of a fight can drop the rest.
 import { STEPS, push, ask } from './flow.mjs';
 import {
-    CARDS, MONSTER, ATTACK, LOC, card, log, fx, drawCards, removeFrom, shuffle, randInt, d6, skillVal, maxShield, clampShield, potionOf,
+    CARDS, MONSTER, ATTACK, LOC, card, log, fx, drawCards, removeFrom, shuffle, randInt, d6, skillVal, maxShield, clampShield, potionOf, shieldWord,
 } from './util.mjs';
-import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT, SCHOOLS } from '../data/rules-data.mjs';
+import { SPEC_TABLE, HAND_LIMIT, ELIXIR_LIMIT, TERRAIN_NAME, COLOR_SHORT, SCHOOLS, isMage } from '../data/rules-data.mjs';
 import { hasTrophy, hasWitcherTrophy, hasSkillTrophy, ACTIVE_EFFECTS, hasGear, keepOf } from './effects.mjs';
 import { SKILL_GEN } from './turn.mjs';
 import { bombsOn } from './bombs.mjs';
@@ -17,7 +17,7 @@ import { isSpecial, freshAttackDeck, onMonsterAppears, restrictError, endOfTurnD
 import { isDuel, otherSeat, onceOf, duelKo } from './duel.mjs';
 import { ARMOR, LEGEND, LEG_ATTACK } from '../data/legend-data.mjs';
 import { skConsequences, dagonFirstTurn, skAfterBattle, hasGift } from './skellige.mjs';
-import { vtFirstWitcherTurn, vtBeforeMonster, vtAfterMonster, vtM1, vtComboBonus, vtDrawBonus, vtLife, vulnReset } from './vtoken.mjs';
+import { vtFirstWitcherTurn, vtBeforeMonster, vtAfterMonster, vtM1, vtComboBonus, vtDrawBonus, vtLife, vulnReset, vtAfterCombo } from './vtoken.mjs';
 
 const F = (op, args) => ({ op, fight: 1, ...(args || {}) });
 const fp = (state) => state.players[state.fight.seat];
@@ -124,7 +124,7 @@ STEPS.preLife = (state) => {
 function loseShield(state, p, n, why) {
     const before = p.shield;
     p.shield = Math.max(0, p.shield - n);
-    if (before !== p.shield) log(state, `${p.name}: щит ${before} → ${p.shield} (${why})`);
+    if (before !== p.shield) log(state, `${p.name}: ${shieldWord(p)} ${before} → ${p.shield} (${why})`);
 }
 STEPS.harpyAsk = (state) => {
     const p = fp(state);
@@ -280,9 +280,16 @@ function hitWitcher(state, n, src, opts = {}) {
     const f = state.fight;
     const by = opts.by != null ? opts.by : f.seat;
     const a = state.players[by], v = state.players[otherSeat(f, by)];
+    // «Чародеи» (p. 7): the victim's barrier lowers damage dealt in the opponent's fight turn.
+    if (v.barrier > 0) {
+        const b = Math.min(n, v.barrier); v.barrier -= b; n -= b;
+        log(state, `${v.name}: барьер поглощает ${b} урона${v.barrier ? ` (осталось ${v.barrier})` : ''}`);
+        if (n <= 0) return 0;
+    }
     log(state, `${a.name} наносит ${n} урона${src ? ' (' + src + ')' : ''}: ${v.name}`);
     fx(state, { k: 'witcherHit', seat: v.seat, n });
-    const fromShield = Math.min(n, v.shield); v.shield -= fromShield; n -= fromShield;
+    // A mage's combat damage goes straight to the cards: energy is not lowered (Чародеи p. 6).
+    const fromShield = isMage(v) ? 0 : Math.min(n, v.shield); v.shield -= fromShield; n -= fromShield;
     if (fromShield) log(state, `${v.name}: щит −${fromShield} (осталось ${v.shield})`);
     const deckIds = [];
     while (n > 0 && v.deck.length) { const id = v.deck.shift(); v.discard.push(id); deckIds.push(id); n--; }
@@ -475,18 +482,43 @@ function bearCheck(state) {
 }
 function afterSpec(state, p) {
     const f = state.fight;
+    // «Тёмный транс» (MAGE-UNIQUE-05): after the specialization it may be played at once.
+    const tr = p.hand.find(id => CARDS[id].special === 'trance');
+    if (tr) {
+        if (p.bot) push(state, F('tranceDo', { choice: 'yes' }));
+        else ask(state, { seat: p.seat, kind: 'choice', title: `«${CARDS[tr].name}»`, text: 'Вы использовали специализацию: разыграть эту карту сейчас (взять верхнюю карту сброса, в конце хода +2 карты) и сбросить её? Это не комбинация.', options: [{ id: 'yes', label: 'Разыграть' }, { id: 'no', label: 'Не сейчас' }], op: 'tranceDo', args: { fight: 1 } });
+    }
     if (hasSkillTrophy(p, 'spec') && !f.once.sSpec) {
         f.once.sSpec = true;
         if (p.bot) { push(state, F('specTrophyDo', { choice: 'draw' })); return; }
         ask(state, { seat: p.seat, kind: 'choice', title: 'Трофей специализации', text: 'Вы использовали специализацию: выберите бонус.', options: [{ id: 'dmg', label: 'Нанести 1 урон' }, { id: 'draw', label: 'Взять 2 карты' }], op: 'specTrophyDo', args: { fight: 1 } });
     }
 }
+STEPS.tranceDo = (state, step) => {
+    const f = state.fight, p = fp(state);
+    const id = p.hand.find(x => CARDS[x].special === 'trance');
+    if (step.choice !== 'yes' || !id) return;
+    removeFrom(p.hand, id);
+    const R = (f.cur && f.cur.r) || {};
+    const top = p.discard.length ? p.discard.pop() : null;
+    if (top) p.hand.push(top);
+    if (!R.noDrawFx) f.cur.drawMod += 2;
+    p.discard.push(id);
+    log(state, `${p.name} разыгрывает «${CARDS[id].name}»${top ? `: берёт «${CARDS[top].name}» из сброса` : ''}${R.noDrawFx ? '' : ', в конце хода +2 карты'}`);
+};
 STEPS.specTrophyDo = (state, step) => {
     const p = fp(state);
     if (step.choice === 'dmg') push(state, F('dealDamage', { n: 1, src: 'трофей специализации' }));
     else { const g = drawCards(state, p, 2); log(state, `${p.name}: трофей специализации — +${g} карт(ы)`); }
 };
 
+/** «Чародеи» (p. 7): barrier units — they lower the damage of the opponent's next fight turn. */
+export function gainBarrier(state, p, n, why) {
+    if (!(n > 0)) return;
+    p.barrier = (p.barrier || 0) + n;
+    log(state, `${p.name}: барьер +${n} (${p.barrier})${why ? ' (' + why + ')' : ''}`);
+    fx(state, { k: 'barrier', seat: p.seat, n: p.barrier });
+}
 /** Shield gain respecting the max and Полуденница (MON-11: at most +1 per fight turn). */
 function gainShield(state, p, n, why) {
     const f = state.fight;
@@ -502,7 +534,7 @@ function gainShield(state, p, n, why) {
     const before = p.shield;
     p.shield = Math.max(before, Math.min(maxShield(state, p), p.shield + n));
     if (f && f.cur) f.cur.shieldGain += p.shield - before;
-    if (p.shield !== before) log(state, `${p.name}: щит ${before} → ${p.shield}${why ? ' (' + why + ')' : ''}`);
+    if (p.shield !== before) log(state, `${p.name}: ${isMage(p) ? 'энергия' : 'щит'} ${before} → ${p.shield}${why ? ' (' + why + ')' : ''}`);
 }
 
 // ---- elixirs -------------------------------------------------------------------------------
@@ -687,8 +719,20 @@ export function specError(state, p) {
         const [need] = SPEC_TABLE.manticore[p.skills.spec - 1];
         return p.elixirs.length >= need ? null : (need === 1 ? 'Нужен 1 неиспользованный эликсир' : `Нужно ${need} неиспользованных эликсира`);
     }
+    // «Чародеи» (p. 8).
+    if (p.school === 'alzur') return p.shield >= 1 ? null : 'Молнии: нужна 1 энергия';
+    if (p.school === 'gehira') return p.hand.length ? null : 'Некромантия: нужна карта в руке';
+    if (p.school === 'otar') return f.wTurns === 1 ? null : 'Телепортация — только в первый ход битвы';
+    if (p.school === 'ardea' || p.school === 'philippa') return null;
     return 'Нет ручной специализации';
 }
+/** Филиппа, «Полиморфизм»: the forms open at a die result (p. 8). */
+export const PHILIPPA_FORMS = [
+    { id: 'cat', name: 'Кошка', min: 1, text: 'взять 1 карту из колоды' },
+    { id: 'wolf', name: 'Волчица', min: 3, text: '1 урон и энергия +1' },
+    { id: 'bear', name: 'Медведица', min: 3, text: '1 карта из колоды и барьер 1' },
+    { id: 'owl', name: 'Сова', min: 5, text: 'любая карта из сброса' },
+];
 STEPS.useSpec = (state) => {
     const f = state.fight, p = fp(state);
     f.once.spec = true;
@@ -711,6 +755,55 @@ STEPS.useSpec = (state) => {
         push(state, F('manticoreDo', { ids: p.elixirs.slice(-need) }));
         return;
     }
+    if (p.school === 'alzur') {
+        // «Молнии»: −1 energy, a die + the level modifier; the best open effect (2+/4+/6+ → 1/2/3).
+        const [mod] = SPEC_TABLE.alzur[lvl];
+        p.shield -= 1;
+        const r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat });
+        const v = r + mod, dmg = v >= 6 ? 3 : v >= 4 ? 2 : v >= 2 ? 1 : 0;
+        log(state, `${p.name}: «Молнии» — энергия −1, бросок ${r}${mod ? ` ${mod > 0 ? '+' : '−'} ${Math.abs(mod)} = ${v}` : ''}${dmg ? ` — ${dmg} урона` : ' — нет эффекта'}`);
+        afterSpec(state, p);
+        push(state, ...(dmg ? [F('dealDamage', { n: dmg, src: 'Молнии' })] : []), F('awaitWitcher'));
+        return;
+    }
+    if (p.school === 'ardea') {
+        const [en, dr] = SPEC_TABLE.ardea[lvl];
+        gainShield(state, p, en, 'Левитация');
+        const g = dr ? drawCards(state, p, dr) : 0;
+        log(state, `${p.name}: «Левитация»${g ? ` — +${g} карт(ы)` : ''}`);
+        afterSpec(state, p);
+        push(state, F('awaitWitcher'));
+        return;
+    }
+    if (p.school === 'otar') {
+        const [bar, en] = SPEC_TABLE.otar[lvl];
+        gainBarrier(state, p, bar, 'Телепортация');
+        gainShield(state, p, en, 'Телепортация');
+        afterSpec(state, p);
+        push(state, F('awaitWitcher'));
+        return;
+    }
+    if (p.school === 'gehira') {
+        if (p.hand.length === 1 || p.bot) { push(state, F('gehiraDo', { ids: [p.hand.slice().sort((a, b) => cardScore(a) - cardScore(b))[0]] })); return; }
+        const [dmg, en] = SPEC_TABLE.gehira[lvl];
+        ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Некромантия', text: `Сбросьте 1 карту из руки: ${dmg} урона${en ? ` и энергия +${en}` : ''}.`, op: 'gehiraDo', args: { fight: 1 } });
+        return;
+    }
+    if (p.school === 'philippa') {
+        const [mod] = SPEC_TABLE.philippa[lvl];
+        const r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat });
+        const v = r + mod;
+        const open = PHILIPPA_FORMS.filter(o => v >= o.min && (o.id !== 'owl' || p.discard.length));
+        log(state, `${p.name}: «Полиморфизм» — бросок ${r}${mod ? ` ${mod > 0 ? '+' : '−'} ${Math.abs(mod)} = ${v}` : ''}${open.length ? '' : ' — нет эффекта'}`);
+        if (!open.length) { afterSpec(state, p); push(state, F('awaitWitcher')); return; }
+        if (open.length === 1 || p.bot || p.away) {
+            const pick = p.bot ? (open.find(o => o.id === 'wolf') || open.find(o => o.id === 'owl') || open.find(o => o.id === 'bear') || open[0]) : open[0];
+            push(state, F('philippaDo', { form: pick.id }));
+            return;
+        }
+        ask(state, { seat: p.seat, kind: 'choice', title: 'Полиморфизм', text: `Результат ${v}: выберите 1 форму.`, options: open.map(o => ({ id: o.id, label: `${o.name} (${o.min}+): ${o.text}` })), op: 'philippaDo', args: { fight: 1 } });
+        return;
+    }
     if (p.school === 'griffin') {
         const [mode, disc] = SPEC_TABLE.griffin[lvl];
         if (mode === 'any' && p.discard.length > 1) {
@@ -729,6 +822,30 @@ STEPS.manticoreDo = (state, step) => {
     if (draw) drawCards(state, p, draw);
     afterSpec(state, p);
     push(state, F('dealDamage', { n: dmg, src: 'Быстрый метаболизм' }), F('awaitWitcher'));
+};
+STEPS.gehiraDo = (state, step) => {
+    const p = fp(state);
+    const id = (step.ids || [])[0];
+    if (!id || !removeFrom(p.hand, id)) { push(state, F('awaitWitcher')); return; }
+    p.discard.push(id);
+    const [dmg, en] = SPEC_TABLE.gehira[p.skills.spec - 1];
+    log(state, `${p.name}: «Некромантия» — сбрасывает «${CARDS[id].name}»: ${dmg} урона${en ? `, энергия +${en}` : ''}`);
+    gainShield(state, p, en, 'Некромантия');
+    afterSpec(state, p);
+    push(state, F('dealDamage', { n: dmg, src: 'Некромантия' }), F('awaitWitcher'));
+};
+STEPS.philippaDo = (state, step) => {
+    const f = state.fight, p = fp(state);
+    const form = PHILIPPA_FORMS.find(o => o.id === (step.form || step.choice)) || PHILIPPA_FORMS[0];
+    f.once.philForm = form.id;
+    log(state, `${p.name}: «Полиморфизм» — ${form.name}`);
+    const after = [];
+    if (form.id === 'cat') drawCards(state, p, 1);
+    if (form.id === 'wolf') { gainShield(state, p, 1, 'Волчица'); after.push(F('dealDamage', { n: 1, src: 'Волчица' })); }
+    if (form.id === 'bear') { drawCards(state, p, 1); gainBarrier(state, p, 1, 'Медведица'); }
+    if (form.id === 'owl') after.push(F('anyDiscardAsk', { n: 1 }));
+    afterSpec(state, p);
+    push(state, ...after, F('awaitWitcher'));
 };
 STEPS.catDo = (state, step) => {
     const p = fp(state);
@@ -770,6 +887,10 @@ export function activeEffectError(state, p, key) {
         case 'MON-28': return p.discard.length ? null : 'Сброс пуст';
         case 'W-griffin': return p.discard.length ? null : 'Сброс пуст';
         case 'W-manticore': return p.elixirs.length ? null : 'Нужен неиспользованный эликсир';
+        case 'W-alzur': return null;
+        case 'W-ardea': return p.shield === 0 ? null : `Только при уровне ${isMage(p) ? 'энергии' : 'щита'} 0`;
+        case 'W-gehira': return p.hand.length ? null : 'Нужна карта в руке';
+        case 'W-otar': return p.shield >= 1 ? null : `Нужен уровень ${isMage(p) ? 'энергии' : 'щита'} хотя бы 1`;
         case 'MON-18': return null;
     }
     return 'Неизвестный эффект';
@@ -807,6 +928,30 @@ STEPS.useActive = (state, step) => {
             ask(state, { seat: p.seat, kind: 'cards', from: 'elixirs', ids: p.elixirs.slice(), min: 1, max: 1, title: 'Трофей Мантикоры', text: 'Сбросьте 1 неиспользованный эликсир, чтобы нанести 1 урон.', op: 'trManticoreW', args: { fight: 1 } });
             break;
         }
+        case 'W-alzur': {
+            const r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat });
+            const dmg = r === 6 ? 2 : 1;
+            if (r <= 3) f.cur.drawMod -= 2;
+            log(state, `${p.name}: трофей Альзура — бросок ${r}: ${dmg} урона${r <= 3 ? ', в конце хода на 2 карты меньше' : ''}`);
+            push(state, F('dealDamage', { n: dmg, src: 'трофей Альзура' }));
+            break;
+        }
+        case 'W-ardea': {
+            const g = drawCards(state, p, 2); f.cur.drawMod -= 1;
+            log(state, `${p.name}: трофей Ардеи — +${g} карт(ы), в конце хода на 1 карту меньше`);
+            break;
+        }
+        case 'W-gehira': {
+            if (p.hand.length === 1 || p.bot) { push(state, F('trGehira', { ids: [p.hand.slice().sort((a, b) => cardScore(a) - cardScore(b))[0]] })); break; }
+            ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, title: 'Трофей Гехиры', text: 'Сбросьте 1 карту из руки: 2 урона, но в конце хода на 1 карту меньше.', op: 'trGehira', args: { fight: 1 } });
+            break;
+        }
+        case 'W-otar': {
+            p.shield -= 1;
+            log(state, `${p.name}: трофей Отара — ${isMage(p) ? 'энергия' : 'щит'} −1 (${p.shield})`);
+            gainBarrier(state, p, 2, 'трофей Отара');
+            break;
+        }
         case 'W-griffin': {
             const id = p.discard.pop(); p.hand.push(id);
             log(state, `${p.name}: трофей Грифона — «${CARDS[id].name}» из сброса`);
@@ -827,6 +972,15 @@ STEPS.trBarghest = (state, step) => {
     for (const id of step.ids) { removeFrom(p.elixirs, id); state.elixirDiscard.push(id); }
     drawCards(state, p, 1);
     push(state, F('dealDamage', { n: 1, src: 'трофей «Баргест»' }));
+};
+STEPS.trGehira = (state, step) => {
+    const f = state.fight, p = fp(state);
+    const id = (step.ids || [])[0];
+    if (!id || !removeFrom(p.hand, id)) return;
+    p.discard.push(id);
+    f.cur.drawMod -= 1;
+    log(state, `${p.name}: трофей Гехиры — сбрасывает «${CARDS[id].name}»: 2 урона, в конце хода на 1 карту меньше`);
+    push(state, F('dealDamage', { n: 2, src: 'трофей Гехиры' }));
 };
 STEPS.trManticoreW = (state, step) => {
     const p = fp(state);
@@ -879,7 +1033,9 @@ export function linkIndex(prev, next, prefer) {
     if (prefer != null && cands.some(c => c.i === prefer)) return prefer;
     return cands.sort((a, b) => fxScore(b.l.fx) - fxScore(a.l.fx))[0].i;
 }
-const fxScore = (fx) => (fx.dmg || 0) * 3 + (fx.shield || 0) * 2 + (fx.draw || 0) + (fx.top ? 2 : 0) + (fx.ret ? 2 : 0) + (fx.dice ? 2 : 0) + (fx.cond ? 1 : 0);
+const fxScore = (fx) => (fx.dmg || 0) * 3 + (fx.shield || 0) * 2 + (fx.draw || 0) + (fx.top ? 2 : 0) + (fx.ret ? 2 : 0) + (fx.dice ? 2 : 0) + (fx.cond ? 1 : 0)
+    // «Чародеи»
+    + (fx.barrier || 0) * 2 + (fx.energy || 0) * 1.5 + (fx.dmgE ? 4 : 0) + (fx.barrierE ? 3 : 0) + (fx.drawE ? 2 : 0) + (fx.anyDiscard ? 3 : 0);
 /** Does card `c` count as colour `col` for a condition (Боевой транс counts as every colour)? */
 const isColor = (c, col) => c.color === col || !!c.any;
 /** Cards of the player's deck — the engine state has `deck`, a view only `deckCount`. */
@@ -950,12 +1106,114 @@ export function comboError(state, p, ids, opts = {}) {
         if (!Number.isInteger(wlink) || wlink < 1 || wlink >= chain.length || wlink === blood) return 'Связь трофея Цири должна соединять две карты комбинации';
         if (!CARDS[chain[wlink - 1]].links.length) return `У «${CARDS[chain[wlink - 1]].name}» нет связей`;
     }
+    if (isMage(p)) return mageChain(state, p, ids, chain.length, opts).mageErr;
+    if (opts.pay && opts.pay.length) return 'Дополнительные эффекты за энергию — только у чародеев';
     for (let i = 1; i < chain.length; i++) {
         if (i === blood || i === wlink) continue;
         const prev = CARDS[chain[i - 1]], next = CARDS[chain[i]];
         if (linkIndex(prev, next) < 0) return `«${next.name}» (${COLOR_SHORT[next.color]}) не соединяется с «${prev.name}»`;
     }
     return null;
+}
+/**
+ * «Чародеи» (pp. 6–7): a mage's combo, card by card from the first: 1) the base effect, 2) if the
+ * card is in `opts.pay` — lower the energy by the printed amount for the additional effect,
+ * 3) the effect of the link used to reach the next card. The energy (= `p.shield`) changes on the
+ * way, so «урон/барьер = энергия» read it at that moment; «добор + энергия» counts at step 4.
+ * Returns the totals (dmg, barrier, draw, drawE, top, anyDiscard, ret, energyEnd …) and `mageErr`.
+ */
+export function mageChain(state, p, ids, chainLen, opts = {}) {
+    const f = state.fight;
+    const R = (f && f.cur && f.cur.r) || {};
+    const pay = new Set(opts.pay || []);
+    const out = { dmg: 0, barrier: 0, barrierSym: 0, draw: 0, drawE: 0, top: 0, anyDiscard: 0, ret: [], byCard: {}, dmgAny: false, drawPlus: false, paid: [], energyStart: p.shield, energyEnd: p.shield, mageErr: null, mageSteps: [] };
+    let e = p.shield;
+    // «Отъём силы» (MAGE-UNIQUE-04): needs the number of barrier symbols of the whole combo — a
+    // first pass without its bonus counts them.
+    const drainOn = !opts.noDrain && ids.slice(0, chainLen).some(id => CARDS[id] && CARDS[id].special === 'drain')
+        && mageChain(state, p, ids, chainLen, { ...opts, noDrain: true }).barrierSym >= 3;
+    // Полуденница / a special attack: the energy (the mage's «щит») grows by at most N per turn.
+    let room = 99;
+    if (f && f.cur) {
+        if (ab(f) === 'MON-11') room = Math.min(room, Math.max(0, 1 - f.cur.shieldGain));
+        if (f.whole && f.whole.shieldCap != null) room = Math.min(room, Math.max(0, f.whole.shieldCap - f.cur.shieldGain));
+    }
+    const err = (m) => { if (!out.mageErr) out.mageErr = m; };
+    const apply = (fxo, id, what, col) => {
+        const parts = [];
+        // Кащей I / IV: damage of blue cards and blue links / of red cards ignored this turn.
+        if (!R.noDmg && !(col === 'blue' && R.noDmgBlue) && !(col === 'red' && R.noDmgRed && what !== 'link')) {
+            const d = (fxo.dmg || 0) + (fxo.dmgE ? e : 0);
+            if (fxo.dmg || fxo.dmgE) { out.dmg += d; out.dmgAny = true; out.byCard[id] = (out.byCard[id] || 0) + d; if (d) parts.push(`урон ${d}`); }
+        }
+        const b = (fxo.barrier || 0) + (fxo.barrierE ? e : 0);
+        if (b) { out.barrier += b; out.barrierSym += fxo.barrier || 0; parts.push(`барьер ${b}`); }
+        if (fxo.energy && !R.noShield) {
+            const g = Math.max(0, Math.min(fxo.energy, 4 - e, room));
+            e += g; room -= g;
+            parts.push(`энергия +${g}${g < fxo.energy ? ` (из ${fxo.energy})` : ''}`);
+        }
+        if (!R.noDrawFx) {
+            if (fxo.draw) { out.draw += fxo.draw; if (fxo.draw > 0) out.drawPlus = true; parts.push(`добор +${fxo.draw}`); }
+            if (fxo.drawE) { out.drawE++; out.drawPlus = true; parts.push('добор + энергия'); }
+        }
+        if (fxo.top) { out.top += fxo.top; parts.push('верх сброса'); }
+        if (fxo.anyDiscard) { out.anyDiscard += fxo.anyDiscard; parts.push('любая карта из сброса'); }
+        if (fxo.ret && id) { out.ret.push(id); parts.push('вернуть эту'); }
+        if (fxo.anyLink) parts.push('связь любого цвета');
+        if (parts.length) out.mageSteps.push({ id, what, text: parts.join(', ') });
+    };
+    const purpleOff = f && (ab(f) === 'MON-08' || ab(f) === 'MON-29');
+    for (const i of pay) if (!Number.isInteger(i) || i < 0 || i >= ids.length) err('Неверная карта для доплаты энергией');
+    for (let i = 0; i < ids.length; i++) {
+        const c = CARDS[ids[i]];
+        if (!c) { err('Нет такой карты'); continue; }
+        // Кащей / MON-08: the corner effects of purple cards are ignored — and their extras too.
+        const cornerOff = R.onlyLinks || (purpleOff && c.color === 'purple');
+        if (!cornerOff) apply(c.fx, ids[i], 'card', c.color);
+        let anyLink = !!c.fx.anyLink && !cornerOff;
+        // Personal cards («Уникальные действия»): their «Особый эффект».
+        if (!cornerOff && c.special === 'noSpent' && !out.paid.length) apply({ dmg: 1, barrier: 1 }, ids[i], 'special', c.color);
+        if (!cornerOff && c.special === 'drain' && drainOn) apply({ energy: 3 }, ids[i], 'special', c.color);
+        if (c.special === 'philLink' && f && ['cat', 'owl'].includes(f.once.philForm)) anyLink = true;
+        if (pay.has(i)) {
+            const cost = c.extra && c.extra.all ? e : c.extra && c.extra.cost;
+            if (!c.extra) err(`У «${c.name}» нет дополнительного эффекта`);
+            else if (cornerOff) err(`Дополнительный эффект «${c.name}» сейчас не действует`);
+            else if (e < c.extra.cost) err(`Не хватает энергии на дополнительный эффект «${c.name}» (нужно ${c.extra.all ? 'не меньше ' : ''}${c.extra.cost}, есть ${e})`);
+            else {
+                e -= cost;
+                out.paid.push(i);
+                out.mageSteps.push({ id: ids[i], what: 'pay', text: `энергия −${cost}` });
+                apply(c.extra.fx, ids[i], 'extra', c.color);
+                if (c.extra.fx.anyLink) anyLink = true;
+            }
+        }
+        if (i >= chainLen - 1) continue;
+        const next = CARDS[ids[i + 1]];
+        if (!next) continue;
+        if (i + 1 === opts.wlink) {
+            // Трофей Цири: a printed link of this card takes the colour of the next one.
+            const li = wlinkIndex(c, opts.links ? opts.links[i + 1] : null);
+            if (li < 0) { err(`У «${c.name}» нет связей`); continue; }
+            const link = c.links[li];
+            const off = (f && ab(f) === 'MON-08' && c.color === 'purple') || (f && ab(f) === 'MON-29' && next.color === 'purple');
+            if (!off && !R.noLinks) apply(link.fx, ids[i], 'link', link.color);
+            continue;
+        }
+        const li = linkIndex(c, next, opts.links ? opts.links[i + 1] : null);
+        if (li >= 0) {
+            const link = c.links[li];
+            const off = (f && ab(f) === 'MON-08' && c.color === 'purple') || (f && ab(f) === 'MON-29' && link.color === 'purple');
+            if (!off && !R.noLinks) apply(link.fx, ids[i], 'link', link.color);
+        } else if (!anyLink) {
+            err(c.extra && c.extra.fx.anyLink
+                ? `«${next.name}» соединится с «${c.name}» только за энергию (связь любого цвета)`
+                : `«${next.name}» (${COLOR_SHORT[next.color]}) не соединяется с «${c.name}»`);
+        }
+    }
+    out.energyEnd = e;
+    return out;
 }
 /** Sum of a combo with all monster/trophy modifiers — also used by the UI preview. */
 export function comboTotals(state, p, ids, opts = {}) {
@@ -964,23 +1222,30 @@ export function comboTotals(state, p, ids, opts = {}) {
     // Special attacks («Уязвимости и особые атаки») may switch off printed symbols this turn.
     const R = (f && f.cur && f.cur.r) || {};
     const filt = (fxo) => (R.noDmg || R.noShield || R.noDrawFx) ? { ...fxo, ...(R.noDmg ? { dmg: 0, dice: null } : {}), ...(R.noShield ? { shield: 0 } : {}), ...(R.noDrawFx ? { draw: 0 } : {}) } : fxo;
-    const corner = (fxo, id) => { if (!R.onlyLinks) addFx(t, filt(fxo), id); };
-    const linkFx = (fxo, id) => { if (!R.noLinks) addFx(t, filt(fxo), id); };
+    // Кащей I / IV: the damage symbols of blue cards and blue links / of red card corners.
+    const colOff = (fxo, col, link) => ((col === 'blue' && R.noDmgBlue) || (col === 'red' && R.noDmgRed && !link)) && (fxo.dmg || fxo.dice) ? { ...fxo, dmg: 0, dice: null } : fxo;
+    const corner = (fxo, id) => { if (!R.onlyLinks) addFx(t, filt(colOff(fxo, CARDS[id] && CARDS[id].color)), id); };
+    const linkFx = (fxo, id, col) => { if (!R.noLinks) addFx(t, filt(colOff(fxo, col, true)), id); };
     const cardDmg = (n, id) => { if (R.onlyLinks || R.noDmg) return; t.dmg += n; t.dmgAny = true; if (id) t.byCard[id] = (t.byCard[id] || 0) + n; };
     const purpleBlocked = f && (ab(f) === 'MON-08' || ab(f) === 'MON-29');
     const chainLen = opts.free ? ids.length - 1 : ids.length;
+    // «Чародеи» (p. 6): a mage's combo resolves card by card (base → paid extra → used link) with
+    // the energy changing on the way — see mageChain; the modifiers below apply to its totals.
+    const mage = !!(p && isMage(p));
+    if (mage) Object.assign(t, mageChain(state, p, ids, chainLen, opts));
     ids.forEach((id, i) => {
         const c = CARDS[id];
         t.colors.add(c.color);
         if (c.any) for (const col of ['blue', 'red', 'green', 'purple', 'yellow']) t.colors.add(col);
         const cornerOff = purpleBlocked && c.color === 'purple';
+        if (mage) { /* resolved by mageChain */ } else {
         if (!cornerOff) corner(c.fx, id);
         if (i > 0 && i < chainLen && i === opts.blood && p && p.school === 'ciri') {
             // «Старшая Кровь»: a link of the next card's colour, its effect set by the spec level.
             const prev = CARDS[ids[i - 1]];
             const off = (f && ab(f) === 'MON-08' && prev.color === 'purple') || (f && ab(f) === 'MON-29' && c.color === 'purple');
             const bf = bloodFx(p);
-            if (!off) linkFx(bf, ids[i - 1]);
+            if (!off) linkFx(bf, ids[i - 1], c.color);
             t.blood = { at: i, color: c.color, ...bf, off };
         } else if (i > 0 && i < chainLen && i === opts.wlink) {
             // Трофей Цири: a printed link of the previous card takes the colour of this one.
@@ -989,7 +1254,7 @@ export function comboTotals(state, p, ids, opts = {}) {
             if (li >= 0) {
                 const link = prev.links[li];
                 const off = (f && ab(f) === 'MON-08' && prev.color === 'purple') || (f && ab(f) === 'MON-29' && c.color === 'purple');
-                if (!off) linkFx(link.fx, ids[i - 1]);
+                if (!off) linkFx(link.fx, ids[i - 1], link.color);
                 t.wlink = { at: i, li, from: link.color, color: c.color, off };
             }
         } else if (i > 0 && i < chainLen) {
@@ -998,10 +1263,11 @@ export function comboTotals(state, p, ids, opts = {}) {
             if (li >= 0) {
                 const link = prev.links[li];
                 const off = (f && ab(f) === 'MON-08' && prev.color === 'purple') || (f && ab(f) === 'MON-29' && link.color === 'purple');
-                if (!off) linkFx(link.fx, ids[i - 1]);
+                if (!off) linkFx(link.fx, ids[i - 1], link.color);
                 // Обман: the second field of the double link — 2 cards of the link's colour anywhere after.
-                if (!off && link.cond && ids.slice(i, chainLen).filter(x => isColor(CARDS[x], link.color)).length >= link.cond.n && !R.noLinks) { linkFx(link.cond.fx, ids[i - 1]); t.deception = true; }
+                if (!off && link.cond && ids.slice(i, chainLen).filter(x => isColor(CARDS[x], link.color)).length >= link.cond.n && !R.noLinks) { linkFx(link.cond.fx, ids[i - 1], link.color); t.deception = true; }
             }
+        }
         }
         // Пируэт: +1 damage if the card right before it has the printed colour.
         if (c.prev && i > 0 && i < chainLen && isColor(CARDS[ids[i - 1]], c.prev)) cardDmg(1, id);
@@ -1096,7 +1362,7 @@ STEPS.playCombo = (state, step) => {
     const ids = step.ids;
     for (const id of ids) removeFrom(p.hand, id);
     f.cur.combo = ids.slice();
-    const t = comboTotals(state, p, ids, { free: step.free, links: step.links, blood: step.blood, wlink: step.wlink, mutOff: step.mutOff, mut8: step.mut8 });
+    const t = comboTotals(state, p, ids, { free: step.free, links: step.links, blood: step.blood, wlink: step.wlink, mutOff: step.mutOff, mut8: step.mut8, pay: step.pay });
     // Dice of the master actions (Сметающий Аард on a link, Засада on the card).
     for (const d of t.dice) {
         const r = d6(state);
@@ -1113,6 +1379,20 @@ STEPS.playCombo = (state, step) => {
     if (t.vuln) log(state, `Уязвимость: первый ход битвы — комбинация дополнительно наносит ${t.vuln} урона`);
     if (ids.length) log(state, `${p.name} разыгрывает комбинацию: ${ids.map(id => '«' + CARDS[id].name + '»').join(' → ')}`, { kind: 'combo' });
     else log(state, `${p.name}: в руке нет карт — комбинации нет`);
+    if (isMage(p) && ids.length) {
+        // «Чародеи»: the card-by-card resolution — the energy is spent and gained on the way,
+        // the barrier is raised now; the damage is dealt below as one hit.
+        for (const st of t.mageSteps) log(state, `«${CARDS[st.id].name}»${st.what === 'link' ? ' (связь)' : st.what === 'extra' ? ' (доп. эффект)' : ''}: ${st.text}`);
+        if (t.energyEnd !== p.shield) {
+            const before = p.shield;
+            if (t.energyEnd > t.energyStart) f.cur.shieldGain += t.energyEnd - t.energyStart;
+            p.shield = t.energyEnd;
+            log(state, `${p.name}: энергия ${before} → ${p.shield}`);
+        }
+        gainBarrier(state, p, t.barrier, 'комбинация');
+        // Трофей Филиппы: once per fight, «top of the discard» may be any card of the discard.
+        if (t.top > 0 && hasWitcherTrophy(p, 'philippa') && !f.once.wPhilippa) { f.once.wPhilippa = true; t.top--; t.anyDiscard++; log(state, `${p.name}: трофей Филиппы — вместо верхней можно взять любую карту сброса`); }
+    }
     fx(state, { k: 'combo', seat: p.seat, ids });
     for (const m of t.muts) if (m.on) { f.once['m' + m.id] = true; log(state, `${p.name}: ${MUTAGEN[m.id].name} — ${MUTAGEN[m.id].cond.replace(/^Если /, 'условие выполнено: ').replace(/:$/, '')}`); fx(state, { k: 'mutagen', seat: p.seat, id: m.id }); }
     if (t.blood) {
@@ -1142,8 +1422,9 @@ STEPS.playCombo = (state, step) => {
         // Искры из глаз: before the combo's effects, at shield 0 — any card of the deck to the hand.
         ...(t.sparks && p.shield === 0 && p.deck.length ? [F('sparksAsk')] : []),
         F('comboDamage', { n: dmg }),
+        ...(t.anyDiscard ? [F('anyDiscardAsk', { n: t.anyDiscard })] : []),
         ...(f.vt && f.vt.redRepeat && f.wTurns === 1 ? [F('vtRedAsk', { ids })] : []),
-        F('comboAfterDamage', { wolfDraw, shield: t.shield, top: t.top, ret: t.ret, draw: t.draw, ids, wasSpec: wolfDraw > 0 || (wolf3 && p.school === 'wolf') || !!t.blood, fixedDraw: t.fixedDraw, shieldMax: !!t.shieldMax, breath: !!t.breath }),
+        F('comboAfterDamage', { wolfDraw, shield: t.shield, top: t.top, ret: t.ret, draw: t.draw, ids, wasSpec: wolfDraw > 0 || (wolf3 && p.school === 'wolf') || !!t.blood, fixedDraw: t.fixedDraw, shieldMax: !!t.shieldMax, breath: !!t.breath, drawE: t.drawE || 0 }),
     );
 };
 STEPS.comboDamage = (state, step) => {
@@ -1172,11 +1453,14 @@ STEPS.comboAfterDamage = (state, step) => {
     if (ab(f) === 'MON-24' && colors.has('yellow')) loseShield(state, p, 2, 'Шептуха');
     // Кладбищенская баба (discard ability): after the combo's effects.
     while (f.cur.after25 > 0) { f.cur.after25--; afterCombo25(state, p); }
+    // Кащей I / V (witcher halves): a yellow card → shield +2; a 1-card combo → 2 damage.
+    const vtK = vtAfterCombo(state, p, step.ids);
     f.cur.comboDone = true;
     // 4. draw (Покаянник's discard ability: the combo's draw effects are ignored this turn)
     const combat = f.cur.combatZero ? 0 : r.combatLess ? SKILL_VALUE[Math.max(0, p.skills.combat - r.combatLess)] : skillVal(p, 'combat');
     if (f.cur.noDrawFx && (step.draw || step.fixedDraw != null)) log(state, 'Покаянник: эффекты комбинации на добор карт игнорируются');
-    const comboDraw = f.cur.noDrawFx ? 0 : step.draw;
+    // «Добор + энергия» (Чародеи p. 7): the energy at step 4, once per such symbol.
+    const comboDraw = f.cur.noDrawFx ? 0 : step.draw + (step.drawE || 0) * p.shield;
     let n = combat + comboDraw + f.cur.drawMod;
     if (hasTrophy(p, 'MON-08') && colors.has('yellow')) n += 2;
     if (ab(f) === 'MON-05' && !colors.has('green')) n -= 1;
@@ -1207,7 +1491,23 @@ STEPS.comboAfterDamage = (state, step) => {
     if (step.wasSpec) afterSpec(state, p);
     // Цикл дыхания resolves within this turn, before the monster acts.
     const vtRet = f.vt && f.vt.returnOne && f.wTurns === 1 && step.ids.length >= 3 ? [F('vtReturnAsk', { ids: step.ids.filter(id => !returned.includes(id)) })] : [];
-    push(state, ...(mut15 ? [F('dealDamage', { n: 1, src: 'мутаген' })] : []), ...vtRet, ...(step.breath && f.usedElixirs.length ? [F('breathAsk')] : []), F('afterWitcherTurn'));
+    push(state, ...vtK, ...(mut15 ? [F('dealDamage', { n: 1, src: 'мутаген' })] : []), ...vtRet, ...(step.breath && f.usedElixirs.length ? [F('breathAsk')] : []), F('afterWitcherTurn'));
+};
+/** «Возьмите 1 любую карту из своего сброса» (Чародеи p. 7): the order of the rest is kept. */
+STEPS.anyDiscardAsk = (state, step) => {
+    if (!alive(state)) return;
+    const p = fp(state);
+    if (!p.discard.length || !(step.n > 0)) return;
+    if (step.n > 1) push(state, F('anyDiscardAsk', { n: step.n - 1 }));
+    if (p.bot || p.away || p.discard.length === 1) { push(state, F('anyDiscardDo', { ids: [p.discard.slice().sort((a, b) => cardScore(b) - cardScore(a))[0]] })); return; }
+    ask(state, { seat: p.seat, kind: 'cards', from: 'discard', ids: p.discard.slice(), min: 1, max: 1, title: 'Карта из сброса', text: 'Возьмите в руку 1 любую карту из своего сброса (порядок остальных не меняется).', op: 'anyDiscardDo', args: { fight: 1 } });
+};
+STEPS.anyDiscardDo = (state, step) => {
+    const p = fp(state);
+    const id = (step.ids || [])[0];
+    if (!id || !removeFrom(p.discard, id)) return;
+    p.hand.push(id);
+    log(state, `${p.name} берёт «${CARDS[id].name}» из сброса`);
 };
 STEPS.sparksAsk = (state) => {
     const p = fp(state);
@@ -1260,6 +1560,8 @@ STEPS.monsterTurn = (state) => {
     if (!alive(state)) return;
     const f = state.fight, p = fp(state);
     if (f.mTurns === 0) { const vm = vtBeforeMonster(state); if (vm.length) { f.stage = 'busy'; push(state, ...vm, F('monsterTurn')); return; } }
+    // Трофей «Кащей»: once per fight, in a monster fight, before its first turn — barrier 3.
+    if (f.mTurns === 0 && hasTrophy(p, 'MON-29') && !f.once.t29) { f.once.t29 = true; gainBarrier(state, p, 3, 'трофей «Кащей»'); }
     // «Скеллиге»: Dagon's ability at the start of his first turn.
     if (dagonFirstTurn(state)) return;
     // Ледяной великан: at the start of its first turn the witcher discards the top 4 deck cards (no deck: from the hand).
@@ -1490,6 +1792,12 @@ STEPS.hurtWitcher = (state, step) => {
         log(state, `${p.name}: дар Дагона — урон атаки −1`);
         if (n <= 0) return;
     }
+    // «Чародеи» (p. 7): barrier lowers the damage of the opponent's (monster's) fight turn.
+    if (f.turn === 'monster' && p.barrier > 0 && n > 0) {
+        const b = Math.min(n, p.barrier); p.barrier -= b; n -= b;
+        log(state, `${p.name}: барьер поглощает ${b} урона${p.barrier ? ` (осталось ${p.barrier})` : ''}`);
+        if (n <= 0) return;
+    }
     log(state, `${p.name} получает ${n} урона`);
     fx(state, { k: 'witcherHit', seat: p.seat, n });
     let handN = 0;
@@ -1497,7 +1805,8 @@ STEPS.hurtWitcher = (state, step) => {
         handN = Math.min(n, p.hand.length); n -= handN;
         if (handN) log(state, 'Кладбищенская баба: урон сначала сбрасывает карты из руки');
     }
-    const fromShield = Math.min(n, p.shield); p.shield -= fromShield; n -= fromShield;
+    // A mage's combat damage goes straight to the cards: energy is not lowered (Чародеи p. 6).
+    const fromShield = isMage(p) ? 0 : Math.min(n, p.shield); p.shield -= fromShield; n -= fromShield;
     let fromDeck = 0;
     const deckIds = [];
     while (n > 0 && p.deck.length) { const id = p.deck.shift(); p.discard.push(id); deckIds.push(id); n--; fromDeck++; }
@@ -1579,6 +1888,8 @@ STEPS.afterMonsterTurn = (state) => {
     const f = state.fight, p = fp(state);
     const vEnd = vtAfterMonster(state);
     if (vEnd.length) { push(state, ...vEnd, F('afterMonsterTurn')); return; }
+    // «Чародеи» (p. 7): barrier lasts only until the end of the opponent's next fight turn.
+    if (p.barrier) { log(state, `${p.name}: барьер (${p.barrier}) обнуляется`); p.barrier = 0; }
     // Trophy MON-04: lost deck cards during the monster's turn → draw 1.
     if (hasTrophy(p, 'MON-04') && f.deckLossThisTurn && p.deck.length) { drawCards(state, p, 1); log(state, `${p.name}: трофей «Туманник» — +1 карта`); }
     f.deckLossThisTurn = 0;
@@ -1679,6 +1990,7 @@ STEPS.fightCleanup = (state) => {
     const p = fp(state);
     const shieldEnd = p.shield;
     p.shield = 0;
+    p.barrier = 0;
     state.lastFight = { mon: f.mon, result: f.result, seat: p.seat, life: f.life.length, shield: shieldEnd };
     state.fight = null;
     // «Скеллиге»: the common effect of Dagon's gifts.
@@ -1694,7 +2006,7 @@ STEPS.fightCleanup = (state) => {
     }
     state.attackDeck = freshAttackDeck(state);
     p.deck = shuffle(state, [...p.deck, ...p.discard.splice(0), ...p.hand.splice(0)]);
-    log(state, `${p.name}: щит восстановлен до ${p.shield}, все карты перемешаны в колоду`);
+    log(state, `${p.name}: ${isMage(p) ? 'энергия установлена на' : 'щит восстановлен до'} ${p.shield}, все карты перемешаны в колоду`);
     // House rule «Возврат эликсиров»: each elixir drunk in this fight may be bought back for 1 gold.
     const back = [];
     if (state.rules && state.rules.elixirReturn && f.usedElixirs.length && p.gold > 0) back.push({ op: 'elixirReturnAsk', seat: p.seat, ids: f.usedElixirs.slice() });

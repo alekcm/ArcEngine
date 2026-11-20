@@ -11,6 +11,7 @@ const files = (dir) => fs.readdirSync(path.join(ROOT, dir)).filter(f => /\.(m?js
 const STEPS = [
     ['данные из md актуальны', () => node([path.join(ROOT, 'tools/import.mjs'), '--check'])],
     ['события из md актуальны', () => node([path.join(ROOT, 'tools/events-gen.mjs'), '--check'])],
+    ['маги из md актуальны', () => node([path.join(ROOT, 'tools/mages-gen.mjs'), '--check'])],
     ['синтаксис модулей', () => {
         for (const f of [...files('client'), ...files('shared'), ...files('shared/engine'), ...files('shared/data'), path.join(ROOT, 'server.mjs')]) {
             const r = node(['--check', f]); if (r.status) return r;

@@ -1,8 +1,8 @@
 // Bots see exactly the per-seat view a human gets and act through the same apply().
 // botCommand(view, opts) returns one command or null: route planning to the best goal on the map,
 // fight readiness by «hand + deck», phase III buying by deck fit (see docs/witcher/02-decisions.md).
-import { CARDS, LOC, ADJ, MONSTER } from './engine/util.mjs';
-import { LOC_ACTIONS, SCHOOLS, ELIXIR_LIMIT } from './data/rules-data.mjs';
+import { CARDS, LOC, ADJ, MONSTER, homeOf } from './engine/util.mjs';
+import { LOC_ACTIONS, SCHOOLS, ELIXIR_LIMIT, isMage } from './data/rules-data.mjs';
 import { autoReroll } from './engine/turn.mjs';
 import { linkIndex, comboTotals, comboError, elixirError } from './engine/fight.mjs';
 import { movePaymentError } from './engine/turn.mjs';
@@ -17,12 +17,59 @@ export const cardValue = (id) => {
     const f = c.fx;
     // «По следу монстра»: dice, Река гнева, any colour; «убрать карту» cost counts as 3.
     return (f.dmg || 0) * 3 + (f.shield || 0) * 2 + (f.draw || 0) + (f.top ? 2 : 0) + c.links.length * 1.5 + (c.burn ? 3 : c.cost)
-        + (f.dice ? 6 : 0) + (f.river ? 5 : 0) + (c.any ? 2 : 0) + (f.fixedDraw != null ? -2 : 0) + (c.onDiscard ? 1 : 0);
+        + (f.dice ? 6 : 0) + (f.river ? 5 : 0) + (c.any ? 2 : 0) + (f.fixedDraw != null ? -2 : 0) + (c.onDiscard ? 1 : 0)
+        // «Чародеи»: barrier, energy, energy-scaled symbols, the paid extra effect.
+        + (f.barrier || 0) * 1.5 + (f.energy || 0) * 1.5 + (f.dmgE ? 5 : 0) + (f.barrierE ? 3 : 0) + (f.drawE ? 2 : 0) + (f.anyDiscard ? 3 : 0)
+        + (c.extra ? 1.5 : 0);
 };
+
+/** «Чародеи»: the best mage combo — chains through printed links or a paid any-colour link, and
+ *  the best set of energy payments for the extras (all subsets of up to 4 such cards, else greedy).
+ *  Returns the ids array with `.pay` (indices). */
+function bestMageCombo(view, p) {
+    const f = view.fight;
+    const hand = p.hand;
+    const forced = f.cur && f.cur.forcedFirst && hand.includes(f.cur.forcedFirst) ? f.cur.forcedFirst : null;
+    const onlyOne = !!(f.cur && f.cur.onlyOne);
+    const maxLen = f.cur && f.cur.r && f.cur.r.maxCombo != null ? f.cur.r.maxCombo : 7;
+    let best = { ids: [], pay: [], score: -Infinity };
+    const score = (t) => (t.dmg * 3 + Math.min(t.barrier || 0, 4) * 1.4 + (t.energyEnd || 0) * 0.8
+        + (t.fixedDraw != null ? -4 : (t.draw + (t.drawE || 0) * (t.energyEnd || 0)) * 1.2) + t.top + (t.anyDiscard || 0) * 1.5 + t.ret.length * 2 + Math.min(t.shield, 4) * 0.5);
+    const tryChain = (chain) => {
+        const extras = chain.map((id, i) => (CARDS[id].extra ? i : -1)).filter(i => i >= 0);
+        const sets = [];
+        if (extras.length <= 4) for (let m = 0; m < (1 << extras.length); m++) sets.push(extras.filter((_, k) => m & (1 << k)));
+        else { sets.push([]); sets.push(extras); }
+        for (const pay of sets) {
+            if (comboError(view, p, chain, { pay })) continue;
+            const s = score(comboTotals(view, p, chain, { pay }));
+            if (s > best.score) best = { ids: chain.slice(), pay, score: s };
+        }
+    };
+    let budget = 600;
+    const dfs = (chain, rest) => {
+        if (budget-- <= 0) return;
+        if (chain.length) {
+            if (forced && chain[0] !== forced) return;
+            tryChain(chain);
+            if (onlyOne || chain.length >= maxLen) return;
+        }
+        for (const id of rest) {
+            const prev = chain.length ? CARDS[chain[chain.length - 1]] : null;
+            const linked = !prev || linkIndex(prev, CARDS[id]) >= 0 || !!(prev.extra && prev.extra.fx.anyLink) || !!prev.fx.anyLink;
+            if (linked) dfs([...chain, id], rest.filter(x => x !== id));
+        }
+    };
+    dfs([], hand);
+    const out = best.ids.slice();
+    out.pay = best.pay;
+    return out;
+}
 
 /** Best combo by DFS over the hand (at most ~7 cards, cheap). With Цири's «Старшая Кровь»
  *  available, one link of the chain may be the any-colour blood link: returns { ids, blood }. */
 export function bestCombo(view, p, useBlood = false) {
+    if (isMage(p)) { const ids = bestMageCombo(view, p); return useBlood ? { ids, blood: null } : ids; }
     const hand = p.hand;
     const f = view.fight;
     const forced = f.cur && f.cur.forcedFirst && hand.includes(f.cur.forcedFirst) ? f.cur.forcedFirst : null;
@@ -87,9 +134,13 @@ export function botCommand(view, opts = {}) {
         const gear = act.find(a => a.key === 'CONT79-14' || a.key === 'CONT79-20' || a.key === 'CONT79-56'
             || ((a.key === 'CONT79-15' || a.key === 'CONT79-01') && p.hand.length >= 3));
         if (gear) return { t: 'active', key: gear.key };
+        // Кащей's vulnerabilities: the die at once; «shield/energy −1 → damage» with shield to spare.
+        const va = ((opts.options && opts.options.fight && opts.options.fight.vulnActs) || []).find(a => !a.err && (/бросок/.test(a.label) || p.shield >= 2));
+        if (va) return { t: 'vulnAct', i: va.i };
         const canBlood = !!(opts.options && opts.options.fight && opts.options.fight.blood === null);
         const best = bestCombo(view, p, canBlood);
         const ids = canBlood ? best.ids : best, blood = canBlood ? best.blood : null;
+        if (ids.pay && ids.pay.length) return { t: 'combo', ids: ids.slice(), pay: ids.pay };
         return blood != null ? { t: 'combo', ids, blood } : { t: 'combo', ids };
     }
     const t = view.turn;
@@ -177,7 +228,10 @@ export function winChance(view, p, slot, handLoss = 0) {
     const mon = MONSTER[slot.mon];
     let hp = Math.max(0, p.hand.length - handLoss) + (p.deckCount || 0);
     if (p.trackTokens[slot.terrain]) hp += 3;
-    hp += p.shield + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
+    // «Чародеи»: the mage's «щит» is energy — it pays for damage and extras, it does not absorb
+    // hits; the barrier is gained in the fight, so Мудрость (max energy) stands for both.
+    if (isMage(p)) hp += p.shield * 0.75 + (p.skills.defense - 1) * 0.75 + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
+    else hp += p.shield + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
     return 1 / (1 + Math.exp(-(hp - 15) / 2));
 }
 /** Can this monster be attacked at all (solo lock on the last monster, Архиспора)? */
@@ -239,7 +293,7 @@ function actionValue(view, p, n) {
     switch (a.kind) {
         case 'raise': return p.skills[a.skill] < 5 && p.skills[a.skill] <= p.level ? 6 + (p.skills[a.skill] === p.level ? 2 : 0) : 0;
         case 'school': {
-            const home = SCHOOLS[p.school] && SCHOOLS[p.school].home === n;
+            const home = homeOf(p) === n;
             let best = 0;
             for (const s of trainOrder(view, p)) {
                 if (p.skills[s] >= 5 || (s === 'spec' && !home)) continue;
@@ -363,7 +417,7 @@ function answerPrompt(view, p, pr) {
     if (pr.kind === 'choice') {
         const okOpts = pr.options.filter(o => !o.disabled);
         if (pr.ui === 'row') {
-            const best = okOpts.map(o => ({ o, v: buyValue(view, p, view.row[Number(o.id)], o) })).sort((a, b) => b.v - a.v)[0];
+            const best = okOpts.map(o => ({ o, v: buyValue(view, p, (view.mrow && isMage(p) ? view.mrow : view.row)[Number(o.id)], o) })).sort((a, b) => b.v - a.v)[0];
             return { t: 'answer', choice: best.o.id };
         }
         return { t: 'answer', choice: okOpts[Math.floor(R() * okOpts.length)].id };

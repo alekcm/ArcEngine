@@ -143,6 +143,8 @@ STEPS.duelNext = (state) => {
     // Трофей «Туманник»: lost deck cards in the opponent's turn because of its attack → +1 card.
     if (f.oppDeckLoss && hasTrophy(q, 'MON-04') && q.deck.length) { drawCards(state, q, 1); log(state, `${q.name}: трофей «Туманник» — +1 карта`); }
     f.oppDeckLoss = 0;
+    // «Чародеи» (p. 7): barrier lasts until the end of the opponent's next fight turn.
+    if (q.barrier) { log(state, `${q.name}: барьер (${q.barrier}) обнуляется`); q.barrier = 0; }
     sideSwap(state, q.seat);
     push(state, F('duelOscar'), F('witcherTurn'));
 };
@@ -219,13 +221,14 @@ STEPS.duelCleanup = (state) => {
     for (const p of [a, d]) {
         const s = sides[p.seat];
         p.shield = maxShield(state, p);
+        p.barrier = 0;
         state.elixirDiscard.push(...s.usedElixirs);
         if (s.usedBombs.length) { if (!state.bombDiscard) state.bombDiscard = []; state.bombDiscard.push(...s.usedBombs); }
         p.deck = shuffle(state, [...p.deck, ...p.discard.splice(0), ...p.hand.splice(0)]);
         if (state.rules && state.rules.elixirReturn && s.usedElixirs.length && p.gold > 0) back.push({ op: 'elixirReturnAsk', seat: p.seat, ids: s.usedElixirs.slice() });
         if (state.rules && state.rules.bombs && s.usedBombs.length && p.gold >= 2) back.push({ op: 'bombReturnAsk', seat: p.seat, ids: s.usedBombs.slice() });
     }
-    log(state, `${a.name} и ${d.name}: щит восстановлен, все карты перемешаны в колоду`);
+    log(state, `${a.name} и ${d.name}: щит (энергия) восстановлен, все карты перемешаны в колоду`);
     // The defender draws at once: 4 after a win, 3 after a defeat; the attacker draws in phase III.
     const n = f.winner === d.seat ? 4 : 3;
     const g = drawCards(state, d, n);

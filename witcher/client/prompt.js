@@ -99,8 +99,10 @@ export function renderPrompt() {
 // Alt + hover enlarges any card (see initZoom).
 function renderRow(el, pr) {
     const v = S.view;
+    // «Чародеи»: a mage in a mixed game buys from the mage row (prompt.row = 'mrow').
+    const row = pr.row === 'mrow' && v.mrow ? v.mrow : v.row;
     const cards = pr.options.map(o => {
-        const slot = Number(o.id), id = v.row[slot];
+        const slot = Number(o.id), id = row[slot];
         if (!id) return '';
         const cost = o.cost != null ? o.cost : Math.max(0, CARDS[id].cost + ROW_MODS[slot]);
         return `<div class="buyslot ${o.disabled ? 'dis' : ''}" data-c="${esc(o.id)}" ${o.disabled ? `title="${esc(o.hint || 'Недоступно')}"` : ''}>

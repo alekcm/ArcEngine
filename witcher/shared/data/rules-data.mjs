@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { SK_LOC_ACTIONS, SK_LOC_ACTION_TEXT } from './skellige-data.mjs';
+import { MAGES, MAGE_TROPHIES } from './mages-data.mjs';
 
 /** Schools: hero name (Начальные колоды.md), home location (Игровой стол.md), colour of the board art. */
 export const SCHOOLS = {
@@ -17,7 +18,13 @@ export const SCHOOLS = {
     ciri: { name: 'Цири', school: 'Дитя Старшей Крови', hero: 'Цири', home: 3, color: '#d9dde6', spec: 'Старшая Кровь', model: 'Witcher/Ведьмаки/Цири.obj', exp: 'ciri' },
     // «По следу монстра», p. 3: the Manticore school, home Бехельт Нар (0).
     manticore: { name: 'Мантикора', school: 'Школа Мантикоры', hero: 'Алувар', home: 0, color: '#d9792b', spec: 'Быстрый метаболизм', model: 'Witcher/Ведьмаки/Мантикора.obj', exp: 'trail:manticore' },
+    // «Чародеи» (p. 4): the start location is chosen at setup (a free school location) — `p.home`.
+    ...Object.fromEntries(Object.values(MAGES).map(m => [m.id, {
+        name: m.hero, school: m.title, hero: m.hero, home: null, color: m.color, spec: m.spec, model: `Witcher/Маги/${m.hero}.obj`, exp: 'mages', mage: true,
+    }])),
 };
+export const MAGE_ORDER = ['alzur', 'ardea', 'gehira', 'otar', 'philippa'];
+export const isMage = (p) => !!(p && SCHOOLS[p.school] && SCHOOLS[p.school].mage);
 export const SCHOOL_ORDER = ['wolf', 'cat', 'bear', 'viper', 'griffin'];
 
 /** Specialization tables, levels I..V (Ведьмаки/Планшеты.md). */
@@ -29,6 +36,9 @@ export const SPEC_TABLE = {
     griffin: [['top', 2], ['top', 1], ['top', 0], ['any', 0], ['any', 0]], // take from discard, then discard
     ciri: [[0, -1], [0, 1], [1, 1], [2, 1], [2, 1]],     // «Старшая Кровь» link: damage, draw at the end of the fight turn
     manticore: [[2, 1, 0], [1, 1, 0], [1, 1, 2], [1, 2, 2], [1, 2, 2]], // «Быстрый метаболизм»: discard elixirs, damage, draw
+    // «Чародеи» (Маги/Планшеты.md): Альзур/Филиппа — die modifier; Ардея — energy, draw; Гехира —
+    // damage, energy (for 1 card of the hand); Отар — barrier, energy (first fight turn).
+    ...Object.fromEntries(Object.values(MAGES).map(m => [m.id, m.table])),
 };
 
 /** Skill value -> effect (Планшеты.md «Общие значения навыков»): combat draw, defence max shield, alchemy elixirs per fight. */
@@ -37,6 +47,8 @@ export const SKILL_VALUE = [0, 1, 2, 3, 4, 4];
 export const LEVEL_DRAW = { 2: 1, 3: 1, 4: 2, 5: 2 };
 export const SKILLS = ['combat', 'defense', 'alchemy', 'spec'];
 export const SKILL_NAME = { combat: 'Сражение', defense: 'Защита', alchemy: 'Алхимия', spec: 'Специализация' };
+/** «Чародеи» (p. 6): a mage has Мудрость instead of Защита (the same skill slot `defense`). */
+export const skillName = (p, s) => (s === 'defense' && isMage(p) ? 'Мудрость' : SKILL_NAME[s]);
 
 /** Starting cards and gold by turn order (База.md p. 8). */
 export const START_RES = {
@@ -58,8 +70,12 @@ export const TROPHIES_TO_WIN = 4;
 /** Witcher trophies (Ведьмаки/Трофеи.md): 4 cards per school, WITCHER-TROPHY-01..28 in this order.
  *  The effect is the same on all four cards of a school (texts: gen-data WITCHERTROPHIES). */
 export const WTROPHY_ORDER = ['wolf', 'cat', 'bear', 'viper', 'griffin', 'manticore', 'ciri'];
-/** The 4 trophy card ids of a school (or Цири). */
-export const wtrophyCards = (school) => { const i = WTROPHY_ORDER.indexOf(school); return i < 0 ? [] : [1, 2, 3, 4].map(k => `WITCHER-TROPHY-${String(i * 4 + k).padStart(2, '0')}`); };
+/** The 4 trophy card ids of a school (or Цири; «Чародеи»: MAGE-TROPHY-01..20 of a mage). */
+export const wtrophyCards = (school) => {
+    const m = MAGE_TROPHIES.filter(t => t.mage === school);
+    if (m.length) return m.map(t => t.id);
+    const i = WTROPHY_ORDER.indexOf(school); return i < 0 ? [] : [1, 2, 3, 4].map(k => `WITCHER-TROPHY-${String(i * 4 + k).padStart(2, '0')}`);
+};
 
 export const HAND_LIMIT = 7;
 export const ELIXIR_LIMIT = 4;
@@ -115,7 +131,7 @@ export const HOUSE_RULES = [
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
 /** Expansions that can already be switched on in the lobby. */
 export const TRAIL_PART_IDS = ['bombs', 'manticore', 'troll', 'mutagens', 'unique', 'masters', 'vuln'];
-export const EXPANSIONS_READY = ['legendary', 'ciri', 'skellige', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
+export const EXPANSIONS_READY = ['legendary', 'ciri', 'skellige', 'mages', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
 /** «Легендарная охота» settings carried in the expansion list (see legend-data.mjs legendOpts). */
 const LEGEND_SUB = /^legendary:(B|mon:(golem|cyclops|toad|fiend|unseen|icegiant|gaunter|kayran)|solo:(easy|normal|hard))$/;
 /** Keeps known ids; the «По следу монстра» parts only together with 'trail'. A bare 'trail'
@@ -134,6 +150,8 @@ export function normalizeExp(exp) {
     }
     // «Скеллиге»: Сирена (the extra-monster set) in the Dagon location.
     if (out.includes('skellige') && exp.includes('skellige:siren')) out.push('skellige:siren');
+    // «Чародеи»: Кащей (the extra-monster set) in the level III stack and decks.
+    if (out.includes('mages') && exp.includes('mages:koshchei')) out.push('mages:koshchei');
     return out;
 }
 /** Is a «По следу монстра» part on? `s` is a state/view (with .exp) or an exp array. */

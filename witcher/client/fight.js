@@ -9,14 +9,35 @@ import { restrictError } from '/shared/engine/vuln.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { CARDS, MONSTER, POTION, ATTACK } from '/shared/engine/util.mjs';
-import { SCHOOLS, SPEC_TABLE, trailOn } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SPEC_TABLE, trailOn, isMage } from '/shared/data/rules-data.mjs';
 import { linkIndex, comboTotals, comboError, bloodFx, wlinkIndex } from '/shared/engine/fight.mjs';
 import { onceOf } from '/shared/engine/duel.mjs';
 import { COLOR_SHORT } from '/shared/data/rules-data.mjs';
 import { sfx } from './sound.js';
 
 let logFrom = 0;
-export function fightStarted(v) { logFrom = v.log.length ? v.log[v.log.length - 1].i - 8 : 0; S.ui.combo = []; S.ui.blood = null; S.ui.wlink = null; S.ui.mutOff = []; S.ui.mut8 = 'dmg'; }
+export function fightStarted(v) { logFrom = v.log.length ? v.log[v.log.length - 1].i - 8 : 0; S.ui.combo = []; S.ui.mpay = []; S.ui.blood = null; S.ui.wlink = null; S.ui.mutOff = []; S.ui.mut8 = 'dmg'; }
+/** «Чародеи»: indices of the combo cards whose additional effect is paid with energy. */
+const payOf = () => (S.ui.mpay || []).filter(i => i < (S.ui.combo || []).length && CARDS[S.ui.combo[i]] && CARDS[S.ui.combo[i]].extra);
+/** Can `id` follow `prev` in a mage's combo: a printed link, or a link of any colour (printed or bought). */
+const mageJoins = (prev, id, i) => linkIndex(prev, CARDS[id]) >= 0 || !!prev.fx.anyLink || !!(prev.extra && prev.extra.fx.anyLink)
+    || (prev.special === 'philLink' && ['cat', 'owl'].includes(S.view.fight && S.view.fight.once && S.view.fight.once.philForm));   // «Трансформация»
+/** Short text of a mage effect (fx of a card, its extra or a link). */
+export function mageFxText(f) {
+    const p = [];
+    if (f.dmg) p.push(`урон ${f.dmg}`);
+    if (f.dmgE) p.push('урон = энергия');
+    if (f.barrier) p.push(`барьер ${f.barrier}`);
+    if (f.barrierE) p.push('барьер = энергия');
+    if (f.energy) p.push(`энергия +${f.energy}`);
+    if (f.draw) p.push(`добор ${f.draw > 0 ? '+' : ''}${f.draw}`);
+    if (f.drawE) p.push('добор + энергия');
+    if (f.top) p.push('верхняя карта сброса');
+    if (f.anyDiscard) p.push('любая карта из сброса');
+    if (f.ret) p.push('эта карта вернётся в руку');
+    if (f.anyLink) p.push('связь любого цвета');
+    return p.join(', ') || 'нет эффекта';
+}
 /** Witcher fight: the seat shown in the bottom panel (you, when you take part) — set by renderFight. */
 let focusSeat = null;
 /** Трофей Цири in the combo builder: null, 'armed' or the index of the card it joins. */
@@ -54,6 +75,8 @@ export function renderFight() {
     const myStage = mine && f.stage === 'witcher' && !v.prompt;
     const o = S.options && S.options.fight;
     const combo = S.ui.combo = (S.ui.combo || []).filter(id => p && p.hand.includes(id));
+    const mage = isMage(fighter);
+    const pay = S.ui.mpay = payOf();
     const bOpt = o ? o.blood : undefined;               // undefined: not Цири; null: available; string: why not
     if (bOpt !== null && S.ui.blood === 'armed') S.ui.blood = null;
     if (typeof S.ui.blood === 'number' && S.ui.blood >= combo.length) S.ui.blood = null;
@@ -66,8 +89,8 @@ export function renderFight() {
     const wArmed = S.ui.wlink === 'armed' && combo.length > 0 && CARDS[combo[combo.length - 1]].links.length > 0;
     const lifePct = duel ? 0 : Math.max(0, Math.min(100, (f.lifeCount / m.life) * 100));
     const free = !!(f.cur && f.cur.blizzard && combo.length >= 2 && linkIndex(CARDS[combo[combo.length - 2]], CARDS[combo[combo.length - 1]]) < 0);
-    const tot = p && mine && combo.length ? comboTotals(v, p, combo, { free, blood, wlink, ...mutOpts() }) : null;
-    const cErr = p && mine ? comboError(v, p, combo, { free, blood, wlink }) : 'Не ваш ход';
+    const tot = p && mine && combo.length ? comboTotals(v, p, combo, { free, blood, wlink, pay, ...mutOpts() }) : null;
+    const cErr = p && mine ? comboError(v, p, combo, { free, blood, wlink, pay }) : 'Не ваш ход';
 
     const last = f.lastAttack ? `<div class="lastatk"><span>${f.lastAttack.type === 'special' ? 'Особая атака' : 'Последняя атака'}</span>${f.lastAttack.type === 'special' ? specialCard(f.lastAttack.id, f.mon) : attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
     // «Уязвимости и особые атаки»: restrictions in force now / next turn, monster's next turn, whole fight.
@@ -87,7 +110,11 @@ export function renderFight() {
     const comboHtml = combo.length ? combo.map((id, i) => {
         const prev = i > 0 ? CARDS[combo[i - 1]] : null;
         const arrow = !i ? '' : i === wlink ? `<span class="arrow blood" title="Трофей Цири: связь считается ${esc(COLOR_SHORT[CARDS[id].color])}">${icon('trophy')}</span>` : i === blood ? `<span class="arrow blood" title="Старшая Кровь: ${esc(COLOR_SHORT[CARDS[id].color])} связь">${icon('spec')}</span>` : '<span class="arrow">›</span>';
-        return arrow + actionCard(id, { order: i + 1, cls: 'pick', linkHi: i < combo.length - 1 && i + 1 !== blood ? (i + 1 === wlink ? wlinkIndex(CARDS[id]) : linkIndex(CARDS[id], CARDS[combo[i + 1]])) : null });
+        const card = actionCard(id, { order: i + 1, cls: 'pick', linkHi: i < combo.length - 1 && i + 1 !== blood ? (i + 1 === wlink ? wlinkIndex(CARDS[id]) : linkIndex(CARDS[id], CARDS[combo[i + 1]])) : null });
+        // «Чародеи»: the additional effect of the card — paid with energy when switched on.
+        const ex = mage && CARDS[id].extra;
+        const payBtn = ex ? `<button class="paytog ${pay.includes(i) ? 'on' : ''}" data-pay="${i}" title="${esc(`Доп. эффект за ${ex.all ? `всю энергию (не меньше ${ex.cost})` : `${ex.cost} энергии`}: ${mageFxText(ex.fx)}. Клик — включить/выключить.`)}">${pay.includes(i) ? '✓' : '+'} ${esc(mageFxText(ex.fx))} · ${ex.all ? `вся энергия (≥${ex.cost})` : `−${ex.cost} эн.`}</button>` : '';
+        return arrow + (ex ? `<div class="paycard">${card}${payBtn}</div>` : card);
     }).join('') : `<span class="empty">${myStage ? 'Кликайте карты руки по порядку: каждая следующая должна совпадать по цвету со связкой предыдущей' + (bOpt === null ? '. «Старшая Кровь» один раз за битву соединит две любые карты' : '') : mine ? 'Подождите…' : `${esc(fighter.name)} сражается`}</span>`;
 
     const fbtns = [];
@@ -96,7 +123,8 @@ export function renderFight() {
         for (const e of o.vulnElixir || []) { const po = POTION[e.id.split('#')[0]]; fbtns.push(btn({ label: `${esc(po.name)} → верхняя карта сброса`, icon: icon('skull', 'c-vuln'), why: e.err, data: `data-vel="${esc(e.id)}"`, small: true }).replace('<button', `<button title="Уязвимость: сбросьте неиспользованный эликсир, чтобы взять верхнюю карту своего сброса (считается в лимит алхимии)"`)); }
         for (const b of o.bombs || []) { const bd = bombOf(b.id); fbtns.push(btn({ label: `Бомба: ${esc(bd.name)}`, icon: icon('bomb', 'c-bomb'), why: b.err, data: `data-bomb="${esc(b.id)}"`, small: true }).replace('<button', `<button title="${esc(bd.text)}"`)); }
         const sc = SCHOOLS[p.school];
-        if (p.school === 'cat' || p.school === 'griffin' || p.school === 'manticore') fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
+        for (const a of o.vulnActs || []) fbtns.push(btn({ label: esc(a.label), icon: icon('skull', 'c-vuln'), why: a.err, data: `data-vact="${a.i}"`, small: true }).replace('<button', `<button title="${esc(a.text)}"`));
+        if (p.school === 'cat' || p.school === 'griffin' || p.school === 'manticore' || isMage(p)) fbtns.push(btn({ label: `Специализация: ${esc(sc.spec)}`, icon: icon('spec'), why: o.spec, data: 'data-spec="1"', small: true }));
         if (bOpt !== undefined) {
             const bf = bloodFx(p);
             const fxTxt = `${bf.dmg ? `урон ${bf.dmg}, ` : ''}${bf.draw >= 0 ? '+' : ''}${bf.draw} карт(а) в конце хода`;
@@ -121,7 +149,7 @@ export function renderFight() {
         let why = '';
         if (ok && combo.length) {
             const lastC = CARDS[combo[combo.length - 1]];
-            if (linkIndex(lastC, CARDS[id]) < 0 && !(f.cur && f.cur.blizzard && !free) && !armed && !wArmed) { ok = false; why = bOpt === null ? 'Не соединяется с последней картой (можно через «Старшую Кровь»)' : 'Не соединяется с последней картой'; }
+            if (linkIndex(lastC, CARDS[id]) < 0 && !(mage && mageJoins(lastC, id)) && !(f.cur && f.cur.blizzard && !free) && !armed && !wArmed) { ok = false; why = bOpt === null ? 'Не соединяется с последней картой (можно через «Старшую Кровь»)' : 'Не соединяется с последней картой'; }
             if (f.cur && f.cur.onlyOne) { ok = false; why = 'Только 1 карта'; }
         }
         if (!mine && duel) { ok = false; why = 'Сейчас ход противника'; }
@@ -134,7 +162,7 @@ export function renderFight() {
     const ps = fighter;
     el.innerHTML = `
     <div class="ftop"><b>${duel ? `Битва ведьмаков: ${esc(v.players[f.att].name)} против ${esc(v.players[f.def].name)}` : `${esc(fighter.name)} против: ${esc(m.name)}`}</b>
-        <span class="turnbadge ${f.stage === 'witcher' && (!duel || mine) ? 'me' : ''}">${duel ? `Ходит ${esc(v.players[f.seat].name)} · ход ${Math.max(1, f.wTurns)}` : f.stage === 'witcher' ? `Ход ведьмака ${Math.max(1, f.wTurns)}` : 'Ход монстра'}</span>
+        <span class="turnbadge ${f.stage === 'witcher' && (!duel || mine) ? 'me' : ''}">${duel ? `Ходит ${esc(v.players[f.seat].name)} · ход ${Math.max(1, f.wTurns)}` : f.stage === 'witcher' ? `Ход ${isMage(v.players[f.seat]) ? 'чародея' : 'ведьмака'} ${Math.max(1, f.wTurns)}` : 'Ход монстра'}</span>
         ${duel && (f.bets || []).length ? `<span class="turnbadge" title="Ставки игроков, не участвующих в битве">${icon('coin')} ставки: ${f.bets.map(b => `${esc(v.players[b.seat].name)} → ${esc(v.players[b.on === 'att' ? f.att : f.def].name)}`).join(', ')}</span>` : ''}
         ${f.track ? `<span class="turnbadge">${icon('track')} жетон следа: ведьмак ходит первым</span>` : ''}
         ${f.legend ? `<span class="turnbadge" title="Урон за каждый ход битвы игрока снижается на уровень брони (памятка «Легендарной охоты», по шкале трофеев)">${icon('shield')} броня ${f.armorBase}${f.cur && f.turn === 'witcher' && f.cur.armor !== f.armorBase ? ` (в этом ходу ${f.cur.armor})` : ''}</span>` : ''}
@@ -146,7 +174,7 @@ export function renderFight() {
     </div>`}
     <div class="center">
         <div class="crow">${last}<div class="combo" id="fCombo">${comboHtml}</div></div>
-        <div class="totals">${tot ? `<span class="fx dmg">${icon('sword')}<b>${tot.dmg}</b></span><span class="fx shield">${icon('shield')}<b>+${tot.shield}</b></span><span class="fx draw">${icon('draw')}<b>${tot.draw}</b></span>${tot.top ? `<span class="fx top">${icon('top')}<b>${tot.top}</b></span>` : ''}${tot.ret.length ? `<span class="fx ret">${icon('ret')}<b>${tot.ret.length}</b></span>` : ''}${tot.dice.length ? `<span class="fx dice" title="Бросок кубика при розыгрыше">${icon('dice')}<b>${tot.dice.length}</b></span>` : ''}${tot.fixedDraw != null ? '<span class="bloodnote">Решающий удар: в конце хода — 0 карт</span>' : ''}${free ? '<span style="color:#9ccff0">Пурга: последняя карта без связки</span>' : ''}${tot.blood ? `<span class="bloodnote">Старшая Кровь: ${esc(COLOR_SHORT[tot.blood.color])} связь${tot.blood.off ? ' (подавлена)' : ''}</span>` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта — любого цвета</span>' : ''}` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта после первой — любого цвета</span>' : ''}</div>
+        <div class="totals">${tot ? `<span class="fx dmg">${icon('sword')}<b>${tot.dmg}</b></span>${mage ? `<span class="fx shield" title="Энергия до и после комбинации">${icon('spec')}<b>${tot.energyStart}→${tot.energyEnd}</b></span><span class="fx barrier" title="Барьер: снижает урон следующего хода противника">${icon('shield')}<b>${tot.barrier || 0}</b></span>${tot.drawE ? `<span class="fx draw" title="Добор + энергия (на этапе 4)">${icon('draw')}<b>+${tot.drawE}×эн.</b></span>` : ''}` : `<span class="fx shield">${icon('shield')}<b>+${tot.shield}</b></span>`}<span class="fx draw">${icon('draw')}<b>${tot.draw}</b></span>${tot.top ? `<span class="fx top">${icon('top')}<b>${tot.top}</b></span>` : ''}${tot.ret.length ? `<span class="fx ret">${icon('ret')}<b>${tot.ret.length}</b></span>` : ''}${tot.dice.length ? `<span class="fx dice" title="Бросок кубика при розыгрыше">${icon('dice')}<b>${tot.dice.length}</b></span>` : ''}${tot.fixedDraw != null ? '<span class="bloodnote">Решающий удар: в конце хода — 0 карт</span>' : ''}${free ? '<span style="color:#9ccff0">Пурга: последняя карта без связки</span>' : ''}${tot.blood ? `<span class="bloodnote">Старшая Кровь: ${esc(COLOR_SHORT[tot.blood.color])} связь${tot.blood.off ? ' (подавлена)' : ''}</span>` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта — любого цвета</span>' : ''}` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта после первой — любого цвета</span>' : ''}</div>
         ${rulesNow.length ? `<div class="rules-now">${rulesNow.join('')}</div>` : ''}
         ${myStage ? `<div style="display:flex;gap:8px">${btn({ id: 'fPlay', label: combo.length ? `Разыграть (${combo.length})` : (!p.hand.length ? 'Пропустить (рука пуста)' : !cErr ? 'Пропустить (нет разрешённых карт)' : 'Разыграть'), primary: true, why: cErr, key: 'Enter' })}${combo.length ? btn({ id: 'fClear', label: 'Сбросить выбор', key: 'Backspace' }) : ''}</div>` : ''}
         ${lastCombo}
@@ -155,11 +183,12 @@ export function renderFight() {
         <div class="wit panel" id="fWit" style="border-color:${SCHOOLS[ps.school].color}">
             <div style="font-family:var(--serif);font-size:17px;color:var(--gold2)">${esc(ps.name)} · ${esc(SCHOOLS[ps.school].name)}</div>
             <div class="bigstat">
-                <span class="c-shield">${icon('shield')}${ps.shield}<small>щит (макс. ${ps.skills.defense >= 4 ? 4 : ps.skills.defense})</small></span>
+                ${isMage(ps) ? `<span class="c-shield" title="Энергия: тратится на доп. эффекты карт; урон её не снижает">${icon('spec')}${ps.shield}<small>энергия (макс. 4)</small></span><span title="Барьер: снижает урон следующего хода противника">${icon('shield')}${ps.barrier || 0}<small>барьер</small></span>`
+                    : `<span class="c-shield">${icon('shield')}${ps.shield}<small>щит (макс. ${ps.skills.defense >= 4 ? 4 : ps.skills.defense})</small></span>${ps.barrier ? `<span title="Барьер: снижает урон следующего хода противника">${icon('shield')}${ps.barrier}<small>барьер</small></span>` : ''}`}
                 <span>${icon('deck')}${ps.deckCount}<small>колода</small></span>
                 <span>${icon('hand')}${ps.handCount}<small>рука</small></span>
             </div>
-            <div style="font-size:12px;color:var(--dim);text-align:center">Жизнь ведьмака = колода + рука: ${ps.deckCount + ps.handCount}</div>
+            <div style="font-size:12px;color:var(--dim);text-align:center">Жизнь ${isMage(ps) ? 'чародея' : 'ведьмака'} = колода + рука: ${ps.deckCount + ps.handCount}</div>
         </div>
         <div class="fbtns">${fbtns.join('')}</div>
         ${mutagensHtml(ps, duel ? { ...f, once: onceOf(f, ps.seat) } : f, tot, mine)}
@@ -169,17 +198,19 @@ export function renderFight() {
 
     const fl = el.querySelector('.flog'); if (fl) fl.scrollTop = fl.scrollHeight;
     for (const c of el.querySelectorAll('.fhand .card.pick')) c.onclick = () => addCard(c.dataset.id);
-    for (const c of el.querySelectorAll('#fCombo .card')) c.onclick = () => { const i = S.ui.combo.indexOf(c.dataset.id); S.ui.combo = S.ui.combo.slice(0, i); if (typeof S.ui.blood === 'number' && S.ui.blood >= i) S.ui.blood = null; if (typeof S.ui.wlink === 'number' && S.ui.wlink >= i) S.ui.wlink = null; sfx('card'); renderFight(); };
+    for (const c of el.querySelectorAll('#fCombo .card')) c.onclick = () => { const i = S.ui.combo.indexOf(c.dataset.id); S.ui.combo = S.ui.combo.slice(0, i); S.ui.mpay = (S.ui.mpay || []).filter(x => x < i); if (typeof S.ui.blood === 'number' && S.ui.blood >= i) S.ui.blood = null; if (typeof S.ui.wlink === 'number' && S.ui.wlink >= i) S.ui.wlink = null; sfx('card'); renderFight(); };
     for (const b of el.querySelectorAll('[data-blood]')) b.onclick = () => { toggleBlood(); };
     for (const b of el.querySelectorAll('[data-wlink]')) b.onclick = () => { toggleWlink(); };
     for (const b of el.querySelectorAll('[data-el]')) b.onclick = () => { sfx('elixir'); cmd({ t: 'elixir', id: b.dataset.el }, 'эликсир'); };
+    for (const b of el.querySelectorAll('[data-vact]')) b.onclick = () => { sfx('card'); cmd({ t: 'vulnAct', i: Number(b.dataset.vact) }, 'уязвимость'); };
+    for (const b of el.querySelectorAll('[data-pay]')) b.onclick = (e) => { e.stopPropagation(); const i = Number(b.dataset.pay); const cur = new Set(S.ui.mpay || []); if (cur.has(i)) cur.delete(i); else cur.add(i); S.ui.mpay = [...cur]; sfx('card'); renderFight(); };
     for (const b of el.querySelectorAll('[data-vel]')) b.onclick = () => { sfx('elixir'); cmd({ t: 'vulnElixir', id: b.dataset.vel }, 'уязвимость'); };
     for (const b of el.querySelectorAll('[data-bomb]')) b.onclick = () => { sfx('hit'); cmd({ t: 'bomb', id: b.dataset.bomb }, 'бомба'); };
     for (const c of el.querySelectorAll('.fmuts [data-mut]')) c.onclick = () => toggleMut(c.dataset.mut, tot);
     for (const b of el.querySelectorAll('[data-spec]')) b.onclick = () => cmd({ t: 'spec' }, 'специализация');
     for (const b of el.querySelectorAll('[data-act]')) b.onclick = () => cmd({ t: 'active', key: b.dataset.act }, 'трофей');
     const play = $('fPlay'); if (play) play.onclick = () => playCombo();
-    const clr = $('fClear'); if (clr) clr.onclick = () => { S.ui.combo = []; S.ui.blood = null; S.ui.wlink = null; renderFight(); };
+    const clr = $('fClear'); if (clr) clr.onclick = () => { S.ui.combo = []; S.ui.mpay = []; S.ui.blood = null; S.ui.wlink = null; renderFight(); };
 }
 
 /** Witcher fight: the opponent on top — school, shield, deck, hand, elixirs and witcher trophies. */
@@ -191,7 +222,7 @@ function oppPanel(v, f, q) {
         <div id="fMonCard" class="wit panel" style="border-color:${sc.color}">
             <div style="font-family:var(--serif);font-size:17px;color:var(--gold2)">${esc(q.name)} · ${esc(sc.name)}${onTurn ? ' · <span style="color:var(--gold)">ходит</span>' : ''}</div>
             <div class="bigstat">
-                <span class="c-shield">${icon('shield')}${q.shield}<small>щит</small></span>
+                <span class="c-shield">${icon(isMage(q) ? 'spec' : 'shield')}${q.shield}<small>${isMage(q) ? 'энергия' : 'щит'}</small></span>${q.barrier ? `<span>${icon('shield')}${q.barrier}<small>барьер</small></span>` : ''}
                 <span>${icon('deck')}${q.deckCount}<small>колода</small></span>
                 <span>${icon('hand')}${q.handCount}<small>рука</small></span>
                 <span>${icon('elixir', 'c-forest')}${q.elixirs.length}<small>эликсиры</small></span>
@@ -248,6 +279,12 @@ function addCard(id) {
     if (S.ui.blood === 'armed' && combo.length) S.ui.blood = combo.length;
     // Трофей Цири: spent only where the cards really do not connect.
     else if (S.ui.wlink === 'armed' && combo.length && linkIndex(CARDS[combo[combo.length - 1]], CARDS[id]) < 0) S.ui.wlink = combo.length;
+    // «Чародеи»: the previous card reaches this one only through its paid «связь любого цвета».
+    const v = S.view, f = v && v.fight;
+    if (f && isMage(me()) && combo.length) {
+        const prev = CARDS[combo[combo.length - 1]];
+        if (linkIndex(prev, CARDS[id]) < 0 && !prev.fx.anyLink && prev.extra && prev.extra.fx.anyLink) S.ui.mpay = [...new Set([...(S.ui.mpay || []), combo.length - 1])];
+    }
     combo.push(id);
     sfx('card');
     renderFight();
@@ -258,11 +295,12 @@ export function playCombo() {
     const combo = S.ui.combo || [];
     const free = !!(f.cur && f.cur.blizzard && combo.length >= 2 && linkIndex(CARDS[combo[combo.length - 2]], CARDS[combo[combo.length - 1]]) < 0);
     const blood = bloodAt(), wlink = wlinkAt();
-    const e = comboError(v, p, combo, { free, blood, wlink });
+    const pay = payOf();
+    const e = comboError(v, p, combo, { free, blood, wlink, pay });
     if (e) { toast(e); return; }
     sfx('sword');
-    cmd({ t: 'combo', ids: combo.slice(), free, ...(blood != null ? { blood } : {}), ...(wlink != null ? { wlink } : {}), ...mutOpts() }, 'комбинация');
-    S.ui.combo = []; S.ui.blood = null; S.ui.wlink = null;
+    cmd({ t: 'combo', ids: combo.slice(), free, ...(blood != null ? { blood } : {}), ...(wlink != null ? { wlink } : {}), ...(pay.length ? { pay } : {}), ...mutOpts() }, 'комбинация');
+    S.ui.combo = []; S.ui.mpay = []; S.ui.blood = null; S.ui.wlink = null;
 }
 export function fightKey(e) {
     const v = S.view;
@@ -270,7 +308,7 @@ export function fightKey(e) {
     if (v.fight.seat !== S.you || v.fight.stage !== 'witcher' || v.prompt) return false;
     const p = me();
     if (e.key === 'Enter') { playCombo(); return true; }
-    if (e.key === 'Backspace' || e.key === 'Escape') { S.ui.combo = (S.ui.combo || []).slice(0, -1); if (typeof S.ui.blood === 'number' && S.ui.blood >= S.ui.combo.length) S.ui.blood = null; if (typeof S.ui.wlink === 'number' && S.ui.wlink >= S.ui.combo.length) S.ui.wlink = null; renderFight(); return true; }
+    if (e.key === 'Backspace' || e.key === 'Escape') { S.ui.combo = (S.ui.combo || []).slice(0, -1); S.ui.mpay = (S.ui.mpay || []).filter(x => x < S.ui.combo.length); if (typeof S.ui.blood === 'number' && S.ui.blood >= S.ui.combo.length) S.ui.blood = null; if (typeof S.ui.wlink === 'number' && S.ui.wlink >= S.ui.combo.length) S.ui.wlink = null; renderFight(); return true; }
     if (/^[1-9]$/.test(e.key)) {
         const id = p.hand[Number(e.key) - 1];
         if (id && !S.ui.combo.includes(id)) {

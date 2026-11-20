@@ -3,10 +3,11 @@
 import { STEPS, push, ask } from './flow.mjs';
 import { vulnPickup } from './vtoken.mjs';
 import {
-    CARDS, LOC, ADJ, MONSTER, card, log, fx, drawCards, removeFrom, shuffle, skillVal, maxShield, clampShield, potionOf, pname,
+    CARDS, LOC, ADJ, MONSTER, card, log, fx, drawCards, removeFrom, shuffle, skillVal, maxShield, clampShield, potionOf, pname, rowOf, rowKey, rowDeckOf, clearRowCard,
 } from './util.mjs';
 import {
     SCHOOLS, ROW_MODS, LOC_ACTIONS, SKILL_NAME, LEVEL_DRAW, ELIXIR_LIMIT, PHASE3_HAND, TERRAIN_NAME, EXHAUST, TRACK_GOLD, TROPHIES_TO_WIN, trailOn,
+    isMage, skillName,
 } from '../data/rules-data.mjs';
 import { MUTAGEN, MUTAGEN_GAIN } from '../data/trail-data.mjs';
 import { SKILLTROPHIES } from '../data/gen-data.mjs';
@@ -15,6 +16,8 @@ import { bombOfferError, askElixirOrBomb } from './bombs.mjs';
 import { skCanEnter, skArrived, gift04Pending } from './skellige.mjs';
 
 export const SKILL_GEN = { combat: 'сражения', defense: 'защиты', alchemy: 'алхимии', spec: 'специализации' };
+/** «Чародеи»: «навык мудрости» instead of «навык защиты» for a mage. */
+export const skillGen = (p, s) => (s === 'defense' && isMage(p) ? 'мудрости' : SKILL_GEN[s]);
 
 // ---------------------------------------------------------------------------------------------
 // Turn start / end
@@ -55,7 +58,7 @@ STEPS.raiseSkill = (state, step) => {
     const p = state.players[step.seat];
     if (p.skills[step.skill] >= 5) return;
     p.skills[step.skill]++;
-    log(state, `${p.name}: навык ${SKILL_GEN[step.skill]} → ${p.skills[step.skill]}${step.why ? ' (' + step.why + ')' : ''}`);
+    log(state, `${p.name}: навык ${skillGen(p, step.skill)} → ${p.skills[step.skill]}${step.why ? ' (' + step.why + ')' : ''}`);
     fx(state, { k: 'skill', seat: p.seat, skill: step.skill, v: p.skills[step.skill] });
     const after = [];
     if (step.skill === 'defense') { p.shield = Math.min(maxShield(state, p), p.shield + 1); }
@@ -66,9 +69,9 @@ STEPS.raiseSkill = (state, step) => {
 STEPS.lowerSkill = (state, step) => {
     const p = state.players[step.seat];
     const v = p.skills[step.skill];
-    if (v >= 5 || v <= 1) { log(state, `${p.name}: навык ${SKILL_GEN[step.skill]} не понижается`); return; }
+    if (v >= 5 || v <= 1) { log(state, `${p.name}: навык ${skillGen(p, step.skill)} не понижается`); return; }
     p.skills[step.skill]--;
-    log(state, `${p.name}: навык ${SKILL_GEN[step.skill]} ↓ ${p.skills[step.skill]}`);
+    log(state, `${p.name}: навык ${skillGen(p, step.skill)} ↓ ${p.skills[step.skill]}`);
     fx(state, { k: 'skill', seat: p.seat, skill: step.skill, v: p.skills[step.skill] });
     clampShield(state, p);
 };
@@ -224,14 +227,14 @@ STEPS.gameOver = (state, step) => {
 // ---------------------------------------------------------------------------------------------
 // Row helpers
 // ---------------------------------------------------------------------------------------------
-export const rowCost = (state, slot) => {
-    const id = state.row[slot];
+export const rowCost = (state, slot, key = 'row') => {
+    const id = state[key][slot];
     return id ? (CARDS[id].burn ? -1 : Math.max(0, CARDS[id].cost + ROW_MODS[slot])) : null;
 };
 /** What `p` pays for row cell `slot` this turn: free / discounted by an event, Гертруда ignores
  *  the +1 cell modifier (CONT80-39). */
 export function buyCost(state, p, slot) {
-    const id = state.row[slot];
+    const id = rowOf(state, p)[slot];
     if (!id) return null;
     const t = state.turn;
     if (t && t.freeBuy) return 0;
@@ -240,28 +243,33 @@ export function buyCost(state, p, slot) {
     const mod = ROW_MODS[slot] > 0 && hasGear(p, 'CONT80-39') ? 0 : ROW_MODS[slot];
     return Math.max(0, CARDS[id].cost + mod - ((t && t.buyDiscount) || 0));
 }
-/** Shift right so that the empty cells are on the left, then reveal into them (База.md p. 19). */
+/** Shift right so that the empty cells are on the left, then reveal into them (База.md p. 19).
+ *  «Чародеи»: the mage row (if any) is refilled the same way from the mage deck. */
 export function refillRow(state) {
-    const cards = state.row.filter(Boolean);
-    const empty = state.row.length - cards.length;
-    const fresh = [];
-    for (let i = 0; i < empty; i++) fresh.push(state.actionDeck.shift() || null);
-    state.row = [...fresh, ...cards];
+    for (const [key, deck] of [['row', 'actionDeck'], ['mrow', 'mactionDeck']]) {
+        if (!state[key]) continue;
+        const cards = state[key].filter(Boolean);
+        const empty = state[key].length - cards.length;
+        const fresh = [];
+        for (let i = 0; i < empty; i++) fresh.push(state[deck].shift() || null);
+        state[key] = [...fresh, ...cards];
+    }
     fx(state, { k: 'row' });
 }
 STEPS.takeZeroCard = (state, step) => {
     const p = state.players[step.seat];
-    const zero = state.row.map((id, i) => ({ id, i })).filter(x => x.id && CARDS[x.id].cost === 0);
+    const zero = rowOf(state, p).map((id, i) => ({ id, i })).filter(x => x.id && CARDS[x.id].cost === 0);
     if (zero.length === 0) {
         const revealed = [];
         let got = null;
-        while (state.actionDeck.length) {
-            const id = state.actionDeck.shift();
+        const deck = rowDeckOf(state, p);
+        while (deck.length) {
+            const id = deck.shift();
             if (CARDS[id].cost === 0) { got = id; break; }
             revealed.push(id);
         }
-        state.actionDeck.push(...revealed);
-        shuffle(state, state.actionDeck);
+        deck.push(...revealed);
+        shuffle(state, deck);
         if (got) { p.discard.push(got); log(state, `${p.name} берёт карту стоимости 0 «${CARDS[got].name}» из колоды в сброс`); }
         return;
     }
@@ -271,8 +279,7 @@ STEPS.takeZeroCard = (state, step) => {
 STEPS.takeZeroDone = (state, step) => {
     const p = state.players[step.seat];
     const id = step.ids[0];
-    const i = state.row.indexOf(id);
-    if (i >= 0) state.row[i] = null;
+    clearRowCard(state, id);
     p.discard.push(id);
     fx(state, { k: 'gain', seat: p.seat, id, to: 'discard' });
     log(state, `${p.name} берёт «${CARDS[id].name}» (стоимость 0) в сброс`);
@@ -383,7 +390,7 @@ STEPS.locSchool = (state, step) => {
     const p = state.players[step.seat];
     const cost = trainCost(p, step.skill);
     p.gold -= cost;
-    log(state, `${p.name} тренируется в школе (${SKILL_NAME[step.skill]}) за ${cost} золота`);
+    log(state, `${p.name} тренируется в школе (${skillName(p, step.skill)}) за ${cost} золота`);
     const page = keepOf(p, 'train');
     if (page) { removeFrom(p.keeps, page); log(state, `${p.name} сбрасывает карту «${page.name}» (скидка 3 золота)`); }
     push(state, { op: 'raiseSkill', seat: p.seat, skill: step.skill, why: 'тренировка' });
@@ -404,7 +411,7 @@ STEPS.locSwapPick = (state, step) => {
     removeFrom(p.hand, removed);
     p.removed.push(removed);
     const lim = CARDS[removed].burn ? -1 : CARDS[removed].cost + 1;
-    const ok = state.row.filter(id => id && !CARDS[id].burn && CARDS[id].cost <= lim);
+    const ok = rowOf(state, p).filter(id => id && !CARDS[id].burn && CARDS[id].cost <= lim);
     log(state, `${p.name} убирает из игры «${CARDS[removed].name}»`);
     if (!ok.length) return;
     ask(state, { seat: p.seat, kind: 'cards', from: 'row', ids: ok, min: 1, max: 1, title: 'Обмен карты', text: `Возьмите в руку карту из ряда с напечатанной стоимостью не больше ${lim}.`, op: 'locSwapTake', args: { seat: p.seat } });
@@ -412,7 +419,7 @@ STEPS.locSwapPick = (state, step) => {
 STEPS.locSwapTake = (state, step) => {
     const p = state.players[step.seat];
     const id = step.ids[0];
-    state.row[state.row.indexOf(id)] = null;
+    clearRowCard(state, id);
     p.hand.push(id);
     fx(state, { k: 'gain', seat: p.seat, id, to: 'hand' });
     log(state, `${p.name} берёт «${CARDS[id].name}» из ряда`);
@@ -420,7 +427,7 @@ STEPS.locSwapTake = (state, step) => {
 };
 STEPS.locPoorRemove = (state, step) => {
     if (!step.ids.length) return;
-    for (const id of step.ids) { const i = state.row.indexOf(id); if (i >= 0) { state.row[i] = null; state.removedRow.push(id); } }
+    for (const id of step.ids) if (clearRowCard(state, id)) state.removedRow.push(id);
     log(state, `Из ряда убраны: ${step.ids.map(id => '«' + CARDS[id].name + '»').join(', ')}`);
     refillRow(state);
 };
@@ -487,7 +494,7 @@ STEPS.p3draw = (state) => {
     push(state, { op: 'p3buyAsk' });
 };
 export function buyOptions(state, p) {
-    return state.row.map((id, slot) => {
+    return rowOf(state, p).map((id, slot) => {
         if (!id) return null;
         const cost = buyCost(state, p, slot);
         if (cost < 0) return { slot, id, cost, burn: true, ok: p.hand.length >= 1 };
@@ -503,7 +510,7 @@ STEPS.p3buyAsk = (state) => {
         seat: p.seat, kind: 'choice', ui: 'row', title: 'Фаза III: новая карта',
         text: 'Обязательно возьмите 1 карту из ряда, сбросив из руки карты по её стоимости (с учётом ячейки).',
         options: opts.map(o => ({ id: String(o.slot), label: `${CARDS[o.id].name} — ${o.burn ? 'убрать 1 карту' : o.cost}`, cost: o.cost, burn: !!o.burn, disabled: !o.ok, hint: o.ok ? '' : o.burn ? 'Нужна карта в руке, чтобы убрать её из игры' : 'Мало карт в руке' })),
-        op: 'p3buyPick', args: {},
+        op: 'p3buyPick', args: {}, row: rowKey(state, p),
     });
 };
 STEPS.p3buyPick = (state, step) => {
@@ -514,7 +521,7 @@ STEPS.p3buyPick = (state, step) => {
     if (cost < 0) {
         ask(state, {
             seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: 1, max: 1, big: true,
-            title: 'Оплата: убрать карту из игры', text: `Чтобы взять «${CARDS[state.row[slot]].name}», уберите из игры 1 карту из руки.`,
+            title: 'Оплата: убрать карту из игры', text: `Чтобы взять «${CARDS[rowOf(state, p)[slot]].name}», уберите из игры 1 карту из руки.`,
             op: 'p3buyPay', args: { slot, burn: true },
         });
         return;
@@ -530,18 +537,19 @@ STEPS.p3buyPick = (state, step) => {
     }
     ask(state, {
         seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: p.hand.slice(), min: cost, max: cost,
-        title: `Оплата: ${cost}`, text: `Сбросьте из руки ${cost} карт(ы), чтобы взять «${CARDS[state.row[slot]].name}».`,
+        title: `Оплата: ${cost}`, text: `Сбросьте из руки ${cost} карт(ы), чтобы взять «${CARDS[rowOf(state, p)[slot]].name}».`,
         op: 'p3buyPay', args: { slot },
     });
 };
 STEPS.p3buyPay = (state, step) => {
     const p = state.players[state.turn.seat];
-    const id = state.row[step.slot];
+    const row = rowOf(state, p);
+    const id = row[step.slot];
     if (step.burn) for (const c of step.ids) { removeFrom(p.hand, c); p.removed.push(c); log(state, `${p.name} убирает из игры «${CARDS[c].name}»`); }
     else for (const c of step.ids) { removeFrom(p.hand, c); p.discard.push(c); }
-    state.row[step.slot] = null;
+    row[step.slot] = null;
     p.hand.push(id);
-    fx(state, { k: 'gain', seat: p.seat, id, to: 'hand', slot: step.slot });
+    fx(state, { k: 'gain', seat: p.seat, id, to: 'hand', slot: step.slot, row: rowKey(state, p) });
     log(state, `${p.name} получает «${CARDS[id].name}»${step.burn ? '' : step.ids.length ? `, сбросив ${step.ids.length}` : ''}`);
     // Solo: if the card was not taken from the rightmost cell, that cell's card leaves the game.
     if (state.solo && step.slot !== 5 && state.row[5]) {
@@ -549,6 +557,16 @@ STEPS.p3buyPay = (state, step) => {
         state.row[5] = null;
         state.removedRow.push(gone);
         log(state, `Одиночная игра: «${CARDS[gone].name}» из правой ячейки убрана из игры`);
+    }
+    // «Чародеи» (p. 5): the card at the same position of the other row leaves the game.
+    if (state.mrow) {
+        const other = state[rowKey(state, p) === 'mrow' ? 'row' : 'mrow'];
+        const gone = other[step.slot];
+        if (gone) {
+            other[step.slot] = null;
+            state.removedRow.push(gone);
+            log(state, `«${CARDS[gone].name}» из ${rowKey(state, p) === 'mrow' ? 'обычного ряда' : 'ряда чародеев'} (та же позиция) убрана из игры`);
+        }
     }
     refillRow(state);
     push(state, { op: 'endTurn' });

@@ -8,11 +8,11 @@
 //     (optional, the token stays). The monster defeated or chased: all its tokens are discarded,
 //     the 6 reshuffled, the new monster gets a token.
 import { STEPS, push, ask } from './flow.mjs';
-import { CARDS, MONSTER, LOC, log, fx, removeFrom, shuffle, randInt, drawCards, potionOf, skillVal, maxShield } from './util.mjs';
-import { TERRAINS, TERRAIN_NAME, SKILLS, SKILL_NAME } from '../data/rules-data.mjs';
+import { CARDS, MONSTER, LOC, log, fx, removeFrom, shuffle, randInt, d6, drawCards, potionOf, skillVal, maxShield, rowOf, clearRowCard } from './util.mjs';
+import { TERRAINS, TERRAIN_NAME, SKILLS, SKILL_NAME, skillName, isMage } from '../data/rules-data.mjs';
 import { VULNS, BIG, ROMAN, vulnWindow, vulnText, isSpecial } from '../data/vuln-data.mjs';
 import { bombOf } from '../data/bombs-data.mjs';
-import { F, fp, alive, gainShield } from './fight.mjs';
+import { F, fp, alive, gainShield, gainBarrier, loseShield } from './fight.mjs';
 import { vulnOn } from './vuln.mjs';
 import { refillRow } from './turn.mjs';
 
@@ -122,7 +122,7 @@ STEPS.vtStart = (state) => {
     const f = state.fight, p = fp(state);
     if (!f.vuln || !ensureVulnState(state)) return;
     const ns = [...new Set(p.vulns.filter(x => x.terrain === f.terrain).map(x => x.n))].sort((a, b) => a - b);
-    f.vt = { ns, ign: [], life: 0, gold: 0, perColor: [], comboSize: [], drawPlus: 0, drawPerYellow: 0, dmgLess: 0, capUsed: 0 };
+    f.vt = { ns, ign: [], life: 0, gold: 0, perColor: [], comboSize: [], drawPlus: 0, drawPerYellow: 0, dmgLess: 0, capUsed: 0, acts: [] };
     if (!ns.length) return;
     log(state, `${p.name}: жетоны уязвимостей этого монстра — ${ns.map(n => ROMAN[n - 1]).join(', ')}`, { kind: 'fight' });
     const vt = f.vt;
@@ -153,6 +153,10 @@ STEPS.vtStart = (state) => {
             case 'dmgLess': vt.dmgLess += o.n; break;
             case 'ignFx': vt.ignFx = n; break;
             case 'chooseType': vt.choose = { ...o, n }; break;
+            // Кащей I / V: separate effects for mages and witchers (Доп монстра.md p. 2).
+            case 'kVuln1': if (isMage(p)) vt.acts.push({ n, k: 'kDie' }); else vt.kYellow = n; break;
+            case 'kVuln5': if (isMage(p)) vt.acts.push({ n, k: 'payShield', cost: 1, dmg: 1 }); else vt.kOne = n; break;
+            case 'payShield': vt.acts.push({ n, k: 'payShield', cost: o.n, dmg: o.dmg }); break;
         }
     }
 };
@@ -230,7 +234,7 @@ export const vtIgnoredSpecial = (f, n) => !!(f && f.vt && f.vt.ign.includes(n));
 // ---- consequences ----------------------------------------------------------------------------
 STEPS.vtCheapAsk = (state, step) => {
     const p = state.players[step.seat];
-    const ids = state.row.filter(id => id && CARDS[id].cost === 1 && !CARDS[id].burn);
+    const ids = rowOf(state, p).filter(id => id && CARDS[id].cost === 1 && !CARDS[id].burn);
     if (!ids.length) { log(state, 'Уязвимость: в ряду нет карт со стоимостью 1'); return; }
     if (p.bot || ids.length === 1) { push(state, { op: 'vtCheapDo', seat: p.seat, ids: [strongest(ids)] }); return; }
     ask(state, { seat: p.seat, kind: 'cards', from: 'row', ids, min: 1, max: 1, title: 'Уязвимость', text: 'Победив монстра: возьмите 1 карту со стоимостью 1 из ряда и положите её в свой сброс.', op: 'vtCheapDo', args: { seat: p.seat } });
@@ -238,9 +242,8 @@ STEPS.vtCheapAsk = (state, step) => {
 STEPS.vtCheapDo = (state, step) => {
     const p = state.players[step.seat];
     const id = step.ids && step.ids[0];
-    const i = state.row.indexOf(id);
-    if (i < 0) return;
-    state.row[i] = null; p.discard.push(id); refillRow(state);
+    if (!rowOf(state, p).includes(id)) return;
+    clearRowCard(state, id); p.discard.push(id); refillRow(state);
     log(state, `${p.name}: уязвимость — «${CARDS[id].name}» из ряда в сброс`);
     fx(state, { k: 'gain', seat: p.seat, id, to: 'discard' });
 };
@@ -343,8 +346,18 @@ STEPS.vtOp = (state, step) => {
             if (bot) { push(state, F('vtDo', { n, o, stage: 'skill', choice: cand[0] })); return; }
             ask(state, {
                 seat: p.seat, kind: 'choice', title: `Уязвимость ${ROMAN[n - 1]}`, text: `${T} Жетон после этого сбрасывается.`,
-                options: [...cand.map(s => ({ id: s, label: `Навык «${SKILL_NAME[s]}» ${p.skills[s]} → ${p.skills[s] + 1}` })), { id: 'no', label: 'Не использовать (жетон остаётся)' }], op: 'vtDo', args: { fight: 1, n, o, stage: 'skill' },
+                options: [...cand.map(s => ({ id: s, label: `Навык «${skillName(p, s)}» ${p.skills[s]} → ${p.skills[s] + 1}` })), { id: 'no', label: 'Не использовать (жетон остаётся)' }], op: 'vtDo', args: { fight: 1, n, o, stage: 'skill' },
             });
+            return;
+        }
+        case 'elixirName': {
+            // Кащей II: the named elixir from the deck; if it is not there — any elixir of the deck.
+            const named = state.elixirDeck.find(id => potionOf(id).name === o.name);
+            if (named) { push(state, F('vtDo', { n, o, stage: 'elixirName', ids: [named] })); return; }
+            if (!state.elixirDeck.length) { say(state, n, 'колода эликсиров пуста'); return; }
+            const kinds = [...new Map(state.elixirDeck.map(id => [potionOf(id).name, id])).values()];
+            if (bot || kinds.length === 1) { push(state, F('vtDo', { n, o, stage: 'elixirName', ids: [kinds[0]] })); return; }
+            askCards(state, p, n, o, 'elixirName', kinds, 1, 1, `${T} «${o.name}» в колоде нет — выберите другой эликсир.`, { from: 'elixirs' });
             return;
         }
         case 'bbDef': case 'bbLife': {
@@ -386,6 +399,14 @@ STEPS.vtOp = (state, step) => {
                 return;
             }
             if (bot || top.length === 1) return;
+            askCards(state, p, n, o, 'order', top, top.length, top.length, `${T} Щёлкайте по порядку: первая выбранная карта окажется на верху колоды.`, { from: 'deck', ordered: true });
+            return;
+        }
+        case 'kLook': {
+            // Кащей IV: a mage draws 2; a witcher looks at the top 4 and puts them back in any order.
+            if (isMage(p)) { const g = drawCards(state, p, 2); say(state, n, `+${g} карт(ы)`); return; }
+            const top = p.deck.slice(0, 4);
+            if (top.length < 2 || bot) { if (top.length) say(state, n, `${p.name} смотрит верхние карты колоды`); return; }
             askCards(state, p, n, o, 'order', top, top.length, top.length, `${T} Щёлкайте по порядку: первая выбранная карта окажется на верху колоды.`, { from: 'deck', ordered: true });
             return;
         }
@@ -439,6 +460,7 @@ STEPS.vtOp = (state, step) => {
             return;
         }
         // ---- the monster's first turn
+        case 'barrier': say(state, n); gainBarrier(state, p, o.n, `уязвимость ${ROMAN[n - 1]}`); return;
         case 'look2': {
             const top = f.life.slice(0, 2);
             if (top.length < 2 || bot) { if (top.length) say(state, n, `${p.name} смотрит верхние карты запаса жизни монстра`); return; }
@@ -478,6 +500,16 @@ STEPS.vtDo = (state, step) => {
             if (!yes || p.gold < o.n) return;
             p.gold -= o.n; payEffect(state, p, n, o);
             return;
+        case 'elixirName': {
+            const id = ids[0];
+            if (!id || !removeFrom(state.elixirDeck, id)) return;
+            p.elixirs.push(id);
+            shuffle(state, state.elixirDeck);
+            say(state, n, `+ эликсир «${potionOf(id).name}» из колоды эликсиров (колода перемешана)`);
+            fx(state, { k: 'elixir', seat: p.seat, n: 1 });
+            push(state, { op: 'elixirLimit', seat: p.seat });
+            return;
+        }
         case 'pay':
             if (!ids.length) return;
             payCards(state, p, ids); payEffect(state, p, n, o);
@@ -510,17 +542,16 @@ STEPS.vtDo = (state, step) => {
         case 'row1': {
             if (!ids.length) return;
             const c = CARDS[ids[0]];
-            const row = state.row.filter(id => id && !CARDS[id].burn && CARDS[id].cost <= c.cost + 1);
+            const row = rowOf(state, p).filter(id => id && !CARDS[id].burn && CARDS[id].cost <= c.cost + 1);
             if (!row.length) { log(state, `В ряду нет карт стоимостью до ${c.cost + 1}`); return; }
             askCards(state, p, n, o, 'row2', row, 1, 1, `Уязвимость ${ROMAN[n - 1]}: «${c.name}» (стоимость ${c.cost}) уйдёт из игры. Выберите карту ряда стоимостью не больше ${c.cost + 1} — она ляжет в ваш сброс.`, { from: 'row', args: { give: ids[0] } });
             return;
         }
         case 'row2': {
             const id = ids[0];
-            const i = state.row.indexOf(id);
-            if (i < 0 || !removeFrom(p.hand, step.give)) return;
+            if (!rowOf(state, p).includes(id) || !removeFrom(p.hand, step.give)) return;
             p.removed.push(step.give);
-            state.row[i] = null; p.discard.push(id); refillRow(state);
+            clearRowCard(state, id); p.discard.push(id); refillRow(state);
             say(state, n, `«${CARDS[step.give].name}» убрана из игры, «${CARDS[id].name}» из ряда в сброс`);
             return;
         }
@@ -666,6 +697,62 @@ STEPS.vtReturnDo = (state, step) => {
     p.hand.push(id);
     say(state, f.vt.returnOne, `«${CARDS[id].name}» возвращается в руку`);
 };
+
+// ---- Кащей: vulnerabilities used by a button in the own fight turn (once per fight each) ------------
+export function vtActs(state, p) {
+    const f = state.fight;
+    if (!f || !f.vt || !f.vt.acts || !f.vt.acts.length || f.seat !== p.seat) return [];
+    return f.vt.acts.map((a, i) => ({
+        i, n: a.n,
+        label: a.k === 'kDie' ? `Уязвимость ${ROMAN[a.n - 1]}: бросок кубика` : `Уязвимость ${ROMAN[a.n - 1]}: ${isMage(p) ? 'энергия' : 'щит'} −${a.cost} → ${a.dmg} урона`,
+        text: vulnText(f.mon, a.n),
+        err: vtActError(state, p, i),
+    }));
+}
+export function vtActError(state, p, i) {
+    const f = state.fight;
+    const a = f && f.vt && f.vt.acts && f.vt.acts[i];
+    if (!a) return 'Нет такой уязвимости';
+    if (f.stage !== 'witcher' || f.seat !== p.seat) return 'Только в свой ход битвы';
+    if (a.used) return 'Уже использовано в этой битве';
+    if (a.k === 'payShield' && p.shield < a.cost) return isMage(p) ? 'Не хватает энергии' : 'Не хватает щита';
+    return null;
+}
+STEPS.vtAct = (state, step) => {
+    const f = state.fight, p = fp(state);
+    const a = f.vt.acts[step.i];
+    a.used = true;
+    if (a.k === 'payShield') {
+        loseShield(state, p, a.cost, `уязвимость ${ROMAN[a.n - 1]}`);
+        push(state, F('dealDamage', { n: a.dmg, src: `уязвимость ${ROMAN[a.n - 1]}` }), F('awaitWitcher'));
+        return;
+    }
+    // Кащей I (mage): 1–2 energy +2, 3–4 the top card of the discard, 5–6 2 damage.
+    const r = d6(state); fx(state, { k: 'd6', v: r, seat: p.seat });
+    if (r <= 2) { say(state, a.n, `бросок ${r} — энергия +2`); gainShield(state, p, 2, `уязвимость ${ROMAN[a.n - 1]}`); }
+    else if (r <= 4) {
+        if (p.discard.length) { const id = p.discard.pop(); p.hand.push(id); say(state, a.n, `бросок ${r} — «${CARDS[id].name}» с верха сброса в руку`); }
+        else say(state, a.n, `бросок ${r} — сброс пуст`);
+    } else { say(state, a.n, `бросок ${r} — 2 урона`); push(state, F('dealDamage', { n: 2, src: `уязвимость ${ROMAN[a.n - 1]}` })); }
+    push(state, F('awaitWitcher'));
+};
+/** Кащей I / V (witcher): after the combo's effects — a yellow card: shield +2; exactly 1 card: 2 damage. */
+export function vtAfterCombo(state, p, ids) {
+    const f = state.fight;
+    if (!f || !f.vt) return [];
+    const out = [];
+    if (f.vt.kYellow && !f.vt.kYellowUsed && ids.some(id => isColor(CARDS[id], 'yellow'))) {
+        f.vt.kYellowUsed = true;
+        say(state, f.vt.kYellow, 'в комбинации есть жёлтая карта — щит +2');
+        gainShield(state, p, 2, `уязвимость ${ROMAN[f.vt.kYellow - 1]}`);
+    }
+    if (f.vt.kOne && !f.vt.kOneUsed && ids.length === 1) {
+        f.vt.kOneUsed = true;
+        say(state, f.vt.kOne, 'комбинация из 1 карты — 2 урона');
+        out.push(F('dealDamage', { n: 2, src: `уязвимость ${ROMAN[f.vt.kOne - 1]}` }));
+    }
+    return out;
+}
 
 // ---- MON-01 II: any time in the fight — an unused elixir for the top card of the discard ----------
 export function vtElixirTopError(state, p, id) {

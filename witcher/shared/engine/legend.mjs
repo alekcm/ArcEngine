@@ -3,7 +3,7 @@
 // the end of the game. The fight itself reuses engine/fight.mjs (f.legend, see legendFightStart).
 import { STEPS, push, ask } from './flow.mjs';
 import { LOC, ADJ, log, fx, shuffle, randInt, CARDS, removeFrom } from './util.mjs';
-import { SKILL_NAME } from '../data/rules-data.mjs';
+import { SKILL_NAME, skillName } from '../data/rules-data.mjs';
 import { LEGENDS, LEGMOVES, RUINS } from '../data/gen-data.mjs';
 import { LEGEND, LEGEND_BY_KEY, LEG_MOVE, RUIN, SOLO_MOVES, SOLO_NAME, legendOpts } from '../data/legend-data.mjs';
 
@@ -204,7 +204,7 @@ STEPS.ruinSkillAsk = (state, step) => {
     const opts = ['combat', 'defense', 'alchemy', 'spec'].filter(s => p.skills[s] < 5);
     if (!opts.length) return;
     if (p.bot || opts.length === 1) { push(state, { op: 'raiseSkill', seat: p.seat, skill: opts.sort((a, b) => p.skills[a] - p.skills[b])[0], why: 'руины', noLevelCards: true }); return; }
-    ask(state, { seat: p.seat, kind: 'choice', title: 'Руины', text: 'Увеличьте любой свой навык на 1 (без карт за повышение уровня ведьмака).', options: opts.map(s => ({ id: s, label: `${SKILL_NAME[s]} ${p.skills[s]} → ${p.skills[s] + 1}` })), op: 'ruinSkillDo', args: { seat: p.seat } });
+    ask(state, { seat: p.seat, kind: 'choice', title: 'Руины', text: 'Увеличьте любой свой навык на 1 (без карт за повышение уровня ведьмака).', options: opts.map(s => ({ id: s, label: `${skillName(p, s)} ${p.skills[s]} → ${p.skills[s] + 1}` })), op: 'ruinSkillDo', args: { seat: p.seat } });
 };
 STEPS.ruinSkillDo = (state, step) => { push(state, { op: 'raiseSkill', seat: step.seat, skill: step.choice, why: 'руины', noLevelCards: true }); };
 

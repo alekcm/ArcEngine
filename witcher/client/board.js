@@ -223,7 +223,9 @@ export class Board {
         return { root, model, base };
     }
 
-    async syncWitchers(players) {
+    async syncWitchers(all) {
+        // «Чародеи»: a mage has no location until it picks its start (setup).
+        const players = all.filter(p => p.loc != null);
         const byLoc = {};
         for (const p of players) (byLoc[p.loc] = byLoc[p.loc] || []).push(p.seat);
         for (const p of players) {

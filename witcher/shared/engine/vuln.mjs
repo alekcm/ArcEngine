@@ -4,7 +4,7 @@
 // monster cards, the Двимеритовая бомба. Operations are encoded in data/vuln-data.mjs.
 import { STEPS, push, ask } from './flow.mjs';
 import { CARDS, MONSTER, log, fx, removeFrom, shuffle, randInt, d6, clampShield, potionOf, drawCards, skillVal } from './util.mjs';
-import { trailOn, SKILLS, SKILL_NAME } from '../data/rules-data.mjs';
+import { trailOn, SKILLS, SKILL_NAME, skillName, isMage } from '../data/rules-data.mjs';
 import { ATTACKS, DISCARD, BIG, SPECIALS, SPECIAL, isSpecial, ROMAN } from '../data/vuln-data.mjs';
 import { bombOf } from '../data/bombs-data.mjs';
 import { LEGEND, LEG_SPECIAL, legTableDamage } from '../data/legend-data.mjs';
@@ -224,7 +224,12 @@ STEPS.spOp = (state, step) => {
             onAttackDiscard(state, p, [id], fromDeck);
             return hurt(n);
         }
-        case 'shield0': return loseShield(state, p, p.shield, 'особая атака');
+        case 'shield0':
+            if (op.mageBarrier && isMage(p)) {
+                if (p.barrier) { log(state, `${p.name} теряет весь барьер (${p.barrier})`); p.barrier = 0; fx(state, { k: 'barrier', seat: p.seat, n: 0 }); }
+                return;
+            }
+            return loseShield(state, p, p.shield, 'особая атака');
         case 'shieldDown': return loseShield(state, p, op.n, 'особая атака');
         case 'color': {
             const ids = p.hand.filter(id => op.colors.some(col => isColor(CARDS[id], col)));
@@ -517,8 +522,8 @@ STEPS.dimeritDo = (state, step) => {
 };
 /** The large cards of level III monsters for Брукса (the ones of this game, except her own). */
 function levelThreeBig(state) {
-    const troll = trailOn(state, 'troll');
-    return Object.keys(BIG).filter(id => MONSTER[id] && MONSTER[id].level === 3 && !MONSTER[id].sk && id !== 'MON-14' && (id !== 'MON-30' || troll));
+    const troll = trailOn(state, 'troll'), koshchei = (state.exp || []).includes('mages:koshchei');
+    return Object.keys(BIG).filter(id => MONSTER[id] && MONSTER[id].level === 3 && !MONSTER[id].sk && id !== 'MON-14' && (id !== 'MON-30' || troll) && (id !== 'MON-29' || koshchei));
 }
 STEPS.discApply = (state, step) => {
     if (!alive(state)) return;
@@ -577,7 +582,7 @@ STEPS.discApply = (state, step) => {
         const opts = SKILLS.filter(s => p.skills[s] > 1 && p.skills[s] < 5);
         if (!f.dice) { f.dice = 1; log(state, 'На карту монстра кладётся 1 кубик'); }
         if (opts.length === 1 || (opts.length && p.bot)) push(state, { op: 'lowerSkill', seat: p.seat, skill: opts[opts.length - 1], fight: 1 });
-        else if (opts.length) ask(state, { seat: p.seat, kind: 'choice', title: 'Способность сброса', text: 'Понизьте любой свой навык на 1.', options: opts.map(s => ({ id: s, label: SKILL_NAME[s] })), op: 'vLowerDo', args: { fight: 1 } });
+        else if (opts.length) ask(state, { seat: p.seat, kind: 'choice', title: 'Способность сброса', text: 'Понизьте любой свой навык на 1.', options: opts.map(s => ({ id: s, label: skillName(p, s) })), op: 'vLowerDo', args: { fight: 1 } });
     }
     if (d.cheapest) push(state, F('vCheapAsk'));
     if (d.afterCombo) { if (c.comboDone) afterCombo25(state, p); else c.after25 = (c.after25 || 0) + 1; }

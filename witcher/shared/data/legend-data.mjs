@@ -70,7 +70,7 @@ export const LEG_SPECIAL = {
         [{ k: 'dmg', n: 4 }, { k: 'next', ban: B }],
         [{ k: 'dmg', n: 5 }, { k: 'next', needBlue: 2 }]],
     'LEG-GAUNTER': [
-        [{ k: 'shield0' }, { k: 'dmg', n: 2 }],
+        [{ k: 'shield0', mageBarrier: true }, { k: 'dmg', n: 2 }],   // «чародей: вместо этого теряет весь барьер»
         [{ k: 'dmg', n: 4 }, { k: 'next', ban: Y }],
         [{ k: 'dmgTable', by: 'loc' }],
         [{ k: 'dmg', n: 7 }]],

@@ -4,14 +4,16 @@
 // encodes them as structured operations the engine executes (engine/vuln.mjs).
 import { BIGCARDS } from './gen-data.mjs';
 import { DAGON_BIG, DAGON_ATTACKS, DAGON_DISCARD } from './skellige-data.mjs';
+import { KOSHCHEI_BIG } from './mages-data.mjs';
 
 /** The 4 special combat cards: the number is the special attack I–IV of the fought monster. */
 export const SPECIALS = [1, 2, 3, 4].map(n => ({ id: 'MON-SPECIAL-0' + n, n, cell: ['r1c1', 'r1c2', 'r2c1', 'r2c2'][n - 1] }));
 export const SPECIAL = Object.fromEntries(SPECIALS.map(s => [s.id, s]));
 export const isSpecial = (id) => !!SPECIAL[id];
-/** Large monster cards by the small card id (Сирена and Кащей have none in this game). */
+/** Large monster cards by the small card id (Сирена has none). */
 // «Скеллиге»: Dagon's special side (skellige-data.mjs) — special attacks and a discard ability, no vulnerabilities.
-export const BIG = Object.fromEntries([...BIGCARDS, DAGON_BIG].map(b => [b.id, b]));
+// «Чародеи»: Кащей (Набор монстров) — his large card from Монстры/Кащей.md (mages-data.mjs).
+export const BIG = Object.fromEntries([...BIGCARDS, DAGON_BIG, KOSHCHEI_BIG].map(b => [b.id, b]));
 export const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
 // ---------------------------------------------------------------------------------------------
@@ -111,6 +113,9 @@ export const ATTACKS = {
         [{ k: 'dmg', n: 3 }, { k: 'next', maxCombo: 1 }], [{ k: 'skip' }, { k: 'color', colors: G, else: [{ k: 'dmg', n: 4 }] }]],
     'MON-30': [[{ k: 'dmg', n: 2 }, { k: 'next', noShield: true }], [{ k: 'dmg', n: 2 }, { k: 'next', deckFirst: true }],
         [{ k: 'dmg', n: 4 }, { k: 'next', drawCap: 1 }], [{ k: 'shield0' }, { k: 'randHand', n: 2, orDeck: true }]],
+    // Кащей: I — blue corners and blue links deal no damage next turn; IV — red corners only.
+    'MON-29': [[{ k: 'dmg', n: 3 }, { k: 'next', noDmgBlue: true }], [{ k: 'dmg', n: 2 }, { k: 'randHand', n: 2 }],
+        [{ k: 'deckTop', n: 3, orHand: 'any' }], [{ k: 'dmg', n: 4 }, { k: 'next', noDmgRed: true }]],
 };
 
 // Discard abilities (the card with the crumbling monster head): what happens when a special card
@@ -146,6 +151,7 @@ export const DISCARD = {
     'MON-27': { ignore: 'all', elixirs: 2, resetAlchemy: true },
     'MON-28': { ignore: 2, unless: ['red'] },
     'MON-30': { poolPick: true },
+    'MON-29': { poolBottom: 1 },
 };
 
 /** Short texts of the active next-turn restrictions (fight HUD). */
@@ -175,6 +181,8 @@ export const NEXT_TEXT = {
     dmgLess: (n) => `урон комбинации −${n}`,
     needBlue: (n) => `без синей карты урон −${n}`,
     armorPlus: (n) => `броня монстра +${n}`,
+    noDmgBlue: () => 'урон синих карт и синих связей игнорируется',
+    noDmgRed: () => 'урон в углах красных карт игнорируется',
 };
 export const COLOR_WORD = { blue: 'синие', red: 'красные', green: 'зелёные', purple: 'фиолетовые', yellow: 'жёлтые' };
 export function nextText(r) {
@@ -205,6 +213,13 @@ export function nextText(r) {
 //   perColor colour · comboSize two more · drawPlus n · drawPerYellow n · addCard [needBlue|blueOnly]
 //   returnOne · redRepeat
 //   dmgLess n · ignFx · payElixirIgnFx · chooseType [ifMonsterFirst] · look2 · elixirShield [over]
+//   Кащей («Чародеи»; the mage/witcher halves by the fighter):
+//   kVuln1 — I: witcher: a combo with a yellow card → shield +2; mage: a die (energy/top/dmg)
+//   elixirName name — II: that elixir from the deck (none: any elixir of the deck), deck shuffled
+//   payShield n dmg — III: any time in the own turn, shield (energy) −n → damage
+//   kLook — IV: mage: draw 2; witcher: look at the top 4 of the deck, back in any order
+//   kVuln5 — V: witcher: after a 1-card combo 2 damage; mage: energy −1 → 1 damage
+//   barrier n — VI: before the monster's first turn
 // ---------------------------------------------------------------------------------------------
 const v = (k, o = {}) => ({ k, ...o });
 const first = v('first'), noAbility = v('noAbility'), ignDisc = v('ignDisc'), look2 = v('look2'), look3 = v('look3');
@@ -242,13 +257,14 @@ export const VULNS = {
     'MON-27': [[life(2)], [shield(4)], [perColor('red')], [first], [draw(2)], [goldWin(2)]],
     'MON-28': [[draw(1, 2)], [v('redRepeat')], [goldWin(2)], [ignSp('Обвить жертву')], [ignSp('Ядовитые челюсти')], [v('payName', { names: ['Ирден'], deck: true, dmg: 3 })]],
     'MON-30': [[draw(2)], [dmgLess], [fetchC('red')], [v('addCard')], [v('look3take')], [ignSp('Бросок булыжника')]],
+    'MON-29': [[v('kVuln1')], [v('elixirName', { name: 'Пурга' })], [v('payShield', { n: 1, dmg: 2 })], [v('kLook')], [v('kVuln5')], [v('barrier', { n: 2 })]],
 };
 const W = {
-    fight: ['first', 'life', 'lifeTrophy', 'noAbility', 'ignSp', 'ignDisc', 'goldWin', 'cheapWin', 'chaseWin', 'elixirTop', 'perColor', 'comboSize', 'drawPlus', 'drawPerYellow', 'addCard', 'returnOne', 'redRepeat', 'dmgLess', 'ignFx', 'chooseType', 'cap1x'],
-    pre: ['trackElixir', 'gold', 'elixir', 'shield', 'fetch', 'elixirPick', 'payGold', 'redraw', 'tutor', 'rowSwap', 'skill', 'bbDef', 'bbLife'],
-    post: ['dropSpecial', 'draw', 'look3', 'look3take', 'payElixir', 'elixirsDraw', 'cap1', 'playOne'],
+    fight: ['first', 'life', 'lifeTrophy', 'noAbility', 'ignSp', 'ignDisc', 'goldWin', 'cheapWin', 'chaseWin', 'elixirTop', 'perColor', 'comboSize', 'drawPlus', 'drawPerYellow', 'addCard', 'returnOne', 'redRepeat', 'dmgLess', 'ignFx', 'chooseType', 'cap1x', 'kVuln1', 'payShield', 'kVuln5'],
+    pre: ['trackElixir', 'gold', 'elixir', 'shield', 'fetch', 'elixirPick', 'payGold', 'redraw', 'tutor', 'rowSwap', 'skill', 'bbDef', 'bbLife', 'elixirName'],
+    post: ['dropSpecial', 'draw', 'look3', 'look3take', 'payElixir', 'elixirsDraw', 'cap1', 'playOne', 'kLook'],
     w1: ['drawOrBomb', 'w1Elixir', 'w1Color', 'w1Petri', 'shieldMax'],
-    m1: ['look2', 'payElixirIgnFx', 'elixirShield'],
+    m1: ['look2', 'payElixirIgnFx', 'elixirShield', 'barrier'],
 };
 /** The window of an operation (payName / payColor: before the pools if they lower the life). */
 export function vulnWindow(op) {

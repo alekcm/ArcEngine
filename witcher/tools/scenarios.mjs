@@ -241,6 +241,29 @@ export function skelligeScenario(seed = 33) {
     p.gifts = ['DAGON-GIFT-02'];
     return st;
 }
+/** «Чародеи» + Кащей: Альзур (a mixed game: two rows) next to Кащей with a track token and the
+ *  vulnerability tokens III and V of his terrain; energy 2 and a hand that shows the card-by-card
+ *  combo, the paid extras, «связь любого цвета» and barrier. */
+export function magesScenario(seed = 35) {
+    const st = createGame({ seed, exp: ['mages', 'mages:koshchei', 'trail', 'trail:vuln'], players: [{ name: 'Игрок', school: 'alzur' }, { name: 'Ламберт', school: 'wolf', bot: 1 }] });
+    while (st.prompt) apply(st, st.prompt.seat, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    const slot = st.slots.find(s => s.mon);
+    slot.mon = 'MON-29';
+    p.loc = slot.token;
+    st.turn.moved = true;
+    p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
+    p.vulns = [{ terrain: slot.terrain, n: 3 }, { terrain: slot.terrain, n: 5 }];
+    const hand = ['M-START-01', 'M-START-03', 'M-START-17', 'M-START-34', 'M-A-12'];
+    for (const id of hand) {
+        for (const pile of [p.hand, p.deck, p.discard, st.mactionDeck]) { const i = pile.indexOf(id); if (i >= 0) pile.splice(i, 1); }
+        const r = st.mrow.indexOf(id); if (r >= 0) st.mrow[r] = st.mactionDeck.shift();
+    }
+    p.discard.push(...p.hand.splice(0));
+    p.hand.push(...hand);
+    p.skills.defense = 2; p.skills.spec = 2; p.shield = 2;
+    return st;
+}
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -288,8 +311,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — легендарная охота', 'Песочница — Скеллиге', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — битва ведьмаков', 'Песочница — легендарная охота', 'Песочница — Скеллиге', 'Песочница — Чародеи', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — легендарная охота', legendScenario()), save('Песочница — Скеллиге', skelligeScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — битва ведьмаков', duelScenario()), save('Песочница — легендарная охота', legendScenario()), save('Песочница — Скеллиге', skelligeScenario()), save('Песочница — Чародеи', magesScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

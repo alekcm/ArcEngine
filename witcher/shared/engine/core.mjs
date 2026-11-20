@@ -2,10 +2,10 @@
 // and runs the step machine; options(state, seat) lists what that seat may do right now, with
 // the reason for everything that is not allowed (the UI shows those reasons on disabled buttons).
 import { STEPS, push, run, ask } from './flow.mjs';
-import { vtElixirTopError } from './vtoken.mjs';
-import { CARDS, LOC, ADJ, MONSTER, log, fx, removeFrom, potionOf, d6 } from './util.mjs';
-import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME } from '../data/rules-data.mjs';
-import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
+import { vtElixirTopError, vtActs, vtActError } from './vtoken.mjs';
+import { CARDS, LOC, ADJ, MONSTER, log, fx, removeFrom, potionOf, d6, homeOf, rowOf, allRowCards } from './util.mjs';
+import { LOC_ACTIONS, LOC_ACTION_TEXT, SKILL_NAME, SCHOOLS, TERRAIN_NAME, skillName } from '../data/rules-data.mjs';
+import { movePaymentError, canEnter, meditationOptions, SKILL_GEN, skillGen, autoReroll, comparePoker, pokerValue, POKER_NAMES, SOLO_POKER, gearMoveError } from './turn.mjs';
 import { monsterFightError, elixirError, specError, activeEffectError, comboError, bloodError, wlinkError, bombError } from './fight.mjs';
 import { duelError } from './duel.mjs';
 import { ACTIVE_EFFECTS, hasTrophy, hasWitcherTrophy, hasGear, trainCost, GEAR_MOVES } from './effects.mjs';
@@ -47,19 +47,19 @@ export function locActionInfo(state, p) {
     switch (act.kind) {
         case 'raise': {
             const v = p.skills[act.skill];
-            if (v >= 5) info.err = `Навык ${SKILL_GEN[act.skill]} уже 5`;
-            else if (v > p.level) info.err = `Навык ${SKILL_GEN[act.skill]} (${v}) выше уровня ведьмака (${p.level})`;
+            if (v >= 5) info.err = `Навык ${skillGen(p, act.skill)} уже 5`;
+            else if (v > p.level) info.err = `Навык ${skillGen(p, act.skill)} (${v}) выше уровня ведьмака (${p.level})`;
             break;
         }
         case 'school': {
-            const home = p.loc === SCHOOLS[p.school].home;
+            const home = p.loc === homeOf(p);
             for (const s of ['combat', 'defense', 'alchemy', 'spec']) {
                 const cost = trainCost(p, s);
                 let e = null;
                 if (s === 'spec' && !home) e = 'Специализацию — только в своей школе';
                 else if (p.skills[s] >= 5) e = 'Уже 5';
                 else if (p.gold < cost) e = `Нужно ${cost} золота`;
-                info.choices.push({ id: s, label: `${SKILL_NAME[s]} ${p.skills[s]} → ${p.skills[s] + 1}`, cost, err: e });
+                info.choices.push({ id: s, label: `${skillName(p, s)} ${p.skills[s]} → ${p.skills[s] + 1}`, cost, err: e });
             }
             if (!info.choices.some(c => !c.err)) info.err = 'Нечего тренировать (золото или уровень навыков)';
             break;
@@ -78,7 +78,7 @@ export function locActionInfo(state, p) {
         }
         case 'poker': if (p.gold < 1) info.err = 'Нужно хотя бы 1 золото'; break;
         case 'swap': {
-            const okCards = p.hand.filter(h => !CARDS[h].burn && state.row.some(r => r && !CARDS[r].burn && CARDS[r].cost <= CARDS[h].cost + 1));
+            const okCards = p.hand.filter(h => !CARDS[h].burn && rowOf(state, p).some(r => r && !CARDS[r].burn && CARDS[r].cost <= CARDS[h].cost + 1));
             if (!okCards.length) info.err = p.hand.length ? 'В ряду нет подходящей карты' : 'Рука пуста';
             break;
         }
@@ -104,6 +104,8 @@ export function options(state, seat) {
             bombs: (p.bombs || []).map(id => ({ id, err: bombError(state, p, id) })),
             // Главоглаз II (vulnerability): an elixir for the top card of the discard.
             vulnElixir: state.fight.vt && state.fight.vt.elixirTop ? p.elixirs.map(id => ({ id, err: vtElixirTopError(state, p, id) })) : undefined,
+            // Кащей I / III / V: once-per-fight vulnerabilities used by a button.
+            vulnActs: vtActs(state, p),
             active: Object.keys(ACTIVE_EFFECTS).filter(k => k.startsWith('W-') ? hasWitcherTrophy(p, k.slice(2)) : ACTIVE_EFFECTS[k].src === 'gear' ? p.gear.includes(k) : hasTrophy(p, k)).map(k => ({ key: k, label: ACTIVE_EFFECTS[k].label, err: activeEffectError(state, p, k) })),
             mustPlay: p.hand.length > 0,
         };
@@ -321,13 +323,13 @@ function turnCmd(state, p, cmd) {
                 case 'poor': {
                     mark();
                     if (p.gold === 0) { p.gold = 1; log(state, `${p.name}: +1 золото (${LOC[p.loc].name})`); }
-                    ask(state, { seat: p.seat, kind: 'cards', from: 'row', ui: 'row', ids: state.row.filter(Boolean), min: 0, max: 2, title: LOC[p.loc].name, text: 'Можно убрать из игры до 2 карт ряда (ряд пополнится).', op: 'locPoorRemove', args: {} });
+                    ask(state, { seat: p.seat, kind: 'cards', from: 'row', ui: 'row', ids: allRowCards(state), min: 0, max: 2, title: LOC[p.loc].name, text: state.mrow ? 'Можно убрать из игры до 2 карт любого из рядов (ряды пополнятся).' : 'Можно убрать из игры до 2 карт ряда (ряд пополнится).', op: 'locPoorRemove', args: {} });
                     state.undoable = true;
                     break;
                 }
                 case 'swap': {
                     mark();
-                    const okCards = p.hand.filter(h => !CARDS[h].burn && state.row.some(r => r && !CARDS[r].burn && CARDS[r].cost <= CARDS[h].cost + 1));
+                    const okCards = p.hand.filter(h => !CARDS[h].burn && rowOf(state, p).some(r => r && !CARDS[r].burn && CARDS[r].cost <= CARDS[h].cost + 1));
                     ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids: okCards, min: 1, max: 1, title: 'Обмен карты', text: 'Уберите из игры 1 карту из руки; затем возьмите из ряда карту с напечатанной стоимостью не больше чем на 1 выше.', op: 'locSwapPick', args: { seat: p.seat } });
                     break;
                 }
@@ -415,14 +417,17 @@ function fightCmd(state, p, cmd) {
         case 'spec': { const e = specError(state, p); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'useSpec', fight: 1 }); return ok(); }
         case 'active': { const e = activeEffectError(state, p, cmd.key); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'useActive', fight: 1, key: cmd.key }); return ok(); }
         case 'vulnElixir': { const e = vtElixirTopError(state, p, cmd.id); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'vtElixirTop', fight: 1, id: cmd.id }); return ok(); }
+        case 'vulnAct': { const i = Number(cmd.i); const e = vtActError(state, p, i); if (e) return err(e); f.stage = 'busy'; push(state, { op: 'vtAct', fight: 1, i }); return ok(); }
         case 'combo': {
             const ids = Array.isArray(cmd.ids) ? cmd.ids : [];
             const blood = cmd.blood == null ? null : Number(cmd.blood);
             const wlink = cmd.wlink == null ? null : Number(cmd.wlink);
-            const e = comboError(state, p, ids, { free: !!cmd.free, blood, wlink });
+            // «Чародеи»: indices of the cards whose additional effect is paid with energy.
+            const pay = Array.isArray(cmd.pay) ? [...new Set(cmd.pay.map(Number).filter(Number.isInteger))] : [];
+            const e = comboError(state, p, ids, { free: !!cmd.free, blood, wlink, pay });
             if (e) return err(e);
             const mutOff = Array.isArray(cmd.mutOff) ? cmd.mutOff.filter(x => typeof x === 'string') : [];
-            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood, wlink, mutOff, mut8: cmd.mut8 === 'draw' ? 'draw' : 'dmg' });
+            push(state, { op: 'playCombo', fight: 1, ids, free: !!cmd.free, links: cmd.links || null, blood, wlink, mutOff, mut8: cmd.mut8 === 'draw' ? 'draw' : 'dmg', pay });
             return ok();
         }
     }

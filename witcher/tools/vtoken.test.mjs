@@ -51,13 +51,13 @@ function fightWith(st, mon, ns, { track = false, setup, answers = true } = {}) {
 }
 const logHas = (st, re) => st.log.some(l => re.test(l.t));
 
-test('данные: 174 уязвимости закодированы, у каждой операции есть окно, игнорируемые атаки есть на карте', () => {
+test('данные: 180 уязвимостей (с Кащеем) закодированы, у каждой операции есть окно, игнорируемые атаки есть на карте', () => {
     let n = 0;
     for (const [id, list] of Object.entries(VULNS)) {
         assert.equal(list.length, 6, id);
         for (const ops of list) { n++; for (const o of ops) { assert.ok(vulnWindow(o), id + ' ' + o.k); if (o.k === 'ignSp') assert.ok(BIG[id].attacks.some(a => a.name === o.name), o.name); } }
     }
-    assert.equal(n, 174);
+    assert.equal(n, 180);
     // «Скеллиге»: Dagon's special side has no vulnerabilities (Скеллиге.md p. 10).
     assert.deepEqual(Object.keys(VULNS).sort(), Object.keys(BIG).filter(id => id !== 'DAGON').sort());
 });
@@ -233,7 +233,7 @@ test('битва: выбор особой атаки после открытия
     assert.ok(logHas(st, /не больше 1 урона/) || !logHas(st, /получает [2-9] урона/));
 });
 
-test('все 174 уязвимости: битва с каждой проходит до конца без ошибок (игрок соглашается на всё)', () => {
+test('все 180 уязвимостей: битва с каждой проходит до конца без ошибок (игрок соглашается на всё)', () => {
     let fights = 0;
     for (const mon of Object.keys(VULNS)) {
         for (let n = 1; n <= 6; n++) {
@@ -252,7 +252,7 @@ test('все 174 уязвимости: битва с каждой проходи
             }
         }
     }
-    assert.equal(fights, 348);
+    assert.equal(fights, 360);
 });
 
 test('партии ботов со всеми частями «По следу монстра» доходят до конца; жетоны уязвимостей подбираются', async () => {

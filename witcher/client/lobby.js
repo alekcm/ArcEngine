@@ -19,12 +19,17 @@ const SCHOOL_TEXT = {
     griffin: 'Годрик. «Магия»: Знак любого цвета продолжает комбинацию.',
     ciri: 'Цири. «Старшая Кровь»: раз за битву одна карта комбинации получает связь любого цвета. Родная школа — Каэр Морхен.',
     manticore: 'Алувар. «Быстрый метаболизм»: раз за битву сбросить неиспользованные эликсиры — урон и карты из колоды.',
+    alzur: 'Альзур, чародей. «Молнии»: энергия −1 и бросок кубика — до 3 урона. Старт — в свободной локации школы.',
+    ardea: 'Ардея, чародейка. «Левитация»: энергия и карты. Старт — в свободной локации школы.',
+    gehira: 'Гехира, чародейка. «Некромантия»: сбросить карту — урон и энергия. Старт — в свободной локации школы.',
+    otar: 'Отар, чародей. «Телепортация»: в первый ход битвы — барьер и энергия. Старт — в свободной локации школы.',
+    philippa: 'Филиппа, чародейка. «Полиморфизм»: бросок кубика — облик с эффектом. Старт — в свободной локации школы.',
 };
-const SCHOOL_NEEDS = { ciri: '«Цири и доп. события»', 'trail:manticore': '«По следу монстра» → Школа Мантикоры' };
+const SCHOOL_NEEDS = { ciri: '«Цири и доп. события»', 'trail:manticore': '«По следу монстра» → Школа Мантикоры', mages: '«Чародеи»' };
 const EXPANSIONS = [
     ['legendary', 'Легендарная охота', 'вместо гонки за трофеями — общий враг: легендарный монстр бродит по Континенту и оставляет руины; кто победит его, тот и выиграл (8 монстров, включая Кейрана)'],
     ['skellige', 'Скеллиге', 'острова 19–21, корабли и 50 карт исследования Скеллиге; Дагон поднимается из пучины — прогнавший его получает дар'],
-    ['mages', 'Чародеи', 'играбельные чародеи'],
+    ['mages', 'Чародеи', 'пять играбельных чародеев: энергия вместо щита, барьер, доп. эффекты карт за энергию и свой ряд карт'],
     ['ciri', 'Цири и доп. события', 'Цири, новые события исследования, тайные карты и жетоны заданий'],
     ['trail', 'По следу монстра', 'мини-дополнения можно включать по отдельности — уязвимости и особые атаки монстров подключаются следующими'],
     ['extra', 'Дополнительный монстр', 'новый монстр'],
@@ -42,7 +47,7 @@ export function renderLobby() {
         const open = sc.base || (L.settings.exp || []).includes(sc.exp);
         const cls = k === mySchool ? 'sel' : (taken.has(k) || !open) ? 'taken' : '';
         const why = !open ? `Включите дополнение ${SCHOOL_NEEDS[sc.exp] || ''}` : taken.has(k) ? 'Уже выбрано другим игроком' : '';
-        return `<div class="school ${cls}" data-school="${k}" style="--sc:${sc.color}" ${why ? `title="${esc(why)}"` : ''}><b>${esc(sc.school)}</b><small>${esc(SCHOOL_TEXT[k] || '')}${!open ? '<em> · нужно дополнение</em>' : ''}</small></div>`;
+        return `<div class="school ${cls}" data-school="${k}" style="--sc:${sc.color}" ${why ? `title="${esc(why)}"` : ''}><b>${esc(sc.mage ? `${sc.hero} · ${sc.school.toLowerCase()}` : sc.school)}</b><small>${esc(SCHOOL_TEXT[k] || '')}${!open ? '<em> · нужно дополнение</em>' : ''}</small></div>`;
     }).join('');
     const seats = L.seats.map(s => `<div class="seat" style="--sc:${SCHOOLS[s.school].color}"><span class="dot"></span><span class="nm">${s.bot ? icon('bot') + ' ' : ''}${esc(s.name)}</span><span class="tag ${s.host ? 'host' : ''}">${s.host ? 'хозяин' : s.bot ? 'бот' : s.online ? 'в сети' : 'не в сети'} · ${esc(SCHOOLS[s.school].name)}</span>${isHost && s.id !== S.you ? btn({ label: '', icon: icon('close'), small: true, data: `data-kick="${s.id}"` }) : ''}</div>`).join('');
     const solo = L.seats.length === 1;
@@ -66,7 +71,7 @@ export function renderLobby() {
             <div class="exp">${EXPANSIONS.map(([id, n, d]) => {
                 const ready = EXPANSIONS_READY.includes(id);
                 const why = !ready ? 'Подключается на следующем этапе' : !isHost ? 'Дополнения выбирает хозяин стола' : '';
-                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>${id === 'trail' ? trailParts(L, isHost) : id === 'legendary' ? legendParts(L, isHost, solo) : id === 'skellige' ? skelligeParts(L, isHost) : ''}`;
+                return `<label class="check" style="${ready ? '' : 'opacity:.5'}" title="${why}"><input type="checkbox" data-exp="${id}" ${(L.settings.exp || []).includes(id) ? 'checked' : ''} ${ready && isHost ? '' : 'disabled'}><span><b>${n}</b> — ${d}</span></label>${id === 'trail' ? trailParts(L, isHost) : id === 'legendary' ? legendParts(L, isHost, solo) : id === 'skellige' ? skelligeParts(L, isHost) : id === 'mages' ? magesParts(L, isHost) : ''}`;
             }).join('')}
             <div style="margin-top:4px">Дополнения подключаются по очереди: «Цири и доп. события» — играбельная Цири, новые карты исследования, тайные события и жетоны заданий; «По следу монстра» — бомбы, Мантикора, тролль, мутагены, уникальные и мастерские действия.</div></div>
             ${isHost && L.saves && L.saves.length ? `<h3>Сохранённые партии</h3><div class="saves">${L.saves.slice(0, 16).map(n => btn({ label: esc(n), small: true, data: `data-load="${esc(n)}"`, icon: icon('save') })).join('')}</div>` : ''}
@@ -90,6 +95,7 @@ export function renderLobby() {
         // «Легендарная охота»: the monster / difficulty selects stay while the expansion is on.
         exp = exp.includes('legendary') ? [...exp, ...(L.settings.exp || []).filter(x => /^legendary:(mon|solo):/.test(x))] : exp.filter(x => !x.startsWith('legendary:'));
         if (!exp.includes('skellige')) exp = exp.filter(x => !x.startsWith('skellige:'));
+        if (!exp.includes('mages')) exp = exp.filter(x => !x.startsWith('mages:'));
         // Switching «По следу монстра» on turns every mini-expansion on; switching all of them off turns it off.
         if (c.dataset.exp === 'trail' && c.checked) exp = [...exp.filter(x => !x.startsWith('trail:')), ...TRAIL_PARTS.map(t => 'trail:' + t.id)];
         if (c.dataset.exp.startsWith('trail:') && !exp.some(x => x.startsWith('trail:'))) exp = exp.filter(x => x !== 'trail');
@@ -147,6 +153,15 @@ function skelligeParts(L, isHost) {
     const on = exp.includes('skellige'), dis = on && isHost ? '' : 'disabled';
     return `<div class="subexp ${on ? '' : 'off'}" title="${on ? '' : 'Сначала включите «Скеллиге»'}">
         <label class="check"><input type="checkbox" data-exp="skellige:siren" ${on && exp.includes('skellige:siren') ? 'checked' : ''} ${dis}><span><b>Сирена</b> — монстр I уровня в локации Дагона, пока Дагона нет (трофей без жетона трофеев)</span></label>
+    </div>`;
+}
+
+/** «Чародеи»: Кащей (Доп монстра.md p. 2) — a level III monster added to the stack and decks. */
+function magesParts(L, isHost) {
+    const exp = L.settings.exp || [];
+    const on = exp.includes('mages'), dis = on && isHost ? '' : 'disabled';
+    return `<div class="subexp ${on ? '' : 'off'}" title="${on ? '' : 'Сначала включите «Чародеи»'}">
+        <label class="check"><input type="checkbox" data-exp="mages:koshchei" ${on && exp.includes('mages:koshchei') ? 'checked' : ''} ${dis}><span><b>Кащей</b> — монстр III уровня: фиолетовые эффекты не действуют; с уязвимостями — своя большая карта</span></label>
     </div>`;
 }
 

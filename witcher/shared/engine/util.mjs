@@ -3,8 +3,11 @@ import { STARTER, COMMON, MONSTERS, ATTACKS, POTIONS, BOARD, LEGENDS, LEGATTACKS
 import { SKILL_VALUE, HAND_LIMIT } from '../data/rules-data.mjs';
 import { MASTERS, UNIQUES } from '../data/trail-data.mjs';
 import { DAGON, SK_LOCS } from '../data/skellige-data.mjs';
+import { MAGE_START, MAGE_COMMON, MAGE_UNIQUES } from '../data/mages-data.mjs';
+import { SCHOOLS, isMage } from '../data/rules-data.mjs';
 
-export const CARDS = Object.fromEntries([...STARTER, ...COMMON, ...MASTERS, ...UNIQUES].map(c => [c.id, c]));
+// «Чародеи»: the mage action cards (printed scans, `mageCard`) share the lookup.
+export const CARDS = Object.fromEntries([...STARTER, ...COMMON, ...MASTERS, ...UNIQUES, ...MAGE_START, ...MAGE_COMMON, ...MAGE_UNIQUES].map(c => [c.id, c]));
 // «Легендарная охота»: the legendary monsters share the lookup (level III for the level-indexed
 // texts, life = the 20 legendary combat cards) and their combat cards share ATTACK.
 // «Скеллиге»: Dagon (a level II monster card that never lies in a monster stack).
@@ -42,10 +45,35 @@ export function shuffle(state, arr) {
 export const player = (state, seat) => state.players[seat];
 export const skillVal = (p, s) => SKILL_VALUE[Math.max(0, Math.min(5, p.skills[s]))];
 export const maxShield = (state, p) => {
+    // «Чародеи» (p. 6): the energy of a mage is capped by Мудрость outside a battle, by 4 in it.
+    if (isMage(p) && inFight(state, p)) return 4;
     let d = p.skills.defense;
     if (state.fight && state.fight.seat === p.seat && state.fight.mon === 'MON-15' && !state.fight.noAbility && d < 5) d = Math.max(1, d - 1);
     return SKILL_VALUE[d];
 };
+
+/** Is `p` a participant of the current fight (monster fight or either side of a witcher fight)? */
+export const inFight = (state, p) => !!(state.fight && (state.fight.seat === p.seat || state.fight.att === p.seat || state.fight.def === p.seat));
+/** The «локация своей школы»: a mage's start location (Чародеи p. 5), else the school's home. */
+export const homeOf = (p) => (p.home != null ? p.home : SCHOOLS[p.school] ? SCHOOLS[p.school].home : null);
+/** «Чародеи» (p. 5): a mage takes action cards only from the mage row (`state.mrow`), a witcher
+ *  only from the normal one. When every player is a mage the mage cards lie in `state.row`. */
+export const rowKey = (state, p) => (state.mrow && isMage(p) ? 'mrow' : 'row');
+export const rowOf = (state, p) => state[rowKey(state, p)];
+export const rowDeckOf = (state, p) => state[rowKey(state, p) === 'mrow' ? 'mactionDeck' : 'actionDeck'];
+/** Every card of both rows (anyone may REMOVE cards from either row). */
+export const allRowCards = (state) => [...state.row, ...(state.mrow || [])].filter(Boolean);
+/** Take card `id` out of whichever row holds it: returns { key, slot } or null. */
+export function clearRowCard(state, id) {
+    for (const key of ['row', 'mrow']) {
+        const r = state[key];
+        const i = r ? r.indexOf(id) : -1;
+        if (i >= 0) { r[i] = null; return { key, slot: i }; }
+    }
+    return null;
+}
+/** «щит» / «энергия» in texts about `p`. */
+export const shieldWord = (p) => (isMage(p) ? 'энергия' : 'щит');
 
 export function log(state, text, extra) {
     state.log.push({ i: state.log.length, t: text, turn: state.round, ...(extra || {}) });

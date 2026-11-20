@@ -23,6 +23,7 @@ import { MONSTERS, POTIONS, LEGENDS, LEGATTACKS, LEGMOVES, RUINS } from '../shar
 import { EVENTS } from '../shared/data/events-data.mjs';
 import { BOMBS } from '../shared/data/bombs-data.mjs';
 import { MASTERS, UNIQUES, MUTAGENS } from '../shared/data/trail-data.mjs';
+import { MAGE_COMMON, MAGE_START, MAGES, MAGE_TROPHIES, MAGE_UNIQUES } from '../shared/data/mages-data.mjs';
 
 const require = createRequire(import.meta.url);
 const sharp = require(process.env.SHARP || 'sharp');
@@ -45,6 +46,11 @@ const ATLAS = {
     LEG: 'Легендарные монстры/Легендарные монстры.jpg',
     LATK: 'Легендарные монстры/Атаки.jpg',
     LMOVE: 'Легендарные монстры/Движение.jpg',
+    MA: 'Маги/7E05E2AB2CAF8FB1603B57D484E25690532621B4_httpcloud3steamusercontentcomugc2031733202613567955910710BBF7AEDE6A9683CBA640F9184C7B1698B2.jpg',
+    MB: 'Маги/D1C52B6A620843DD4CFD14FF2E8912A289E4A442_httpcloud3steamusercontentcomugc2031733202613568169C2949658BB637E7B6F165851739A1CD3DBA2559F.jpg',
+    MS: 'Маги/Стартовые колоды.jpg',
+    MU: 'Маги/Личные карты.jpg',
+    ...Object.fromEntries(Object.values(MAGES).map(m => ['MT-' + m.id, `Маги/${m.hero} трофей.jpg`])),
     BIGMON: 'Монстры/C0A412B0121E82D71EABEBF758DFFE90C7A48D97_httpcloud3steamusercontentcomugc2033984369207806355AEF8C8D40EC913C9B22322C8BA6B19479F00B8B9.jpg',
 };
 const cellOf = (c) => { const m = /^r(\d+)c(\d+)$/.exec(c); return [+m[1], +m[2]]; };
@@ -124,7 +130,24 @@ async function skellige() {
     await cut('BIGMON', 'r5c6', { x: 0, y: 0, w: 929, h: 780 }, 'DAGON.webp', 420, 929, 1160);
     console.log('Скеллиге: 1');
 }
+/** «Чародеи»: mage action cards and trophies as printed (whole 579 × 899 cell); the small cards of
+ *  Кащей (r5c1) and Сирена (r5c3) of the monster atlas (the extra-monster set). */
+/** «Чародеи»: only the personal cards (MAGE-UNIQUE-01..05). */
+async function mageUniques() {
+    for (const c of MAGE_UNIQUES) await cut('MU', c.cell, { x: 0, y: 0, w: W, h: H }, `${c.id}.webp`, 480);
+    console.log('личные карты чародеев:', MAGE_UNIQUES.length);
+}
+async function mages() {
+    await mageUniques();
+    for (const c of MAGE_COMMON) await cut(c.id.startsWith('M-A-') ? 'MA' : 'MB', c.cell, { x: 0, y: 0, w: W, h: H }, `${c.id}.webp`, 480);
+    for (const c of MAGE_START) await cut('MS', c.cell, { x: 0, y: 0, w: W, h: H }, `${c.id}.webp`, 480);
+    for (const t of MAGE_TROPHIES) await cut('MT-' + t.mage, t.cell, { x: 0, y: 0, w: W, h: H }, `${t.id}.webp`, 420);
+    for (const m of MONSTERS.filter(m => m.id === 'MON-29' || m.id === 'MON-31')) await cut('MON', m.cell, { x: 0, y: 0, w: W, h: 600 }, `${m.id}.webp`, 420);
+    console.log('чародеи:', MAGE_COMMON.length + MAGE_START.length + MAGE_TROPHIES.length, '+ Кащей и Сирена');
+}
 const only = process.argv[2];
+if (only === 'mages') await mages();
+if (only === 'mu') await mageUniques();
 if (only === 'sk') await skellige();
 if (only === 'legend') await legend();
 if (only === 'wtrophies') await witcherTrophies();

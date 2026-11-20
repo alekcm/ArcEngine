@@ -579,3 +579,8 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .legview { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .legview .card.legendbig { --cw: 420px; --ch: 525px; }
 .legview p { max-width: 640px; color: var(--dim); font-size: 13px; text-align: center; margin: 0; }
+/* «Чародеи»: the additional effect of a combo card, paid with energy */
+#fight .paycard { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#fight .paytog { font-size: 11px; line-height: 1.2; padding: 3px 6px; max-width: 150px; border-radius: 6px; border: 1px solid #6b5bd0; background: #201a3a; color: #cfc6ff; cursor: pointer; }
+#fight .paytog.on { background: #4b3bb0; color: #fff; border-color: #a99cff; box-shadow: 0 0 8px #7a6aff80; }
+.fx.barrier { color: #b8e0c8; }

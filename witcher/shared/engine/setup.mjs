@@ -5,9 +5,11 @@ import { setupAttackDeck, onMonsterAppears, vulnOn } from './vuln.mjs';
 import './vtoken.mjs';
 import { setupLegend } from './legend.mjs';
 import { setupSkellige } from './skellige.mjs';
-import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
+import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, skillName, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
 import { MASTERS, MUTAGENS, UNIQUE_OF } from '../data/trail-data.mjs';
 import { MONSTER, LOC, CARDS, shuffle, randInt, log, drawCards } from './util.mjs';
+import { MAGE_COMMON, MAGE_START, MAGE_UNIQUES } from '../data/mages-data.mjs';
+import { LOC_ACTIONS } from '../data/rules-data.mjs';
 import { push, run, ask } from './flow.mjs';
 
 /**
@@ -61,7 +63,7 @@ export function createGame(opts) {
     }
 
     // 8. Monsters.
-    for (const id of [...BASE_MONSTERS, ...(trailOn(state, 'troll') ? ['MON-30'] : [])]) state.monsterStacks[MONSTER[id].level].push(id);
+    for (const id of [...BASE_MONSTERS, ...(trailOn(state, 'troll') ? ['MON-30'] : []), ...(state.exp.includes('mages:koshchei') ? ['MON-29'] : [])]) state.monsterStacks[MONSTER[id].level].push(id);
     // Mutagens: a face-down deck next to the board.
     state.mutagenDeck = trailOn(state, 'mutagens') ? shuffle(state, MUTAGENS.map(m => m.id)) : [];
     for (const l of [1, 2, 3]) shuffle(state, state.monsterStacks[l]);
@@ -89,14 +91,35 @@ export function createGame(opts) {
     // «Скеллиге»: the Skellige decks, ships and the Dagon track (after the base setup as well).
     setupSkellige(state, n);
 
+    // «Чародеи» (p. 4): the mage action deck and its row above the normal one (after the base
+    // setup so the base RNG sequence is unchanged). If every player is a mage, the mage cards take
+    // the places of the normal row and deck.
+    const mageSeats = lobby.map((lp, i) => (SCHOOLS[lp.school] && SCHOOLS[lp.school].mage ? i : -1)).filter(i => i >= 0);
+    if (mageSeats.length) {
+        if (!state.exp.includes('mages')) state.exp.push('mages');
+        const deck = shuffle(state, MAGE_COMMON.map(c => c.id));
+        const z = [], o = [];
+        while (z.length < 3) { const id = deck.shift(); (CARDS[id].cost === 0 ? z : o).push(id); }
+        deck.push(...o);
+        shuffle(state, deck);
+        shuffle(state, z);
+        const row = [deck.shift(), deck.shift(), deck.shift(), ...z];
+        if (mageSeats.length === n) { state.removedRow.push(...state.row); state.row = row; state.actionDeck = deck; state.normalRowBoxed = true; }
+        else { state.mrow = row; state.mactionDeck = deck; }
+    }
+
     // 10. Players.
     lobby.forEach((lp, seat) => {
         const school = SCHOOLS[lp.school] ? lp.school : 'wolf';
+        const mage = !!SCHOOLS[school].mage;
         // Unique actions: the hero's own card goes into the starting deck (11 cards).
-        const deck = shuffle(state, [...STARTER.filter(c => c.school === school).map(c => c.id), ...(trailOn(state, 'unique') && UNIQUE_OF[school] ? [UNIQUE_OF[school]] : [])]);
+        // «Чародеи»: the mage's personal card (Маги/Уникальные карты.md) — the same rule.
+        const deck = mage ? shuffle(state, [...MAGE_START.filter(c => c.mage === school).map(c => c.id), ...(trailOn(state, 'unique') ? MAGE_UNIQUES.filter(c => c.mage === school).map(c => c.id) : [])])
+            : shuffle(state, [...STARTER.filter(c => c.school === school).map(c => c.id), ...(trailOn(state, 'unique') && UNIQUE_OF[school] ? [UNIQUE_OF[school]] : [])]);
         const [cards, gold] = n === 1 ? [5, 3] : START_RES[n][seat];
         const p = {
             seat, name: lp.name || SCHOOLS[school].hero, school, bot: lp.bot || 0, loc: SCHOOLS[school].home,
+            ...(mage ? { mage: true, home: null, barrier: 0 } : {}),
             gold, hand: [], deck, discard: [], removed: [], elixirs: [], bombs: [],
             skills: { combat: 1, defense: 1, alchemy: 1, spec: 1 }, level: 1, shield: 1,
             trophies: [], track: 0, witcherTrophies: n - 1, trackTokens: { forest: null, mountain: null, water: null },
@@ -116,10 +139,10 @@ export function createGame(opts) {
             op: 'setupLevel2',
         });
     }
-    if (n >= 4) {
-        for (const p of state.players) push(state, { op: 'setupSkillAsk', seat: p.seat });
-        state.queue.reverse(); // first player chooses first
-    }
+    // «Чародеи» (p. 4, step 5): after the witchers, each mage — from the last player backwards —
+    // picks a free school location and starts there.
+    for (const seat of mageSeats.slice().reverse()) state.queue.push({ op: 'mageStartAsk', seat });
+    if (n >= 4) for (const p of state.players) state.queue.push({ op: 'setupSkillAsk', seat: p.seat });
     state.queue.push({ op: 'beginGame' });
     run(state);
     return state;
@@ -134,12 +157,36 @@ STEPS.setupLevel2 = (state, step) => {
     log(state, `Монстр II уровня появляется: ${LOC[state.slots[i].token].name}`);
 };
 
+/** School locations a mage may start in: not occupied by a player figure (Бехельт Нар only when
+ *  the Manticore school is in the game). */
+export function mageStartLocs(state) {
+    return Object.keys(LOC_ACTIONS).map(Number).filter(n => LOC_ACTIONS[n].kind === 'school' && LOC[n] && (n !== 0 || trailOn(state, 'manticore')))
+        .filter(n => !state.players.some(p => p.loc === n));
+}
+STEPS.mageStartAsk = (state, step) => {
+    const p = state.players[step.seat];
+    const locs = mageStartLocs(state);
+    if (!locs.length) { push(state, { op: 'mageStartDo', seat: p.seat, choice: String(SCHOOLS.wolf.home) }); return; }
+    if (p.bot) { push(state, { op: 'mageStartDo', seat: p.seat, choice: String(locs[randInt(state, locs.length)]) }); return; }
+    ask(state, {
+        seat: p.seat, kind: 'choice', title: `${p.name}: начальная локация`, ui: 'map',
+        text: 'Выберите свободную локацию ведьмачьей школы: вы закроете её символ своим жетоном и начнёте игру там. Для вас это «локация своей школы».',
+        options: locs.map(n => ({ id: String(n), label: LOC[n].name, loc: n })),
+        op: 'mageStartDo', args: { seat: p.seat },
+    });
+};
+STEPS.mageStartDo = (state, step) => {
+    const p = state.players[step.seat];
+    const n = Number(step.choice);
+    p.loc = n; p.home = n;
+    log(state, `${p.name} начинает игру в локации ${LOC[n].name} — она становится локацией школы чародея`);
+};
 STEPS.setupSkillAsk = (state, step) => {
     const p = state.players[step.seat];
     ask(state, {
         seat: p.seat, kind: 'choice', title: 'Подготовка к игре вчетвером/впятером',
         text: 'Выберите навык, который повышается на 1.',
-        options: ['combat', 'defense', 'alchemy', 'spec'].map(s => ({ id: s, label: SKILL_NAME[s] })),
+        options: ['combat', 'defense', 'alchemy', 'spec'].map(s => ({ id: s, label: skillName(p, s) })),
         op: 'setupSkill', args: { seat: p.seat },
     });
 };

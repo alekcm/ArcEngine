@@ -18,7 +18,7 @@
 //   * island actions 19–21 and the event islands (SK-EV-01..05), the Skellige gear;
 //   * Сирена (option 'skellige:siren'): in the Dagon location while Dagon is not up.
 import { STEPS, push, ask, later } from './flow.mjs';
-import { LOC, CARDS, MONSTER, log, fx, d6, shuffle, randInt, removeFrom, drawCards } from './util.mjs';
+import { LOC, CARDS, MONSTER, log, fx, d6, shuffle, randInt, removeFrom, drawCards, rowOf } from './util.mjs';
 import { PORTS, ISLANDS, DAGON_LOC, TRACK, TRACK_TOP, trackStart, GIFTS, GIFT, calmRange, dangerRange } from '../data/skellige-data.mjs';
 import { EVENTS, EXP_DECKS } from '../data/events-data.mjs';
 import { TERRAIN_NAME, SKILL_NAME } from '../data/rules-data.mjs';
@@ -282,7 +282,7 @@ export function skLocError(state, p, kind) {
     return null;
 }
 function mistChoices(state, p) {
-    const has = (c) => state.row.some(id => id && CARDS[id].cost === c);
+    const has = (c) => rowOf(state, p).some(id => id && CARDS[id].cost === c);
     return [
         { id: 'zero', label: 'Карта стоимости 0 из ряда → в сброс', err: has(0) ? null : 'В ряду нет карты стоимости 0' },
         { id: 'one', label: '1 золото → карта стоимости 1 из ряда в сброс', err: !has(1) ? 'В ряду нет карты стоимости 1' : p.gold < 1 ? 'Нужно 1 золото' : null },
@@ -537,12 +537,12 @@ STEPS.skGift02Move = (state, step) => {
 export function gift04Pending(state, p) {
     const t = state.turn;
     if (!hasGift(p, 'DAGON-GIFT-04') || !t || t.g04 || !p.hand.length) return false;
-    return p.hand.some(h => state.row.some(r => r && (CARDS[r].cost === CARDS[h].cost || CARDS[r].cost === CARDS[h].cost + 1)));
+    return p.hand.some(h => rowOf(state, p).some(r => r && (CARDS[r].cost === CARDS[h].cost || CARDS[r].cost === CARDS[h].cost + 1)));
 }
 STEPS.skGift04Ask = (state, step) => {
     const p = state.players[step.seat];
     state.turn.g04 = true;
-    const ids = p.hand.filter(h => state.row.some(r => r && (CARDS[r].cost === CARDS[h].cost || CARDS[r].cost === CARDS[h].cost + 1)));
+    const ids = p.hand.filter(h => rowOf(state, p).some(r => r && (CARDS[r].cost === CARDS[h].cost || CARDS[r].cost === CARDS[h].cost + 1)));
     if (p.bot || p.away) return;
     ask(state, { seat: p.seat, kind: 'cards', from: 'hand', ui: 'hand', ids, min: 0, max: 1, title: 'Дар Дагона', text: 'Можно убрать из игры 1 карту из руки и взять в руку карту из ряда той же напечатанной стоимости или на 1 выше.', op: 'skGift04Pick', args: { seat: p.seat } });
 };
@@ -551,7 +551,7 @@ STEPS.skGift04Pick = (state, step) => {
     const h = (step.ids || [])[0];
     if (!h) return;
     const c = CARDS[h].cost;
-    const cand = state.row.filter(r => r && (CARDS[r].cost === c || CARDS[r].cost === c + 1));
+    const cand = rowOf(state, p).filter(r => r && (CARDS[r].cost === c || CARDS[r].cost === c + 1));
     if (!cand.length) return;
     removeFrom(p.hand, h); p.removed.push(h);
     log(state, `${p.name} убирает из игры «${CARDS[h].name}» (дар Дагона)`);
@@ -561,9 +561,9 @@ STEPS.skGift04Pick = (state, step) => {
 STEPS.skGift04Take = (state, step) => {
     const p = state.players[step.seat];
     const id = step.ids[0];
-    const i = state.row.indexOf(id);
+    const i = rowOf(state, p).indexOf(id);
     if (i < 0) return;
-    state.row[i] = null;
+    rowOf(state, p)[i] = null;
     p.hand.push(id);
     log(state, `${p.name} берёт в руку «${CARDS[id].name}» из ряда (дар Дагона)`);
     fx(state, { k: 'gain', seat: p.seat, id, to: 'hand', slot: i });

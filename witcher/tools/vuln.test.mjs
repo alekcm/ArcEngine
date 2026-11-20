@@ -64,7 +64,7 @@ function monsterReveals(st, card) {
 const setHand = (p, ids) => { p.deck.push(...p.hand.filter(x => !ids.includes(x))); p.hand = ids.slice(); for (const id of ids) { let i = p.deck.indexOf(id); if (i >= 0) p.deck.splice(i, 1); i = p.discard.indexOf(id); if (i >= 0) p.discard.splice(i, 1); } };
 const answerAll = (st, pick) => { for (let i = 0; i < 10 && st.prompt && st.prompt.seat === 0; i++) { ok(apply(st, 0, pick(st.prompt))); settle(st); } };
 
-test('данные: 29 больших карт (Сирены и Кащея нет), у каждой 4 особые атаки, способность сброса и 6 уязвимостей; операции заданы для всех', () => {
+test('данные: 29 больших карт базового набора + Кащей из «Чародеев» (у Сирены нет), у каждой 4 особые атаки, способность сброса и 6 уязвимостей; операции заданы для всех', () => {
     assert.equal(BIGCARDS.length, 29);
     for (const b of BIGCARDS) {
         assert.ok(MONSTER[b.id], b.id);
@@ -80,7 +80,10 @@ test('данные: 29 больших карт (Сирены и Кащея не�
     assert.equal(BIG['MON-24'].name, 'Шептуха');
     assert.equal(BIG['MON-25'].name, MONSTER['MON-25'].name);
     assert.equal(BIG['MON-30'].name, 'Тролль');
-    assert.ok(!BIG['MON-31'] && !BIG['MON-29']);
+    assert.ok(!BIG['MON-31']);
+    assert.equal(BIG['MON-29'].name, 'Кащей');
+    assert.equal(ATTACKS['MON-29'].length, 4);
+    assert.ok(DISCARD['MON-29']);
     assert.ok(normalizeExp(['trail', 'trail:vuln']).includes('trail:vuln'));
 });
 
@@ -300,10 +303,10 @@ test('без «Уязвимостей» особые карты не появл�
     assert.equal(SPECIALS.length, 4);
 });
 
-test('все 116 особых атак и 29 способностей сброса выполняются (с выборами игрока) без ошибок', () => {
+test('все 120 особых атак и 30 способностей сброса (с Кащеем) выполняются (с выборами игрока) без ошибок', () => {
     const pick = (pr) => pr.kind === 'choice' ? { t: 'answer', choice: pr.options[0].id }
         : pr.ui === 'combo' ? { t: 'answer', ids: findChain(pr.ids, pr.min) || pr.ids.slice(0, pr.min) } : { t: 'answer', ids: pr.ids.slice(0, pr.min) };
-    for (const b of BIGCARDS) {
+    for (const b of [...BIGCARDS, BIG['MON-29']]) {
         for (let n = 1; n <= 4; n++) {
             const st = game({ seed: n + 10 });
             fightWith(st, b.id, { setup: (p) => { p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift()); p.gold = 5; } });

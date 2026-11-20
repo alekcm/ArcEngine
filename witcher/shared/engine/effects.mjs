@@ -27,6 +27,11 @@ export const ACTIVE_EFFECTS = {
     'MON-30': { label: 'Тролль: 2 урона, если колода пуста', src: 'monster' },
     'W-griffin': { label: 'Трофей Грифона: верх сброса, затем сбросить 1', src: 'witcher' },
     'W-manticore': { label: 'Трофей Мантикоры: сбросить эликсир → 1 урон', src: 'witcher' },
+    // «Чародеи»: trophies for defeating a mage (Маги/Трофеи.md). Филиппа's one is passive.
+    'W-alzur': { label: 'Трофей Альзура: бросить кубик (1–3: 1 урон, −2 карты; 4–5: 1; 6: 2 урона)', src: 'witcher' },
+    'W-ardea': { label: 'Трофей Ардеи: при щите 0 — 2 карты (в конце хода на 1 меньше)', src: 'witcher' },
+    'W-gehira': { label: 'Трофей Гехиры: сбросить 1 карту → 2 урона (в конце хода на 1 карту меньше)', src: 'witcher' },
+    'W-otar': { label: 'Трофей Отара: щит −1 → барьер 2', src: 'witcher' },
     'CONT79-15': { label: 'Кастет: сбросить 1 карту → 2 урона', src: 'gear' },
     'CONT79-01': { label: 'Арбалет: сбросить 1 карту → 2 урона (первый ход)', src: 'gear' },
     'CONT79-14': { label: 'Арбалет: 2 урона (первый ход)', src: 'gear' },

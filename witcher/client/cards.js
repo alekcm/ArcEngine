@@ -6,6 +6,7 @@ import { CARDS, MONSTER, ATTACK, POTION, LOC } from '/shared/engine/util.mjs';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { COLOR_NAME, TERRAIN_NAME, SKILL_NAME } from '/shared/data/rules-data.mjs';
 import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
+import { MAGE_TROPHY_TEXT } from '/shared/data/mages-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { BIG, SPECIAL, ROMAN as VROMAN } from '/shared/data/vuln-data.mjs';
@@ -69,10 +70,18 @@ export function fxText(f) {
     if (f.dmg) p.push(`урон ${f.dmg}`);
     if (f.shield) p.push(`щит +${f.shield}`);
     if (f.draw) p.push(`взять ${f.draw}`);
-    if (f.top) p.push('взять верхнюю карту колоды');
+    if (f.top) p.push('взять верхнюю карту сброса');
     if (f.ret) p.push('эта карта вернётся в руку');
     if (f.dice) p.push(f.dice === 'aard' ? 'кубик: 4–6 — урон 2' : 'кубик: урон 2/3/4');
     if (f.fixedDraw != null) p.push('в конце хода — 0 карт');
+    // «Чародеи»
+    if (f.dmgE) p.push('урон = энергия');
+    if (f.barrier) p.push(`барьер ${f.barrier}`);
+    if (f.barrierE) p.push('барьер = энергия');
+    if (f.energy) p.push(`энергия +${f.energy}`);
+    if (f.drawE) p.push('добор + энергия');
+    if (f.anyDiscard) p.push('любая карта из сброса');
+    if (f.anyLink) p.push('связь любого цвета');
     return p.join(', ') || 'нет эффекта';
 }
 
@@ -147,6 +156,7 @@ function printedAction(c, opts) {
     const col = CARD_COLOR[c.color] || '#777';
     const cost = opts.cost != null ? opts.cost : c.cost;
     const tip = `${c.name} — ${COLOR_NAME[c.color]}. ${fxText(c.fx)}. ${c.burn ? 'Стоимость: убрать из игры 1 карту из руки' : 'Стоимость ' + c.cost}. Местность: ${TERRAIN_NAME[c.terrain]}.`
+        + (c.extra && !c.extra.all ? ` Доп. эффект за ${c.extra.cost} энергии: ${fxText(c.extra.fx)}.` : '')
         + c.links.map(l => ` Связка (${COLOR_NAME[l.color]}): ${fxText(l.fx)}${l.cond ? ' / при 2 картах этого цвета дальше — ещё урон 3' : ''}.`).join('') + (c.text ? ' ' + c.text : '');
     const cc = !c.burn && cost !== c.cost ? (cost < c.cost ? 'down' : 'up') : '';
     return `<div class="card action printed ${opts.small ? 'small' : ''} ${opts.sel ? 'sel' : ''} ${opts.dim ? 'dim' : ''} ${opts.cls || ''}" data-id="${esc(c.id)}" style="--cc:${col}" title="${esc(tip)}">
@@ -310,8 +320,8 @@ export function trophyCard(t) {
     }
     if (t.kind === 'witcher') {
         // The printed card (Ведьмаки/Трофеи.md) when cut; otherwise a text card.
-        if (t.card && ART[t.card]) return `<div class="card mutagen" title="${esc(trophyLabel(t) + ': ' + (WITCHERTROPHIES[t.id] || ''))}"><div class="art" style="background-image:${artCss(t.card)}"></div></div>`;
-        return `<div class="card skilltrophy"><div class="name">${esc(trophyLabel(t))}</div><div class="txt">${esc(WITCHERTROPHIES[t.id] || '')}</div></div>`;
+        if (t.card && ART[t.card]) return `<div class="card mutagen" title="${esc(trophyLabel(t) + ': ' + (WITCHERTROPHIES[t.id] || MAGE_TROPHY_TEXT[t.id] || ''))}"><div class="art" style="background-image:${artCss(t.card)}"></div></div>`;
+        return `<div class="card skilltrophy"><div class="name">${esc(trophyLabel(t))}</div><div class="txt">${esc(WITCHERTROPHIES[t.id] || MAGE_TROPHY_TEXT[t.id] || '')}</div></div>`;
     }
     return '';
 }

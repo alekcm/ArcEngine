@@ -5,6 +5,7 @@ export function viewFor(state, seat) {
     const s = JSON.parse(JSON.stringify(state));
     delete s.rng; delete s.queue; delete s.seed; delete s.pendingMons; delete s.elixirLook;
     s.actionDeck = s.actionDeck.length;
+    if (s.mactionDeck) s.mactionDeck = s.mactionDeck.length;
     s.elixirDeck = s.elixirDeck.length;
     s.bombDeck = (s.bombDeck || []).length;
     s.mutagenDeck = (s.mutagenDeck || []).length;
