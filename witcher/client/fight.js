@@ -3,7 +3,9 @@
 // trophy abilities, fight log and the result screen.
 import { S, $, cmd, me, btn, toast } from './ctx.js';
 import { icon } from './icons.js';
-import { actionCard, monsterCard, attackCard, mutagenCard, esc } from './cards.js';
+import { actionCard, monsterCard, attackCard, mutagenCard, bigMonsterCard, specialCard, esc } from './cards.js';
+import { nextText } from '/shared/data/vuln-data.mjs';
+import { restrictError } from '/shared/engine/vuln.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { CARDS, MONSTER, POTION } from '/shared/engine/util.mjs';
@@ -26,6 +28,7 @@ export function renderFight() {
     const res = S.ui.fightResult;
     if (!f && !res) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
+    el.classList.toggle('vuln', !!(f && f.vuln));
     if (!f && res) { renderResult(el, res); return; }
     S.ui.fightSnap = { mon: f.mon, seat: f.seat };
     const fighter = v.players[f.seat];
@@ -45,7 +48,17 @@ export function renderFight() {
     const tot = p && combo.length ? comboTotals(v, p, combo, { free, blood, ...mutOpts() }) : null;
     const cErr = p ? comboError(v, p, combo, { free, blood }) : 'Не ваш ход';
 
-    const last = f.lastAttack ? `<div class="lastatk"><span>Последняя атака</span>${attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
+    const last = f.lastAttack ? `<div class="lastatk"><span>${f.lastAttack.type === 'special' ? 'Особая атака' : 'Последняя атака'}</span>${f.lastAttack.type === 'special' ? specialCard(f.lastAttack.id, f.mon) : attackCard(f.lastAttack.id, f.lastAttack.type)}</div>` : '';
+    // «Уязвимости и особые атаки»: restrictions in force now / next turn, monster's next turn, whole fight.
+    const rulesNow = f.vuln ? [
+        ...nextText(f.cur && f.stage === 'witcher' ? f.cur.r : null).map(t => `<span title="Действует в этом ходу битвы">${esc(t)}</span>`),
+        ...nextText(f.nextW).map(t => `<span class="next" title="Следующий ход ведьмака">след. ход: ${esc(t)}</span>`),
+        ...(f.nextM && f.nextM.chooseType ? ['<span class="next">след. ход монстра: тип атаки выбирается после открытия карты</span>'] : []),
+        ...(f.nextM && f.nextM.plus ? [`<span class="next">след. атака монстра: +${f.nextM.plus} урона</span>`] : []),
+        ...(f.whole && f.whole.shieldCap != null ? [`<span>до конца битвы: щит растёт не больше чем на ${f.whole.shieldCap} за ход</span>`] : []),
+        ...(f.whole && f.whole.defLess ? [`<span>до конца битвы: навык защиты −${f.whole.defLess}</span>`] : []),
+        ...(f.cur && f.cur.ign && f.stage === 'witcher' && (f.cur.ign.all || f.cur.ign.half) ? [`<span>монстр игнорирует ${f.cur.ign.all ? 'весь урон' : 'половину урона'}</span>`] : []),
+    ] : [];
     // The previous combo as one compact line (the cards themselves are in the log and discard).
     const lastCombo = f.lastCombo && f.lastCombo.ids.length ? `<div class="lastcombo"><span>Прошлая комбинация:</span> ${f.lastCombo.ids.map(id => esc(CARDS[id].name)).join(' › ')} <span class="fx dmg">${icon('sword')}<b>${f.lastCombo.dmg}</b></span></div>` : '';
 
@@ -83,6 +96,7 @@ export function renderFight() {
             if (linkIndex(lastC, CARDS[id]) < 0 && !(f.cur && f.cur.blizzard && !free) && !armed) { ok = false; why = bOpt === null ? 'Не соединяется с последней картой (можно через «Старшую Кровь»)' : 'Не соединяется с последней картой'; }
             if (f.cur && f.cur.onlyOne) { ok = false; why = 'Только 1 карта'; }
         }
+        if (ok) { const re = restrictError(f, p, [...combo, id]); if (re) { ok = false; why = re; } }
         if (ok && !combo.length && f.cur && f.cur.forcedFirst && p.hand.includes(f.cur.forcedFirst) && id !== f.cur.forcedFirst) { ok = false; why = 'Первой должна быть «' + CARDS[f.cur.forcedFirst].name + '»'; }
         return `<div class="hslot" style="margin-right:${-overlap}px" ${why ? `title="${esc(why)}"` : ''}>${actionCard(id, { cls: (ok ? 'pick can' : 'no') + ' huge' })}<kbd>${i + 1}</kbd></div>`;
     }).join('') : `<span style="color:var(--dim)">Рука ${esc(fighter.name)}: ${fighter.handCount} карт</span>`;
@@ -96,13 +110,14 @@ export function renderFight() {
         <span class="turnbadge" title="Лимит по навыку алхимии">${trailOn(v, 'bombs') ? 'Эликсиры и бомбы' : 'Эликсиры'}: ${f.elixirsUsed}</span>
         ${f.noAbility ? '<span class="turnbadge">Чёртов гриб: способность монстра не действует</span>' : ''}${f.moonDust ? '<span class="turnbadge">Лунная пыль: тип следующей атаки можно сменить</span>' : ''}</div>
     <div class="mon">
-        <div id="fMonCard">${monsterCard(f.mon, { big: true, life: f.lifeCount })}</div>
+        <div id="fMonCard">${f.vuln ? bigMonsterCard(f.mon, { life: f.lifeCount, dice: f.dice, cls: 'infight', hi: f.lastAttack && f.lastAttack.type === 'special' && f.stage !== 'witcher' ? f.lastAttack.n : null }) : monsterCard(f.mon, { big: true, life: f.lifeCount })}</div>
         <div class="pool"><div class="stack" id="fPool">${f.lifeCount}</div><div>Запас жизни монстра<div class="lifebar"><i style="width:${lifePct}%"></i></div><small style="color:var(--dim)">сброс атак: ${f.monDiscard.length}</small></div></div>
     </div>
     <div class="center">
         <div class="crow">${last}<div class="combo" id="fCombo">${comboHtml}</div></div>
         <div class="totals">${tot ? `<span class="fx dmg">${icon('sword')}<b>${tot.dmg}</b></span><span class="fx shield">${icon('shield')}<b>+${tot.shield}</b></span><span class="fx draw">${icon('draw')}<b>${tot.draw}</b></span>${tot.top ? `<span class="fx top">${icon('top')}<b>${tot.top}</b></span>` : ''}${tot.ret.length ? `<span class="fx ret">${icon('ret')}<b>${tot.ret.length}</b></span>` : ''}${tot.dice.length ? `<span class="fx dice" title="Бросок кубика при розыгрыше">${icon('dice')}<b>${tot.dice.length}</b></span>` : ''}${tot.fixedDraw != null ? '<span class="bloodnote">Решающий удар: в конце хода — 0 карт</span>' : ''}${free ? '<span style="color:#9ccff0">Пурга: последняя карта без связки</span>' : ''}${tot.blood ? `<span class="bloodnote">Старшая Кровь: ${esc(COLOR_SHORT[tot.blood.color])} связь${tot.blood.off ? ' (подавлена)' : ''}</span>` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта — любого цвета</span>' : ''}` : armed ? '<span class="bloodnote">Старшая Кровь: следующая карта после первой — любого цвета</span>' : ''}</div>
-        ${myStage ? `<div style="display:flex;gap:8px">${btn({ id: 'fPlay', label: combo.length ? `Разыграть (${combo.length})` : (p.hand.length ? 'Разыграть' : 'Пропустить (рука пуста)'), primary: true, why: cErr, key: 'Enter' })}${combo.length ? btn({ id: 'fClear', label: 'Сбросить выбор', key: 'Backspace' }) : ''}</div>` : ''}
+        ${rulesNow.length ? `<div class="rules-now">${rulesNow.join('')}</div>` : ''}
+        ${myStage ? `<div style="display:flex;gap:8px">${btn({ id: 'fPlay', label: combo.length ? `Разыграть (${combo.length})` : (!p.hand.length ? 'Пропустить (рука пуста)' : !cErr ? 'Пропустить (нет разрешённых карт)' : 'Разыграть'), primary: true, why: cErr, key: 'Enter' })}${combo.length ? btn({ id: 'fClear', label: 'Сбросить выбор', key: 'Backspace' }) : ''}</div>` : ''}
         ${lastCombo}
     </div>
     <div class="me">

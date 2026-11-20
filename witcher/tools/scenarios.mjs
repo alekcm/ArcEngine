@@ -8,7 +8,7 @@ import { createGame, apply, options, actingSeat } from '../shared/engine/core.mj
 import { viewFor } from '../shared/view.mjs';
 import { botCommand } from '../shared/bots.mjs';
 import { COMMON } from '../shared/data/gen-data.mjs';
-import { LOC, ADJ, CARDS } from '../shared/engine/util.mjs';
+import { LOC, ADJ, CARDS, MONSTER } from '../shared/engine/util.mjs';
 import { canEnter } from '../shared/engine/turn.mjs';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
@@ -160,7 +160,7 @@ export function bombScenario(seed = 14) {
  * (discard effects), three mutagens, two elixirs for «Быстрый метаболизм», a «Решающий удар» in
  * the row (cost: remove a card from the hand).
  */
-export const TRAIL_ALL = ['trail', 'trail:bombs', 'trail:manticore', 'trail:troll', 'trail:mutagens', 'trail:unique', 'trail:masters'];
+export const TRAIL_ALL = ['trail', 'trail:bombs', 'trail:manticore', 'trail:troll', 'trail:mutagens', 'trail:unique', 'trail:masters', 'trail:vuln'];
 export function trailScenario(seed = 15) {
     const st = createGame({ seed, exp: TRAIL_ALL, players: [{ name: 'Игрок', school: 'manticore' }, { name: 'Весемир', school: 'wolf', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -179,6 +179,27 @@ export function trailScenario(seed = 15) {
     if (state_locPop(st, slot.terrain) != null) p.trackTokens[slot.terrain] = state_locPop(st, slot.terrain, true);
     return st;
 }
+/** «Уязвимости и особые атаки»: Волколак next to the player; the combat deck is 12 base + 4 special
+ *  cards, a Двимеритовая бомба in hand; the large card (and its back) opens from the monster list. */
+export function vulnScenario(seed = 21) {
+    const st = createGame({ seed, exp: TRAIL_ALL, players: [{ name: 'Игрок', school: 'wolf' }, { name: 'Ламберт', school: 'viper', bot: 1 }] });
+    if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
+    const p = st.players[0];
+    const slot = st.slots.find(s => s.mon);
+    const was = slot.mon;
+    const take = (id) => { const i = st.monsterStacks[MONSTER_LEVEL(id)].indexOf(id); if (i >= 0) st.monsterStacks[MONSTER_LEVEL(id)].splice(i, 1); return id; };
+    slot.mon = take('MON-12');
+    st.monsterStacks[MONSTER_LEVEL(was)].push(was);
+    p.loc = slot.token;
+    st.turn.moved = true;
+    p.skills.combat = 3; p.skills.defense = 3; p.skills.alchemy = 3; p.skills.spec = 2; p.shield = 3; p.level = 3; p.gold = 5;
+    const bomb = st.bombDeck.find(b => b.startsWith('BOMB-07#'));
+    st.bombDeck.splice(st.bombDeck.indexOf(bomb), 1);
+    p.bombs.push(bomb);
+    p.elixirs.push(st.elixirDeck.shift(), st.elixirDeck.shift());
+    return st;
+}
+const MONSTER_LEVEL = (id) => MONSTER[id].level;
 export function pokerScenario(seed = 8) {
     const st = createGame({ seed, players: [{ name: 'Игрок', school: 'griffin' }, { name: 'Эскель', school: 'bear', bot: 1 }] });
     if (st.prompt) apply(st, 0, { t: 'answer', choice: st.prompt.options[0].id });
@@ -212,8 +233,8 @@ function save(name, st) {
     fs.writeFileSync(path.join(SAVES, name + '.json'), JSON.stringify({ v: 1, seats, state: st }));
     return name;
 }
-export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — середина партии'];
+export const SCENARIO_NAMES = ['Песочница — битва', 'Песочница — покер', 'Песочница — исследование', 'Песочница — снаряжение', 'Песочница — Цири и доп. события', 'Песочница — Цири', 'Песочница — бомбы', 'Песочница — По следу монстра', 'Песочница — уязвимости и особые атаки', 'Песочница — середина партии'];
 export function writeScenarios() {
-    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — середина партии', midGameScenario())];
+    return [save('Песочница — битва', fightScenario()), save('Песочница — покер', pokerScenario()), save('Песочница — исследование', exploreScenario()), save('Песочница — снаряжение', gearScenario()), save('Песочница — Цири и доп. события', ciriScenario()), save('Песочница — Цири', ciriHeroScenario()), save('Песочница — бомбы', bombScenario()), save('Песочница — По следу монстра', trailScenario()), save('Песочница — уязвимости и особые атаки', vulnScenario()), save('Песочница — середина партии', midGameScenario())];
 }
 if (process.argv[1] && process.argv[1].endsWith('scenarios.mjs')) console.log(writeScenarios().join('\n'));

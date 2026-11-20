@@ -511,3 +511,43 @@ input:focus, select:focus { outline: 1px solid var(--gold); }
 .rules .rule em { display: block; font-style: normal; color: #c9a86a; font-size: 11.5px; }
 .rules .rule.locked { opacity: .85; }
 .modetag { padding: 2px 9px; border-radius: 12px; border: 1px solid var(--gold); color: var(--gold2); font-size: 12px; margin-left: 8px; }
+
+/* ------------------------------------------- «Уязвимости и особые атаки»: large monster cards */
+.card.bigmon { --cw: 480px; --ch: 372px; border-color: #7a2f26; display: flex; background: linear-gradient(#2c2219, #17120e); }
+.card.bigmon .bm-left { position: relative; width: 50%; height: 100%; border-right: 1px solid #ffffff14; }
+.card.bigmon .bm-left .art { top: 0; height: 66%; }
+.card.bigmon .bm-disc { position: absolute; left: 6px; right: 6px; top: 6px; z-index: 2; background: #e6d8b8f0; color: #2a1d12; border-radius: 6px; padding: 4px 7px 5px; font-size: 11px; line-height: 1.22; box-shadow: 0 2px 8px #000a; }
+.card.bigmon .bm-disc b { display: flex; align-items: center; gap: 4px; font: 700 12.5px var(--serif); margin-bottom: 2px; color: #5a1d14; }
+.card.bigmon .bm-disc .ic { width: 14px; height: 14px; }
+.card.bigmon .lv { position: absolute; left: 6px; bottom: 112px; background: #000b; color: var(--gold2); font: 700 14px var(--serif); padding: 1px 8px; border-radius: 5px; border: 1px solid var(--line2); z-index: 2; }
+.card.bigmon .life { position: absolute; right: 6px; bottom: 112px; background: #4a1611e0; display: flex; align-items: center; gap: 2px; padding: 2px 7px; border-radius: 10px; font: 700 14px var(--serif); z-index: 2; }
+.card.bigmon .bm-dice { position: absolute; right: 6px; bottom: 140px; background: #1a1a1ae0; color: #f0e6d0; display: flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 8px; font: 700 14px var(--serif); z-index: 2; }
+.card.bigmon .bm-name { position: absolute; left: 6px; right: 6px; bottom: 82px; text-align: center; font: 600 18px/1.05 var(--serif); text-shadow: 0 1px 3px #000; }
+.card.bigmon .bm-ab { position: absolute; left: 8px; right: 8px; bottom: 6px; height: 72px; overflow: auto; font-size: 11px; line-height: 1.25; color: #ddd2bd; text-align: center; }
+.card.bigmon .bm-right { width: 50%; display: flex; flex-direction: column; gap: 4px; padding: 5px 6px; }
+.card.bigmon .bm-atk { flex: 1; background: #e3d4b2; color: #2a1d12; border-radius: 6px; padding: 3px 6px 4px; font-size: 10.6px; line-height: 1.18; overflow: auto; display: flex; flex-direction: column; gap: 1px; transition: box-shadow .2s; }
+.card.bigmon .bm-atk b { font: 700 12px var(--serif); color: #5a1d14; display: flex; align-items: center; gap: 6px; }
+.card.bigmon .bm-atk.hi { box-shadow: 0 0 0 3px #ffcf6a, 0 0 18px #ffb84a; }
+.card.bigmon .bm-atk .claws { float: left; }
+.claws { display: inline-flex; gap: 2px; align-items: center; vertical-align: middle; margin-right: 4px; }
+.claws i { width: 3px; height: 13px; border-radius: 2px; background: #8a1f16; transform: skewX(-14deg); display: block; }
+.card.bigmon.back-side { flex-direction: column; padding: 8px 10px; gap: 4px; background: #e6d8b8; color: #2a1d12; overflow: auto; }
+.card.bigmon .bm-vtitle { font: 700 15px var(--serif); text-align: center; color: #5a1d14; }
+.card.bigmon .bm-vuln { display: flex; gap: 7px; font-size: 11px; line-height: 1.25; align-items: flex-start; }
+.card.bigmon .bm-vuln i { font: 700 13px var(--serif); font-style: normal; color: #fff; background: #7a2f26; border-radius: 50%; min-width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+.card.bigmon .bm-vuln.have { background: #fff4c8; border-radius: 6px; box-shadow: 0 0 0 2px #c9a34a; }
+.bigpair { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.card.special { --cw: 150px; --ch: 233px; border-color: #8a1f16; background: radial-gradient(circle at 50% 30%, #4a1a14, #160d0a); display: flex; flex-direction: column; align-items: center; padding: 8px 8px; gap: 4px; }
+.card.special .sp-num { font: 700 30px var(--serif); color: var(--gold2); text-shadow: 0 2px 6px #000; }
+.card.special .claws i { width: 5px; height: 26px; background: #d7473a; }
+.card.special .sp-slash { display: none; }
+.card.special .sp-disc .ic { width: 22px; height: 22px; color: #c9b28a; }
+.card.special .sp-name { font: 700 13px var(--serif); color: #f1cf7a; text-align: center; }
+.card.special .sp-txt { font-size: 10.5px; line-height: 1.25; color: #e3d8c4; text-align: center; overflow: auto; }
+.card.special.small { --cw: 92px; --ch: 134px; }
+.card.special.small .sp-txt, .card.special.small .sp-name { display: none; }
+.fight .rules-now, #fight .rules-now { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 4px; }
+#fight .rules-now span { background: #3a1611; border: 1px solid #a0473d; color: #f6dad3; border-radius: 10px; padding: 2px 9px; font-size: 12px; }
+#fight .rules-now span.next { background: #2a2216; border-color: #8a7348; color: #eadbb8; }
+#fight.vuln { grid-template-columns: 440px 1fr 300px; }
+.card.bigmon.infight { --cw: 430px; --ch: 372px; }

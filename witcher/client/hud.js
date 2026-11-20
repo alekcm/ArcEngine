@@ -3,10 +3,11 @@
 import { S, $, cmd, send, me, btn, toast } from './ctx.js';
 import { bombOf } from '/shared/data/bombs-data.mjs';
 import { icon, TERRAIN_COLOR } from './icons.js';
-import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, artCss, esc, fxText } from './cards.js';
+import { actionCard, monsterCard, elixirCard, bombCard, eventCard, mutagenCard, trophyLabel, artCss, esc, fxText, bigMonsterCard, bigMonsterBack } from './cards.js';
+import { BIG } from '/shared/data/vuln-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
 import { EVENTS, questLabel } from '/shared/data/events-data.mjs';
-import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES } from '/shared/data/rules-data.mjs';
+import { SCHOOLS, SKILLS, SKILL_NAME, TERRAIN_NAME, ROW_MODS, LOC_ACTION_TEXT, LOC_ACTIONS, TROPHIES_TO_WIN, GAME_MODES, HOUSE_RULES, trailOn } from '/shared/data/rules-data.mjs';
 import { CARDS, LOC, MONSTER, POTION } from '/shared/engine/util.mjs';
 import { movePaymentError } from '/shared/engine/turn.mjs';
 import { isMuted, setMuted, sfx } from './sound.js';
@@ -111,7 +112,7 @@ function renderMonsters(v) {
     }).join('');
     for (const el of $('monsters').querySelectorAll('.mslot[data-slot]')) {
         const s = v.slots[Number(el.dataset.slot)];
-        el.onclick = () => { S.board && S.board.focus(s.token); openViewer(MONSTER[s.mon].name, monsterCard(s.mon, { big: true, trophy: true })); };
+        el.onclick = () => { S.board && S.board.focus(s.token); openViewer(MONSTER[s.mon].name, trailOn(S.view, 'vuln') && BIG[s.mon] ? `<div class="bigpair">${bigMonsterCard(s.mon)}${bigMonsterBack(s.mon)}</div>` : monsterCard(s.mon, { big: true, trophy: true })); };
     }
 }
 

@@ -261,12 +261,37 @@ export function buildData() {
         skillTrophies: importSkillTrophies(),
         witcherTrophies: importWitcherTrophies(),
         board: importBoard(),
+        bigCards: importBigCards(),
     };
     if (starter.length !== 70) fail('expected 70 starter cards, got ' + starter.length);
     if (common.length !== 90) fail('expected 90 common cards, got ' + common.length);
     if (data.attacks.length !== 20) fail('expected 20 monster attack cards');
     if (data.monsters.length !== 31) fail('expected 31 monsters');
     return data;
+}
+
+/** «По следу монстра», уязвимости: large monster cards (discard ability, special attacks I–IV)
+ *  and their backs (vulnerabilities I–VI). Keyed by the small card id (the large atlas order differs). */
+const BIG_OF = { 13: 'MON-15', 15: 'MON-13', 23: 'MON-24', 24: 'MON-23', 25: 'MON-26', 26: 'MON-25', 29: 'MON-30' };
+function importBigCards() {
+    const face = read('Монстры/Большие карты монстров.md'), back = read('Монстры/Уязвимости.md');
+    const out = [];
+    const clean = (s) => stripAnchor(s).replace(/\s+/g, ' ').trim();
+    for (const part of face.split(/\n## MON-LARGE-/).slice(1)) {
+        const nn = Number(part.slice(0, 2));
+        const name = part.split('\n')[0].replace(/^\d+ — /, '').trim();
+        const cell = (/\*\*Ячейка:\*\* `(r\d+c\d+)`/.exec(part) || fail('big cell ' + nn))[1];
+        const sec = {};
+        for (const s of part.split(/\n### /).slice(1)) { const [h, ...b] = s.split('\n'); sec[h.trim()] = clean(b.join('\n').split(/\n## /)[0]); }
+        const discKey = Object.keys(sec).find(k => k.startsWith('Способность сброса')) || fail('discard ' + name);
+        const attacks = ['I', 'II', 'III', 'IV'].map(r => { const k = Object.keys(sec).find(x => x.startsWith('Особая атака ' + r + ' ')) || fail('attack ' + r + ' ' + name); return { name: k.split(' — ')[1], text: sec[k].replace(/ ## Контроль[\s\S]*$/, '') }; });
+        const vpart = back.split(/\n## MON-VULN-/).find(x => x.startsWith(String(nn).padStart(2, '0') + ' ')) || fail('vuln ' + name);
+        const vulns = vpart.split(/\n### /).slice(1, 7).map(s => clean((/\*\*Игровой текст:\*\*([\s\S]*?)(\n\n|$)/.exec(s) || fail('vuln text ' + name))[1]));
+        if (vulns.length !== 6) fail('6 vulns for ' + name);
+        out.push({ id: BIG_OF[nn] || 'MON-' + String(nn).padStart(2, '0'), name, cell, discard: { name: discKey.split(' — ')[1], text: sec[discKey] }, attacks, vulns });
+    }
+    if (out.length !== 29) fail('expected 29 large monster cards, got ' + out.length);
+    return out;
 }
 
 export function render(data) {

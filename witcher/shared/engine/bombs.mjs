@@ -4,7 +4,7 @@
 // bomb can be restored for 2 gold. Using bombs in a fight lives in fight.mjs.
 import { STEPS, push, ask } from './flow.mjs';
 import { log, fx, removeFrom, shuffle, potionOf } from './util.mjs';
-import { BOMBS_IN_PLAY, BOMB_COPIES, BOMB_LIMIT, bombOf, BOMB } from '../data/bombs-data.mjs';
+import { bombsInPlay, bombDeckIds, BOMB_LIMIT, bombOf, BOMB } from '../data/bombs-data.mjs';
 import { trailOn } from '../data/rules-data.mjs';
 
 export const bombsOn = (state) => trailOn(state, 'bombs');
@@ -16,7 +16,7 @@ export function ensureBombs(state) {
     for (const p of state.players) if (!Array.isArray(p.bombs)) p.bombs = [];
     const held = state.players.reduce((n, p) => n + p.bombs.length, 0) + (state.fight && state.fight.usedBombs ? state.fight.usedBombs.length : 0);
     if (!state.bombDeck.length && !state.bombDiscard.length && !held) {
-        state.bombDeck = shuffle(state, BOMBS_IN_PLAY.flatMap(b => Array.from({ length: BOMB_COPIES }, (_, k) => b.id + '#' + (k + 1))));
+        state.bombDeck = shuffle(state, bombDeckIds(trailOn(state, 'vuln')));
     }
 }
 const bombsLeft = (state) => (state.bombDeck || []).length + (state.bombDiscard || []).length;
@@ -63,7 +63,7 @@ STEPS.bombPay = (state, step) => {
     log(state, `${p.name} сбрасывает эликсир «${potionOf(e).name}» и 1 золото ради бомбы`);
     if (state.rules && state.rules.bombs) {
         const pool = [...state.bombDeck, ...state.bombDiscard];
-        const types = BOMBS_IN_PLAY.filter(b => pool.some(x => x.startsWith(b.id + '#')));
+        const types = bombsInPlay(trailOn(state, 'vuln')).filter(b => pool.some(x => x.startsWith(b.id + '#')));
         if (p.bot) { push(state, { ...rest, op: 'bombTake', choice: types[0].id }); return; }
         ask(state, {
             seat: p.seat, kind: 'choice', ui: 'bombType', title: 'Выбор бомбы', text: 'Правило стола: выберите, какую бомбу получить.',

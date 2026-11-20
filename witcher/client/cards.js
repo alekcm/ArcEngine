@@ -8,6 +8,7 @@ import { COLOR_NAME, TERRAIN_NAME, SKILL_NAME } from '/shared/data/rules-data.mj
 import { SKILLTROPHIES, WITCHERTROPHIES } from '/shared/data/gen-data.mjs';
 import { EVENTS } from '/shared/data/events-data.mjs';
 import { MUTAGEN } from '/shared/data/trail-data.mjs';
+import { BIG, SPECIAL, ROMAN as VROMAN } from '/shared/data/vuln-data.mjs';
 import { icon, CARD_COLOR, TERRAIN_COLOR } from './icons.js';
 
 let ART = {};
@@ -178,6 +179,45 @@ export function monsterCard(id, opts = {}) {
         <div class="name">${esc(m.name)}</div>
         <div class="txt">${esc(m.ability)}</div>
         ${opts.trophy ? `<div class="txt trophy"><i>${icon('trophy')}</i>${esc(m.trophy)}</div>` : ''}
+    </div>`;
+}
+
+// «Уязвимости и особые атаки»: the large monster card — art, level, life, special ability, the
+// discard ability (crumbling card) and the special attacks I–IV (claw marks); its back lists the
+// vulnerabilities I–VI. `opts.hi` — the number of the attack to highlight, `opts.dice` — dice on it.
+const claws = (n) => `<span class="claws">${Array.from({ length: n }, () => '<i></i>').join('')}</span>`;
+export function bigMonsterCard(id, opts = {}) {
+    const m = MONSTER[id], b = BIG[id];
+    if (!m || !b) return monsterCard(id, opts);
+    const lv = ['', 'I', 'II', 'III'][m.level];
+    return `<div class="card bigmon lv${m.level} ${opts.cls || ''}" data-id="${esc(id)}">
+        <div class="bm-left">
+            <div class="bm-disc" title="Способность сброса: срабатывает, когда особая боевая карта сбрасывается из запаса жизни монстра из-за вашего урона"><b>${icon('card')} ${esc(b.discard.name)}</b><span>${esc(b.discard.text)}</span></div>
+            <div class="art" style="background-image:${artCss(id, '#5a2a2a', 'skull')}"></div>
+            <div class="lv">${lv}</div>
+            <div class="life">${icon('card')}<b>${opts.life != null ? opts.life : m.life}</b></div>
+            ${opts.dice ? `<div class="bm-dice" title="Кубики на карте монстра">${icon('dice')}<b>${opts.dice}</b></div>` : ''}
+            <div class="bm-name">${esc(m.name)}</div>
+            <div class="bm-ab">${esc(m.ability)}</div>
+        </div>
+        <div class="bm-right">${b.attacks.map((a, i) => `<div class="bm-atk ${opts.hi === i + 1 ? 'hi' : ''}">${claws(i + 1)}<b>${esc(a.name)}</b><span>${esc(a.text)}</span></div>`).join('')}</div>
+    </div>`;
+}
+export function bigMonsterBack(id, opts = {}) {
+    const m = MONSTER[id], b = BIG[id];
+    if (!m || !b) return '';
+    return `<div class="card bigmon back-side ${opts.cls || ''}"><div class="bm-vtitle">${esc(m.name)} — уязвимости</div>
+        ${b.vulns.map((t, i) => `<div class="bm-vuln ${(opts.have || []).includes(i + 1) ? 'have' : ''}"><i>${VROMAN[i]}</i><span>${esc(t)}</span></div>`).join('')}</div>`;
+}
+/** A special combat card (MON-SPECIAL-0N): its number of claws; with `monId` — that monster's attack. */
+export function specialCard(id, monId, opts = {}) {
+    const s = SPECIAL[id];
+    if (!s) return '';
+    const b = monId && BIG[monId];
+    const a = b ? b.attacks[s.n - 1] : null;
+    return `<div class="card special ${opts.small ? 'small' : ''} ${opts.cls || ''}" data-id="${esc(id)}" title="Особая боевая карта ${VROMAN[s.n - 1]}: открыта при атаке — особая атака ${VROMAN[s.n - 1]}; сброшена вашим уроном — способность сброса">
+        <div class="sp-num">${VROMAN[s.n - 1]}</div>${claws(s.n)}<div class="sp-slash">/</div><div class="sp-disc">${icon('card')}</div>
+        ${a ? `<div class="sp-name">${esc(a.name)}</div><div class="sp-txt">${esc(a.text)}</div>` : '<div class="sp-txt">Особая атака по номеру · способность сброса</div>'}
     </div>`;
 }
 

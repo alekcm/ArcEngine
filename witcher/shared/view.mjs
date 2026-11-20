@@ -9,6 +9,10 @@ export function viewFor(state, seat) {
     s.bombDeck = (s.bombDeck || []).length;
     s.mutagenDeck = (s.mutagenDeck || []).length;
     s.attackDeck = s.attackDeck.length;
+    // «Уязвимости и особые атаки»: which base cards went to the box / aside is secret.
+    if (s.atkSet) s.atkSet = s.atkSet.length;
+    if (s.atkBox) s.atkBox = s.atkBox.length;
+    if (s.atkAside) s.atkAside = s.atkAside.length;
     for (const k of Object.keys(s.locPiles)) s.locPiles[k] = s.locPiles[k].length;
     for (const k of Object.keys(s.monsterStacks)) s.monsterStacks[k] = s.monsterStacks[k].length;
     s.extraStack = s.extraStack.length;

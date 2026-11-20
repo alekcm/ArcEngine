@@ -1,6 +1,7 @@
 // Game setup (База.md pp. 6–8, solo p. 33).
 import { STARTER, COMMON, POTIONS, SKILLTROPHIES } from '../data/gen-data.mjs';
-import { BOMBS_IN_PLAY, BOMB_COPIES } from '../data/bombs-data.mjs';
+import { bombDeckIds } from '../data/bombs-data.mjs';
+import { setupAttackDeck, onMonsterAppears } from './vuln.mjs';
 import { SCHOOLS, START_RES, BASE_MONSTERS, TERRAINS, SKILL_NAME, normalizeRules, normalizeExp, trailOn } from '../data/rules-data.mjs';
 import { MASTERS, MUTAGENS, UNIQUE_OF } from '../data/trail-data.mjs';
 import { MONSTER, LOC, CARDS, shuffle, randInt, log, drawCards } from './util.mjs';
@@ -41,7 +42,7 @@ export function createGame(opts) {
     // 3. Elixirs: 4 copies of each of 7.
     state.elixirDeck = shuffle(state, POTIONS.flatMap(p => [1, 2, 3, 4].map(k => p.id + '#' + k)));
     // «По следу монстра»: the bomb deck lies next to the elixirs (4 copies of each bomb in play).
-    if (trailOn(state, 'bombs')) state.bombDeck = shuffle(state, BOMBS_IN_PLAY.flatMap(b => Array.from({ length: BOMB_COPIES }, (_, k) => b.id + '#' + (k + 1))));
+    if (trailOn(state, 'bombs')) state.bombDeck = shuffle(state, bombDeckIds(trailOn(state, 'vuln')));
 
     // 4. Skill trophies.
     if (n === 1) {
@@ -74,8 +75,9 @@ export function createGame(opts) {
     if (n === 4) state.extraStack = [state.monsterStacks[1].pop()];
     if (n === 5) state.extraStack = [state.monsterStacks[1].pop(), state.monsterStacks[1].pop()];
 
-    // Monster combat deck.
-    state.attackDeck = shuffle(state, Array.from({ length: 20 }, (_, i) => 'MON-ATK-' + String(i + 1).padStart(2, '0')));
+    // Monster combat deck («Уязвимости и особые атаки»: 12 base + 4 special cards, see vuln.mjs).
+    setupAttackDeck(state);
+    for (const s of state.slots) if (s.mon) onMonsterAppears(state, s.mon);
 
     // 10. Players.
     lobby.forEach((lp, seat) => {
@@ -117,6 +119,7 @@ STEPS.setupLevel2 = (state, step) => {
     const i = Number(step.choice);
     state.slots.forEach((s, k) => { s.mon = k === i ? state.monsterStacks[2].pop() : state.pendingMons.shift(); });
     delete state.pendingMons;
+    for (const s of state.slots) if (s.mon) onMonsterAppears(state, s.mon);
     log(state, `Монстр II уровня появляется: ${LOC[state.slots[i].token].name}`);
 };
 

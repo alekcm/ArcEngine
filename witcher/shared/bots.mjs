@@ -5,6 +5,7 @@ import { CARDS, LOC, ADJ, MONSTER } from './engine/util.mjs';
 import { autoReroll } from './engine/turn.mjs';
 import { linkIndex, comboTotals, comboError, elixirError } from './engine/fight.mjs';
 import { movePaymentError } from './engine/turn.mjs';
+import { findChain } from './engine/vuln.mjs';
 
 export const cardValue = (id) => {
     const c = CARDS[id];
@@ -21,7 +22,10 @@ export function bestCombo(view, p, useBlood = false) {
     const hand = p.hand;
     const f = view.fight;
     const forced = f.cur && f.cur.forcedFirst && hand.includes(f.cur.forcedFirst) ? f.cur.forcedFirst : null;
-    let best = { ids: hand.length ? [forced || hand[0]] : [], blood: null, score: -1 };
+    // Special attacks («Уязвимости и особые атаки») may forbid cards: only legal chains count,
+    // and with no legal card at all the combo is empty.
+    let best = { ids: [], blood: null, score: -Infinity };
+    const restricted = !!(f.cur && f.cur.r && Object.keys(f.cur.r).length);
     const score = (ids, blood) => {
         const t = comboTotals(view, p, ids, { blood });
         // Blood is once per fight: only spend it for a real gain.
@@ -31,6 +35,7 @@ export function bestCombo(view, p, useBlood = false) {
     const dfs = (chain, rest, blood) => {
         if (chain.length) {
             if (forced && chain[0] !== forced) return;
+            if (restricted && comboError(view, p, chain, { blood })) return;
             const s = score(chain, blood);
             if (s > best.score) best = { ids: chain.slice(), blood, score: s };
             if (f.cur && f.cur.onlyOne) return;
@@ -160,6 +165,8 @@ function answerPrompt(view, p, pr) {
         }
         return { t: 'answer', choice: okOpts[Math.floor(R() * okOpts.length)].id };
     }
+    // Шептуха's special attack: exactly 3 linked cards.
+    if (pr.ui === 'combo' && pr.min > 1) { const ch = findChain(pr.ids, pr.min); if (ch) return { t: 'answer', ids: ch }; }
     // Event combo outside a fight: the hardest-hitting single card is always a legal chain.
     if (pr.ui === 'combo') return { t: 'answer', ids: pr.ids.slice().sort((a, b) => (CARDS[b].fx.dmg || 0) - (CARDS[a].fx.dmg || 0)).slice(0, 1) };
     // House rule: buy back drunk elixirs while keeping 2 gold for training/movement.

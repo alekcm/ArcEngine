@@ -103,7 +103,7 @@ export const HOUSE_RULES = [
 ];
 /** Lobby settings → { mode, rules } with MMR forcing every rule on. */
 /** Expansions that can already be switched on in the lobby. */
-export const TRAIL_PART_IDS = ['bombs', 'manticore', 'troll', 'mutagens', 'unique', 'masters'];
+export const TRAIL_PART_IDS = ['bombs', 'manticore', 'troll', 'mutagens', 'unique', 'masters', 'vuln'];
 export const EXPANSIONS_READY = ['ciri', 'trail', ...TRAIL_PART_IDS.map(x => 'trail:' + x)];
 /** Keeps known ids; the «По следу монстра» parts only together with 'trail'. A bare 'trail'
  *  (saves made before the parts existed) means the bombs only. */
