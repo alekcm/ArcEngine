@@ -116,21 +116,100 @@ export const REGIONS = [{
 }, {
     // ---- the west: Kaer Seren (1), Novigrad (6), Cidaris (5), Cintra (9) ---------------------
     id: 'west',
-    px: [1251, 0, 699, 2200],
+    px: [1251, 0, 700, 2200],
     step: 3, maxH: 0.3,
     open: { top: true },
     noCopy: [{ x: 1447, y: 345, rx: 62, ry: 62 }],   // the Griffin school medallion
     // the sea west of the coast (Kaer Seren's bay, Novigrad's and Cidaris's harbours, Cintra's bay)
     sea: [[[1251, 480], [1330, 505], [1400, 515], [1480, 520], [1560, 530], [1650, 545], [1700, 560], [1760, 600], [1760, 690], [1732, 720], [1728, 800], [1730, 880],
         [1740, 960], [1720, 1020], [1640, 1040], [1560, 1042], [1480, 1045], [1400, 1050], [1330, 1075], [1300, 1110], [1290, 1160], [1300, 1180], [1310, 1290],
-        [1400, 1345], [1440, 1420], [1440, 1480], [1436, 1560], [1426, 1640], [1405, 1720], [1430, 1800], [1465, 1900], [1480, 2000], [1450, 2100], [1440, 2200], [1251, 2200]]],
+        [1400, 1345], [1440, 1420], [1440, 1480], [1436, 1560], [1426, 1640], [1405, 1720], [1430, 1800], [1465, 1900], [1500, 2000], [1560, 2080], [1590, 2150], [1596, 2205], [1251, 2205]]],
     buildings: [
         { kind: 'kaerSeren', x: 1580, y: 442, foot: 0.4, footY: 0.3, h: 0.07, scale: 0.8, rot: 0, hole: [{ x: 1592, y: 432, rx: 96, ry: 76 }, { x: 1512, y: 470, rx: 34, ry: 38 }] },
         { kind: 'novigrad', x: 1838, y: 820, foot: 0.58, footY: 0.5, h: 0.055, scale: 0.8, rot: 0, hole: [{ x: 1846, y: 800, rx: 118, ry: 116 }, { x: 1872, y: 914, rx: 92, ry: 24 }] },
         { kind: 'cidaris', x: 1430, y: 1095, foot: 0.52, footY: 0.32, h: 0.05, scale: 0.8, rot: 0, hole: [{ x: 1442, y: 1092, rx: 128, ry: 70 }, { x: 1316, y: 1056, rx: 32, ry: 28 }] },
+        { kind: 'glenmore', x: 1755, y: 2170, foot: 0.45, footY: 0.3, h: 0.05, scale: 0.8, rot: 0, hole: { x: 1756, y: 2160, rx: 124, ry: 84 } },
         { kind: 'cintra', x: 1555, y: 1585, foot: 0.62, footY: 0.34, h: 0.05, scale: 0.8, rot: 0, hole: [{ x: 1556, y: 1588, rx: 134, ry: 74 }, { x: 1612, y: 1666, rx: 56, ry: 18 }] },
     ],
     props: [],
+}, {
+    // ---- the south-west: Doldet (13), Lok Ihor (14), Duvod (16) --------------------------------
+    id: 'south-west',
+    px: [1251, 2199, 1651, 1108],
+    step: 3, maxH: 0.3,
+    open: { bottom: true },
+    holes: [{ x: 1756, y: 2216, rx: 110, ry: 30 }],   // the foot of Glenmore (built with the west)
+    sea: [[[1251, 2195], [1596, 2195], [1586, 2260], [1590, 2380], [1610, 2480], [1600, 2560], [1590, 2640], [1615, 2720], [1630, 2800], [1640, 2880],
+        [1660, 2960], [1700, 3040], [1760, 3120], [1830, 3200], [1880, 3307], [1251, 3307]]],
+    buildings: [
+        { kind: 'doldet', x: 1810, y: 2705, foot: 0.48, footY: 0.3, h: 0.07, mound: 0.003, scale: 0.8, rot: 0, hole: { x: 1810, y: 2690, rx: 110, ry: 90 } },
+        { kind: 'lokIhor', x: 2665, y: 2545, foot: 0.5, footY: 0.28, h: 0.05, scale: 0.8, rot: 0, hole: { x: 2662, y: 2535, rx: 118, ry: 82 } },
+        { kind: 'duvod', x: 2080, y: 3046, foot: 0.45, footY: 0.32, h: 0.05, scale: 0.8, rot: 0, hole: { x: 2078, y: 3040, rx: 112, ry: 88 } },
+    ],
+    props: [
+        { kind: 'bridge', stone: true, x: 2600, y: 2460, angle: 0.8, len: 34, width: 16 },
+        { kind: 'bridge', stone: true, x: 2155, y: 2530, angle: 0, len: 30, width: 16 },
+        { kind: 'hut', x: 2190, y: 2350, rot: -0.2, size: 1 }, { kind: 'hut', x: 2216, y: 2340, rot: 0.1, size: 0.9 }, { kind: 'hut', x: 2242, y: 2356, rot: -0.3, size: 1 },
+        { kind: 'hut', x: 2206, y: 2376, rot: 0.2, size: 0.9 },
+        { kind: 'hut', x: 2160, y: 2770, rot: 0.1, size: 1 }, { kind: 'hut', x: 2186, y: 2760, rot: -0.2, size: 0.9 }, { kind: 'hut', x: 2212, y: 2776, rot: 0.2, size: 1 },
+        { kind: 'hut', x: 2236, y: 2764, rot: -0.1, size: 0.85 },
+        { kind: 'ruin', x: 2352, y: 2948 },
+        { kind: 'house', x: 2466, y: 2892, rot: 0.1 }, { kind: 'house', x: 2740, y: 2372, rot: -0.1 },
+    ],
+}, {
+    // ---- the south-east: Gorthur Gvaed (15), Stygga (17), Ard Modron (18) -----------------------
+    id: 'south-east',
+    px: [2901, 2199, 1195, 1108],
+    step: 3, maxH: 0.3,
+    open: { right: true, bottom: true },
+    noCopy: [{ x: 3944, y: 2312, rx: 44, ry: 44 }, { x: 3162, y: 2930, rx: 50, ry: 50 }],   // the Viper and Cat school medallions
+    sea: [[[3688, 2384], [3736, 2362], [3790, 2368], [3802, 2420], [3792, 2470], [3730, 2476], [3690, 2444]]],   // Gorthur Gvaed's lake
+    buildings: [
+        { kind: 'gorthurGvaed', x: 3850, y: 2440, foot: 0.5, footY: 0.24, h: 0.05, scale: 0.8, rot: 0, hole: { x: 3852, y: 2430, rx: 108, ry: 72 } },
+        { kind: 'stygga', x: 3030, y: 3008, foot: 0.48, footY: 0.26, h: 0.06, scale: 0.8, rot: 0, hole: { x: 3026, y: 2992, rx: 100, ry: 70 } },
+        { kind: 'ardModron', x: 3752, y: 3060, foot: 0.5, footY: 0.3, h: 0.07, mound: 0.003, scale: 0.8, rot: 0, hole: { x: 3752, y: 3060, rx: 116, ry: 76 } },
+    ],
+    props: [
+        { kind: 'bridge', x: 3642, y: 2972, angle: -1.0, len: 30, width: 14 },
+        { kind: 'bridge', x: 3444, y: 2320, angle: 0.8, len: 28, width: 14 },
+        { kind: 'hut', x: 3085, y: 2235, rot: -0.2, size: 1 }, { kind: 'hut', x: 3115, y: 2255, rot: 0.1, size: 0.9 }, { kind: 'hut', x: 3150, y: 2240, rot: -0.3, size: 1 },
+        { kind: 'hut', x: 3100, y: 2285, rot: 0.2, size: 0.9 }, { kind: 'hut', x: 3135, y: 2280, rot: -0.1, size: 0.85 },
+        { kind: 'hut', x: 3442, y: 2912, rot: 0.1, size: 1 }, { kind: 'hut', x: 3480, y: 2940, rot: -0.2, size: 0.9 }, { kind: 'hut', x: 3512, y: 2930, rot: 0.2, size: 1 },
+        { kind: 'hut', x: 3462, y: 2952, rot: -0.1, size: 0.85 },
+        { kind: 'watchtower', x: 3008, y: 2405, hole: { x: 3008, y: 2390, rx: 16, ry: 34 } },
+    ],
+}, {
+    // ---- Skellige: Ard Skellig (19), the Isle of Mists (20), Eyna (21) — islands in the sea ----
+    id: 'skellige',
+    px: [150, 1520, 720, 1460],
+    step: 3, maxH: 0.3,
+    sea: [[[140, 1510], [880, 1510], [880, 2990], [140, 2990]]],
+    land: [
+        [[360, 1660], [400, 1615], [440, 1580], [480, 1564], [540, 1570], [600, 1576], [660, 1600], [700, 1640], [725, 1700], [730, 1770], [715, 1840], [680, 1880], [600, 1895], [520, 1895], [450, 1880], [400, 1850], [370, 1800], [355, 1730]],
+        [[245, 1580], [280, 1555], [330, 1555], [360, 1580], [340, 1612], [280, 1617], [250, 1605]],
+        [[228, 1800], [260, 1772], [310, 1775], [338, 1810], [335, 1860], [300, 1884], [255, 1875], [230, 1840]],
+        [[790, 1700], [830, 1690], [865, 1710], [868, 1760], [830, 1780], [795, 1765]],
+        [[290, 2120], [320, 2085], [345, 2075], [365, 2100], [370, 2140], [365, 2180], [352, 2210], [372, 2230], [400, 2245], [400, 2262], [370, 2264], [330, 2256], [290, 2240], [275, 2210], [270, 2170], [280, 2140]],
+        [[630, 2725], [660, 2710], [700, 2715], [730, 2730], [760, 2770], [775, 2810], [760, 2860], [740, 2900], [700, 2930], [650, 2945], [600, 2950], [560, 2945], [540, 2920], [535, 2870], [545, 2830], [570, 2805], [600, 2790], [620, 2760]],
+    ],
+    buildings: [],
+    props: [
+        // Ard Skellig: long houses where the painting has them, in the green valleys between the snowy peaks
+        { kind: 'longhouse', x: 525, y: 1631, rot: 0.2, size: 0.8 }, { kind: 'longhouse', x: 531, y: 1649, rot: -0.1, size: 0.75 },
+        { kind: 'longhouse', x: 560, y: 1714, rot: 0.4, size: 0.85 }, { kind: 'longhouse', x: 562, y: 1733, rot: -0.2, size: 0.8 },
+        { kind: 'longhouse', x: 532, y: 1743, rot: 0.3, size: 0.85 }, { kind: 'longhouse', x: 503, y: 1757, rot: -0.3, size: 0.8 },
+        { kind: 'longhouse', x: 422, y: 1763, rot: 0.1, size: 0.8 }, { kind: 'longhouse', x: 672, y: 1752, rot: -0.4, size: 0.75 },
+        { kind: 'longhouse', x: 572, y: 1847, rot: 0.3, size: 0.75 }, { kind: 'longhouse', x: 554, y: 1861, rot: -0.2, size: 0.7 },
+        { kind: 'ruin', x: 486, y: 1584 },
+        // the Isle of Mists: a few huts and pale ruins in the valley
+        { kind: 'longhouse', x: 345, y: 2150, rot: 0.2, size: 0.8 }, { kind: 'longhouse', x: 352, y: 2176, rot: -0.3, size: 0.8 }, { kind: 'longhouse', x: 320, y: 2196, rot: 0.5, size: 0.75 },
+        { kind: 'ruin', x: 336, y: 2210 },
+        // Eyna: the village of pale long houses, the standing stones
+        { kind: 'longhouse', x: 690, y: 2790, rot: 0.1, stone: true }, { kind: 'longhouse', x: 718, y: 2804, rot: -0.2, stone: true }, { kind: 'longhouse', x: 650, y: 2816, rot: 0.3, stone: true },
+        { kind: 'longhouse', x: 662, y: 2842, rot: -0.1, stone: true }, { kind: 'longhouse', x: 692, y: 2850, rot: 0.2, stone: true }, { kind: 'longhouse', x: 722, y: 2842, rot: -0.3, stone: true },
+        { kind: 'longhouse', x: 680, y: 2866, rot: 0.4, stone: true, size: 0.85 },
+        { kind: 'menhirs', x: 612, y: 2910, n: 6 },
+    ],
 }];
 
 /**
@@ -335,6 +414,13 @@ export class Relief {
             ksStone: mk('ksStone', '#a2a5b0'), novWall: mk('novWall', '#ddd0c2'), novRoof: mk('novRoof', '#9c4a52'),
             cidWall: mk('cidWall', '#e3d9c6'), cidRoof: mk('cidRoof', '#94433d'), cinWall: mk('cinWall', '#dad6cc'), cinRoof: mk('cinRoof', '#a64e56'),
             spire: mk('spire', '#4e4352'), sail: mk('sail', '#ece6d4', false),
+            // the south: Glenmore's white gables, Doldet's light stone, Lok Ihor's pink-white manor and grey straw,
+            // Duvod's pale straw, Gorthur Gvaed's grey, Stygga's warm pink and burgundy, Ard Modron's dark wood
+            glWall: mk('glWall', '#e4ddd0'), glRoof: mk('glRoof', '#8e5544'), glStone: mk('glStone', '#a3a3a6'), doStone: mk('doStone', '#cfcfd2'),
+            liWhite: mk('liWhite', '#ecdedb'), liRoof: mk('liRoof', '#b0513f'), liThatch: mk('liThatch', '#a59c88'), duStone: mk('duStone', '#a19c95'),
+            duThatch: mk('duThatch', '#d2c398'), ggStone: mk('ggStone', '#aaa9a5'), stStone: mk('stStone', '#e4d0c9'), stRoof: mk('stRoof', '#8e3f4b'),
+            amWood: mk('amWood', '#5d4838'), amRoof: mk('amRoof', '#4b403a'),
+            smoke: (() => { const m = mk('smoke', '#d9d9d6', false); m.alpha = 0.6; return m; })(),
             // fields round the farms: ripe and green, furrowed (fieldTex)
             fieldWheat: (() => { const m = mk('fieldWheat', '#c2b062', false); m.diffuseTexture = fieldTex; return m; })(),
             fieldGreen: (() => { const m = mk('fieldGreen', '#8fa452', false); m.diffuseTexture = fieldTex; return m; })(),
@@ -426,6 +512,7 @@ export class Relief {
             // terraces and bridge beds of every region: a spur or a bed reaching over a seam is the same on both sides
             plateau: all.map(b => at({ x: b.x, y: b.y, r: footPx(b), ry: b.footY ? b.footY * b.scale / PX : undefined, h: b.h, mound: b.mound })),
             sea: REGIONS.flatMap(r => r.sea || []).map(poly => poly.map(([x, y]) => [x - px0, y - py0])),
+            land: REGIONS.flatMap(r => r.land || []).map(poly => poly.map(([x, y]) => [x - px0, y - py0])),
             carve: bridges.map(p => at({ x: p.x, y: p.y, len: p.width + 10, width: p.len * 0.62, angle: p.angle + Math.PI / 2 })),
         };
         const fieldJob = this.job('field', { rgba: prgba.slice(), w: pw, h: ph, opt }, [], lane);
@@ -551,6 +638,8 @@ export class Relief {
         if (p.kind === 'bridge') return { x: p.x, y: p.y, rx: p.len / 2 + 5, ry: p.width / 2 + 4, angle: p.angle };
         if (p.kind === 'house') return { x: p.x, y: p.y, rx: 29, ry: 27 };
         if (p.kind === 'ruin') return { x: p.x, y: p.y, rx: 23, ry: 27 };
+        if (p.kind === 'longhouse') return { x: p.x, y: p.y, rx: 18 * (p.size || 1), ry: 14 * (p.size || 1) };
+        if (p.kind === 'menhirs') return { x: p.x, y: p.y, rx: 16, ry: 14 };
         return { x: p.x, y: p.y, rx: 15 * (p.size || 1), ry: 14 * (p.size || 1) };
     }
 
@@ -576,6 +665,7 @@ export class Relief {
         });
         const busy = [...reg.buildings.map(b => ({ x: b.x, y: b.y, r: footPx(b) + 6 })), ...this.holes.map(o => ({ x: o.x, y: o.y, r: Math.max(o.rx, o.ry) + 4 })),
             ...reg.props.filter(p => p.kind === 'field').map(p => ({ x: p.x, y: p.y, r: Math.max(p.w, p.d) / 2 + 4 }))];
+        const seas = REGIONS.flatMap(r => r.sea || []), lands = REGIONS.flatMap(r => r.land || []);
         const STEP = 9;
         for (let y = 4; y < h - 4; y += STEP) for (let x = 4; x < w - 4; x += STEP) {
             const jx = Math.round(x + (rnd() - 0.5) * STEP), jy = Math.round(y + (rnd() - 0.5) * STEP);
@@ -586,6 +676,9 @@ export class Relief {
             for (const [dx, dy] of [[-4, 0], [4, 0], [0, -4], [0, 4]]) { const k = ((jy + dy) * w + jx + dx) * 4; if (isForest(rgba[k], rgba[k + 1], rgba[k + 2])) n++; }
             if (n < 3 || rnd() < 0.35) continue;
             if (busy.some(b => Math.hypot(x0 + jx - b.x, y0 + jy - b.y) < b.r)) continue;
+            // nothing grows on the sea (dark-green water reads as forest), except where an island is cut out of it
+            const gx = x0 + jx, gy = y0 + jy;
+            if (seas.some(q => inPoly(q, gx, gy)) && !lands.some(q => inPoly(q, gx, gy))) continue;
             const ht = field[jy * w + jx];
             if (ht > 0.24) continue;   // the tree line
             const p = this.world(x0 + jx, y0 + jy, ht - 0.004);
@@ -1441,6 +1534,254 @@ export class Relief {
         return k.done();
     }
 
+    /** A house with a stepped gable to the front (-z of its own turn `ry`): Glenmore's houses
+     *  and hall. The ridge runs front to back, so the gable faces the valley. */
+    gableHouse(k, x, z, w, d, hh, wall, roof, ry = 0, steps = 3, y0 = 0) {
+        const c = Math.cos(ry), s = Math.sin(ry), at = (u, v) => [x + u * c + v * s, z - u * s + v * c];
+        k.box(w, hh + 0.04 - y0 * 0, d, x, y0 + (hh - 0.04) / 2, z, wall, ry);
+        k.roof(d * 1.04, w * 1.1, w * 0.75, x, y0 + hh, z, roof, ry + Math.PI / 2);
+        // the stepped gable: blocks narrowing upward on the front face
+        const rise = w * 0.75;
+        for (let i = 0; i < steps; i++) {
+            const f = (i + 0.5) / steps, sw = w * (1 - f) + 0.01, [gx, gz] = at(0, -d / 2 + 0.006);
+            k.box(sw, rise / steps + 0.004, 0.014, gx, y0 + hh + rise * i / steps + rise / steps / 2, gz, wall, ry);
+        }
+        const [dx, dz] = at(0, -d / 2 - 0.003);
+        k.box(Math.min(0.022, w * 0.3), 0.034, 0.005, dx, y0 + hh * 0.45, dz, 'dark', ry);
+    }
+
+    /** Glenmore, as painted: an open little town on the meadow by the sea, no walls. A tall thin
+     *  round tower of grey stone, its top broken; a big hall with stepped gables and a tall arched
+     *  window; white houses with stepped gables under brown-red roofs; a plank landing at the water. */
+    buildGlenmore(at, scale = 1, rot = 0, b) {
+        const k = this.kit('glenmore', at, rot, scale), { L, S, G } = this.mapper(b), W = 'glWall', R = 'glRoof';
+        // the tower: slender, arched openings at the top, the crown broken unevenly
+        const [tx, tz] = L(1760, 2152), T = S(24), TH = 0.5;
+        k.cyl(T, T * 1.08, TH + 0.04, tx, (TH - 0.04) / 2, tz, 'glStone', 12);
+        for (let i = 0; i < 6; i++) {
+            const a = i / 6 * Math.PI * 2, hgt = [0.05, 0.02, 0.07, 0.03, 0.06, 0.01][i];
+            k.box(0.03, hgt, 0.02, tx + Math.cos(a) * T * 0.45, TH + hgt / 2, tz + Math.sin(a) * T * 0.45, 'glStone', -a + Math.PI / 2);
+        }
+        for (const y of [0.15, 0.27, 0.42]) k.box(0.016, y > 0.4 ? 0.06 : 0.03, 0.006, tx, y, tz - T / 2 - 0.004, 'dark');
+        // the hall: stepped gables, the tall arched window in the front gable
+        const [hx, hz] = L(1830, 2168);
+        this.gableHouse(k, hx, hz, S(40), S(52), 0.17, W, R, -0.15, 4);
+        const c = Math.cos(-0.15), s2 = Math.sin(-0.15), fz = -S(26) - 0.004;
+        k.box(0.04, 0.12, 0.006, hx + fz * s2, 0.14, hz + fz * c, 'dark', -0.15);
+        k.cyl(0.04, 0.04, 0.006, hx + fz * s2, 0.2, hz + fz * c, 'dark', 10).rotation.set(Math.PI / 2, 0, 0.15);
+        // the houses round the paths
+        for (const [px, py, w, d, hh, ry, st] of [[1682, 2182, 22, 26, 0.08, 0.3, 3], [1712, 2150, 20, 24, 0.08, 0.1, 3], [1746, 2160, 18, 20, 0.07, -0.2, 0],
+            [1664, 2214, 20, 24, 0.07, 0.2, 3], [1694, 2226, 22, 26, 0.08, -0.1, 0], [1728, 2222, 20, 24, 0.08, 0.15, 3], [1786, 2166, 20, 22, 0.07, -0.3, 0],
+            [1780, 2214, 22, 24, 0.08, 0.1, 3], [1814, 2212, 20, 22, 0.07, -0.2, 0], [1850, 2205, 18, 20, 0.06, 0.3, 3], [1700, 2196, 16, 18, 0.06, 0, 0]]) {
+            const [x, z] = L(px, py), g = Math.min(0, G(px, py));
+            if (st) this.gableHouse(k, x, z, S(w), S(d), hh, W, R, ry, st, g);
+            else this.townHouse(k, x, z, S(d), S(w), hh, W, R, ry, null, 0.8, g);
+        }
+        // the plank landing down to the water
+        const [p0x, p0z] = L(1626, 2222), [p1x, p1z] = L(1660, 2218), pg = G(1640, 2220) + 0.014, pr = Math.atan2(p1x - p0x, p1z - p0z);
+        k.box(0.03, 0.008, Math.hypot(p1x - p0x, p1z - p0z), (p0x + p1x) / 2, pg, (p0z + p1z) / 2, 'plank', pr);
+        return k.done();
+    }
+
+    /** Doldet, as painted: a town in a bowl of snowy mountains. A low crenellated wall curves
+     *  round it; in the middle the big round white tower; at the right the gate with its arch and
+     *  a second round tower; red-roofed houses on the slope inside. */
+    buildDoldet(at, scale = 1, rot = 0, b) {
+        const k = this.kit('doldet', at, rot, scale), { L, S, G } = this.mapper(b), M = 'doStone';
+        this.plinth(k, 0.46);
+        const wall = [[1745, 2662], [1724, 2690], [1722, 2725], [1745, 2752], [1790, 2762], [1850, 2762], [1896, 2750]].map(([x, y]) => L(x, y));
+        for (let i = 0; i < wall.length - 1; i++) {
+            const [ax, az] = wall[i], [bx, bz] = wall[i + 1], len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
+            k.box(0.026, 0.11, len + 0.004, (ax + bx) / 2, 0.035, (az + bz) / 2, M, ry);
+            k.crenels(ax, az, bx, bz, 0.094, 0.026, M);
+        }
+        k.floor([...wall, L(1900, 2700), L(1860, 2650), L(1790, 2640)], 0.012, 'yard');
+        // the big round tower
+        const [tx, tz] = L(1805, 2682), T = S(40);
+        k.cyl(T, T * 1.05, 0.4, tx, 0.18, tz, M, 18);
+        k.crown(tx, tz, T, 0.38, M);
+        for (let i = 0; i < 3; i++) for (const da of [-0.5, 0.5]) { const a = -Math.PI / 2 + da; k.box(0.014, 0.03, 0.006, tx + Math.cos(a) * (T / 2 + 0.002), 0.12 + i * 0.09, tz + Math.sin(a) * (T / 2 + 0.002), 'dark', -a + Math.PI / 2); }
+        // the gate: an arched block, the second round tower, a wall to the big tower
+        const [gx, gz] = L(1856, 2714), gw = S(36), gd = S(16);
+        k.box(gw, 0.18, gd, gx, 0.07, gz, M);
+        k.crenels(gx - gw / 2, gz - gd / 2, gx + gw / 2, gz - gd / 2, 0.164, 0.02, M);
+        k.box(0.05, 0.08, 0.006, gx, 0.04, gz - gd / 2 - 0.003, 'dark');
+        k.cyl(0.05, 0.05, 0.006, gx, 0.08, gz - gd / 2 - 0.003, 'dark', 10).rotation.x = Math.PI / 2;
+        const [rx, rz] = L(1888, 2716); this.roundTower(k, rx, rz, S(22), 0.24, M);
+        const [ix0, iz0] = L(1838, 2712), [ix1, iz1] = L(1818, 2696);
+        k.box(0.02, 0.09, Math.hypot(ix1 - ix0, iz1 - iz0), (ix0 + ix1) / 2, 0.045, (iz0 + iz1) / 2, M, Math.atan2(ix1 - ix0, iz1 - iz0));
+        // the houses
+        for (const [px, py, w, d, hh, ry] of [[1758, 2690, 24, 18, 0.08, 0.3], [1748, 2722, 22, 16, 0.07, -0.2], [1774, 2738, 20, 16, 0.06, 0], [1842, 2652, 26, 18, 0.08, 0.2],
+            [1872, 2632, 22, 16, 0.07, -0.1], [1828, 2740, 24, 16, 0.07, 0], [1860, 2744, 20, 16, 0.06, 0.2], [1838, 2674, 18, 14, 0.07, 0], [1896, 2690, 20, 16, 0.07, 0.4], [1776, 2710, 16, 14, 0.06, -0.3]]) {
+            const [x, z] = L(px, py); this.townHouse(k, x, z, S(w), S(d), hh, 'pale', 'roofRed', ry, 'timber', 0.8, Math.min(0, G(px, py)));
+        }
+        return k.done();
+    }
+
+    /** Lok Ihor, as painted: an elven manor among a village. In the middle the white-pink manor
+     *  with a carved facade, red gables and slender turrets under red cones; round it wooden
+     *  cottages under grey straw, some only rafters (half built or half fallen); a well. */
+    buildLokIhor(at, scale = 1, rot = 0, b) {
+        const k = this.kit('lokIhor', at, rot, scale), { L, S, G } = this.mapper(b), M = 'liWhite', R = 'liRoof';
+        // the manor: the main block, a front gable, arched windows, the turrets
+        const [mx, mz] = L(2696, 2528), mw = S(56), md = S(30);
+        k.box(mw, 0.22, md, mx, 0.11, mz, M);
+        k.roof(mw * 1.04, md * 1.14, 0.1, mx, 0.22, mz, R);
+        k.box(S(20), 0.28, 0.03, mx + S(4), 0.14, mz - md / 2 - 0.012, M);
+        k.roof(0.03, S(22), 0.08, mx + S(4), 0.28, mz - md / 2 - 0.012, R, Math.PI / 2);
+        for (let r = 0; r < 2; r++) for (let i = 0; i < 5; i++) {
+            const x = mx - mw * 0.4 + i * mw * 0.2;
+            k.box(0.014, 0.04, 0.006, x, 0.07 + r * 0.08, mz - md / 2 - (Math.abs(x - mx - S(4)) < S(10) ? 0.03 : 0.003), 'dark');
+        }
+        for (const [px, py, d, hh, ch] of [[2664, 2526, 16, 0.32, 0.12], [2690, 2508, 12, 0.32, 0.11], [2726, 2512, 12, 0.28, 0.1], [2668, 2546, 10, 0.2, 0.08]]) {
+            const [x, z] = L(px, py); this.turret(k, x, z, 0, S(d), hh, R, ch, M);
+        }
+        // the cottages: wood under grey straw; some only rafters
+        for (const [px, py, w, d, hh, ry, bare] of [[2580, 2522, 30, 22, 0.07, 0.2, 0], [2606, 2510, 26, 20, 0.07, -0.3, 1], [2570, 2548, 26, 20, 0.06, 0.1, 0],
+            [2612, 2546, 24, 18, 0.06, 0.3, 0], [2592, 2582, 30, 22, 0.07, -0.1, 0], [2628, 2588, 24, 18, 0.06, 0.2, 1], [2690, 2588, 30, 22, 0.07, 0, 0],
+            [2736, 2574, 26, 20, 0.06, -0.2, 0], [2758, 2554, 24, 18, 0.06, 0.3, 1], [2716, 2596, 20, 16, 0.05, 0.1, 0]]) {
+            const [x, z] = L(px, py), g = Math.min(0, G(px, py)), W = S(w), D = S(d);
+            if (!bare) { this.townHouse(k, x, z, W, D, hh, 'timber', 'liThatch', ry, null, 0.8, g); continue; }
+            k.box(W, hh + 0.04, D, x, g + (hh - 0.04) / 2, z, 'timber', ry);
+            const c = Math.cos(ry), sn = Math.sin(ry);
+            for (let i = 0; i < 4; i++) {
+                const u = -W / 2 + W * (i + 0.5) / 4, cx = x + u * c, cz = z - u * sn;
+                for (const sd of [-1, 1]) {
+                    const r = k.box(0.006, D * 0.62, 0.006, cx + sd * D * 0.24 * sn, g + hh + D * 0.2, cz + sd * D * 0.24 * c, 'wood', ry);
+                    r.rotation.x = sd * 0.85; r.rotation.y = ry;
+                }
+            }
+            k.box(W, 0.006, 0.006, x, g + hh + D * 0.42, z, 'wood', ry);
+        }
+        // the well
+        const [wx, wz] = L(2645, 2552);
+        k.cyl(0.03, 0.032, 0.025, wx, 0.012, wz, 'ruin', 8);
+        for (const sd of [-1, 1]) k.box(0.004, 0.04, 0.004, wx + sd * 0.012, 0.04, wz, 'wood');
+        k.roof(0.04, 0.034, 0.014, wx, 0.058, wz, 'liThatch');
+        return k.done();
+    }
+
+    /** Duvod, as painted: a village first — a tight cluster of wooden and brick houses under pale
+     *  straw; behind it a small manor of grey stone with a tall gable, a curved white wall and a
+     *  round tower under a red cone. */
+    buildDuvod(at, scale = 1, rot = 0, b) {
+        const k = this.kit('duvod', at, rot, scale), { L, S, G } = this.mapper(b), T = 'duThatch';
+        // the manor: the tall gabled stone house, the curved wall, the tower
+        const [mx, mz] = L(2086, 2998), g0 = Math.min(0, G(2086, 2998));
+        this.townHouse(k, mx, mz, S(34), S(30), 0.17, 'duStone', 'roofRed', Math.PI / 2 + 0.1, null, 1.0, g0);
+        const arc = [[2098, 2978], [2112, 2970], [2130, 2967], [2148, 2972], [2160, 2984]].map(([x, y]) => [...L(x, y), Math.min(0, G(x, y))]);
+        for (let i = 0; i < arc.length - 1; i++) {
+            const [ax, az, ga] = arc[i], [bx, bz] = arc[i + 1], len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
+            k.box(0.022, 0.07 - ga + 0.03, len + 0.004, (ax + bx) / 2, (0.07 + ga - 0.03) / 2, (az + bz) / 2, 'white', ry);
+        }
+        const [tx, tz] = L(2165, 3004), gt = Math.min(0, G(2165, 3004));
+        this.turret(k, tx, tz, gt - 0.03, S(22), 0.23, 'roofRed', 0.13, 'white', 12);
+        // the village
+        for (const [px, py, w, d, hh, ry, brick] of [[1996, 3080, 36, 24, 0.09, 0.3, 1], [2036, 3045, 26, 20, 0.07, 0.1, 0], [2082, 3055, 26, 20, 0.07, -0.1, 0],
+            [2120, 3046, 22, 18, 0.06, 0.2, 0], [2148, 3072, 26, 18, 0.06, 0.4, 0], [2050, 3104, 26, 20, 0.07, 0, 1], [2090, 3102, 22, 18, 0.06, -0.2, 0],
+            [2126, 3095, 22, 18, 0.06, 0.3, 0], [2016, 3110, 20, 16, 0.06, 0, 0], [2060, 3078, 20, 16, 0.06, 0.5, 0], [2106, 3076, 18, 14, 0.05, 0, 0], [2160, 3040, 18, 14, 0.05, -0.3, 0]]) {
+            const [x, z] = L(px, py);
+            this.townHouse(k, x, z, S(w), S(d), hh, brick ? 'brownStone' : 'timber', brick ? 'roofRed' : T, ry, null, 0.85, Math.min(0, G(px, py)));
+        }
+        return k.done();
+    }
+
+    /** Gorthur Gvaed, as painted: a low grey fort on the lake shore, all horizontal — long walls
+     *  pierced with round loopholes, angular bastions, the gate with two arches; inside white
+     *  houses under red roofs and a square tower under a tall red pyramid. */
+    buildGorthurGvaed(at, scale = 1, rot = 0, b) {
+        const k = this.kit('gorthurGvaed', at, rot, scale), { L, S } = this.mapper(b), M = 'ggStone';
+        this.plinth(k, 0.44);
+        // inside, behind the walls: the houses and the tower
+        for (const [px, py, w, d, hh] of [[3800, 2404, 34, 22, 0.12], [3838, 2394, 24, 18, 0.11], [3902, 2396, 22, 16, 0.1], [3778, 2420, 22, 16, 0.1]]) {
+            const [x, z] = L(px, py); this.townHouse(k, x, z, S(w), S(d), hh, 'pale', 'roofRed', 0, null, 0.75);
+        }
+        const [tx, tz] = L(3862, 2402);
+        this.squareTower(k, tx, tz, S(26), 0.22, M, 0, 'roofRed');
+        // the walls: blocks of different heights, round loopholes, fine merlons, the gate
+        const blocks = [[[3752, 2440], [3830, 2436], [3832, 2468], [3760, 2470]], [[3830, 2426], [3872, 2424], [3874, 2464], [3832, 2466]], [[3872, 2420], [3936, 2420], [3940, 2458], [3874, 2462]]];
+        const tops = [0.075, 0.095, 0.085];
+        blocks.forEach((bl, bi) => {
+            const pts = bl.map(([x, y]) => L(x, y)), top = tops[bi];
+            k.prism(pts, -0.03, top, M, M);
+            for (let i = 0; i < 4; i++) { const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % 4]; k.crenels(ax, az, bx, bz, top + 0.004, 0.02, M, 0.03, 0.014, 0.016); }
+            // round loopholes along the front face (pts[2] → pts[3] runs along the front)
+            const [fx0, fz0] = pts[3], [fx1, fz1] = pts[2], ry = Math.atan2(fx1 - fx0, fz1 - fz0), n = Math.max(2, Math.round(Math.hypot(fx1 - fx0, fz1 - fz0) / 0.05));
+            for (let r = 0; r < 2; r++) for (let i = 0; i < n; i++) {
+                const f = (i + 0.5) / n, x = fx0 + (fx1 - fx0) * f, z = fz0 + (fz1 - fz0) * f - 0.003;
+                if (bi === 2 && f > 0.45) continue;   // the gate is there
+                k.cyl(0.012, 0.012, 0.006, x, top * (0.35 + r * 0.32), z, 'dark', 8).rotation.set(Math.PI / 2, ry - Math.PI / 2, 0);
+            }
+        });
+        for (const px of [3906, 3926]) {
+            const [x, z] = L(px, 2460);
+            k.box(0.032, 0.04, 0.006, x, 0.02, z - 0.003, 'dark');
+            k.cyl(0.032, 0.032, 0.006, x, 0.04, z - 0.003, 'dark', 10).rotation.x = Math.PI / 2;
+        }
+        return k.done();
+    }
+
+    /** Stygga, the School of the Cat, as painted: a round keep stepped like a cake — concentric
+     *  crenellated drums, each higher and narrower, a dome on top; warm pinkish stone, burgundy
+     *  cones; an outer polygonal wall with turrets under burgundy cones. */
+    buildStygga(at, scale = 1, rot = 0, b) {
+        const k = this.kit('stygga', at, rot, scale), { L, S } = this.mapper(b), M = 'stStone', R = 'stRoof';
+        this.plinth(k, 0.46);
+        const ring = [[2945, 2986], [2990, 2975], [3060, 2988], [3110, 3008], [3106, 3040], [3040, 3050], [2960, 3042], [2940, 3016]].map(([x, y]) => L(x, y));
+        this.curtain(k, ring, 0.09, 0.026, M);
+        k.floor(ring, 0.012, 'yard');
+        for (const [px, py, hh] of [[2950, 2986, 0.2], [2990, 2975, 0.23], [2942, 3030, 0.14], [3106, 3040, 0.14], [3110, 3006, 0.16], [3040, 3050, 0.12]]) {
+            const [x, z] = L(px, py); this.turret(k, x, z, 0, 0.05, hh, R, 0.1, M);
+        }
+        // the drums, each with a ring of dark windows and merlons
+        const drums = [[3046, 3004, 110, 0.17], [3050, 2992, 74, 0.29], [3058, 2982, 42, 0.4]];
+        drums.forEach(([px, py, d, hh], i) => {
+            const [x, z] = L(px, py), D = S(d);
+            k.cyl(D, D * 1.02, hh + 0.03, x, (hh - 0.03) / 2, z, M, 24);
+            k.crown(x, z, D, hh, M);
+            this.arcade(k, x, z, D, hh - 0.045, Math.round(d / 7), 0.012, 0.026, Math.PI * 0.9, Math.PI * 2.1);
+        });
+        const [tx, tz] = L(3058, 2982), T = S(42);
+        k.cyl(T * 0.7, T * 0.7, 0.05, tx, 0.43 + 0.025, tz, M, 14);
+        k.cyl(0, T * 0.82, 0.08, tx, 0.5 + 0.04, tz, R, 14);
+        // burgundy cones on the drums' rims
+        for (const [px, py, y0, hh] of [[3074, 3034, 0.17, 0.06], [3098, 3016, 0.17, 0.06], [3028, 2976, 0.29, 0.06], [3086, 2986, 0.29, 0.05], [3014, 3030, 0.17, 0.05]]) {
+            const [x, z] = L(px, py); this.turret(k, x, z, y0, 0.044, hh, R, 0.08, M);
+        }
+        return k.done();
+    }
+
+    /** Ard Modron, as painted: a mountain hamlet pressed under dark rock — wooden houses with steep
+     *  shingle roofs and crossed gable boards, a long house with smoke from its roof, fenced yards.
+     *  No walls, no stone. */
+    buildArdModron(at, scale = 1, rot = 0, b) {
+        const k = this.kit('ardModron', at, rot, scale), { L, S, G } = this.mapper(b), W = 'amWood';
+        for (const [px, py, w, d, hh, ry, roof] of [[3668, 3026, 36, 30, 0.09, 0.3, 'amRoof'], [3692, 3072, 26, 20, 0.07, 0.1, 'amRoof'], [3740, 3058, 40, 22, 0.08, -0.2, 'amRoof'],
+            [3800, 3040, 30, 22, 0.08, 0.2, 'slate'], [3830, 3078, 26, 20, 0.07, -0.1, 'amRoof'], [3782, 3092, 28, 20, 0.07, 0.3, 'slate'], [3722, 3108, 26, 20, 0.07, 0, 'amRoof'],
+            [3684, 3110, 22, 18, 0.06, 0.2, 'slate'], [3850, 3102, 22, 18, 0.06, -0.3, 'amRoof'], [3760, 3082, 18, 14, 0.05, 0, 'amRoof']]) {
+            const [x, z] = L(px, py), g = Math.min(0, G(px, py)), Wd = S(w), D = S(d);
+            this.townHouse(k, x, z, Wd, D, hh, W, roof, ry, null, 1.05, g);
+            // crossed boards over both gable ends
+            const c = Math.cos(ry), sn = Math.sin(ry);
+            for (const sd of [-1, 1]) for (const lean of [-0.7, 0.7]) {
+                const u = sd * (Wd * 0.53), bx = x + u * c, bz = z - u * sn;
+                const bd = k.box(0.006, 0.05, 0.006, bx, g + hh + D * 1.05 * 1.12 * 0.95 + 0.012, bz, 'wood', ry);
+                bd.rotation.set(lean, ry, 0);
+            }
+        }
+        // the stone foot of the big house, the smoke of the long house, fences
+        const [hx, hz] = L(3668, 3026);
+        k.box(S(40), 0.03, S(34), hx, 0.0, hz, 'ruin', 0.3);
+        const [sx, sz] = L(3744, 3054);
+        for (let i = 0; i < 4; i++) k.poly(0.012 + i * 0.005, sx + i * 0.008, 0.16 + i * 0.035, sz + i * 0.006, 'smoke');
+        for (const [ax, ay, bx2, by2] of [[3700, 3092, 3760, 3100], [3800, 3112, 3860, 3118], [3706, 3046, 3712, 3090]]) {
+            const [x0, z0] = L(ax, ay), [x1, z1] = L(bx2, by2), g = Math.min(0, G((ax + bx2) / 2, (ay + by2) / 2)), len = Math.hypot(x1 - x0, z1 - z0), ry = Math.atan2(x1 - x0, z1 - z0);
+            k.box(0.004, 0.016, len, (x0 + x1) / 2, g + 0.01, (z0 + z1) / 2, 'wood', ry);
+            for (let i = 0; i <= 4; i++) k.box(0.006, 0.026, 0.006, x0 + (x1 - x0) * i / 4, g + 0.008, z0 + (z1 - z0) * i / 4, 'wood');
+        }
+        return k.done();
+    }
+
     /** Small things painted on the map: bridges, huts, a farmstead, a watchtower, ruins. */
     buildProp(p) {
         const at = this.world(p.x, p.y, this.heightPx(p.x, p.y));
@@ -1540,6 +1881,21 @@ export class Relief {
             k.roof(0.13 * z, 0.09 * z, 0.08 * z, 0, 0.07 * z - 0.01, 0, 'darkRoof');
             k.box(0.04 * z, 0.05 * z, 0.04 * z, 0.03 * z, 0.025 * z - 0.01, -0.055 * z, 'timber');
             for (const sx of [-0.04, 0, 0.04]) k.box(0.012 * z, 0.022 * z, 0.004, sx * z, 0.04 * z - 0.01, -0.041 * z, 'dark');
+            return k.done();
+        }
+        if (p.kind === 'longhouse') {
+            // a northern long house of Skellige: low walls, a long steep dark roof, crossed boards on the gables
+            const z = p.size || 1, k = this.kit('longhouse', at, p.rot || 0);
+            k.box(0.13 * z, 0.05 * z, 0.06 * z, 0, 0.025 * z - 0.012, 0, p.stone ? 'ruin' : 'amWood');
+            k.roof(0.14 * z, 0.07 * z, 0.06 * z, 0, 0.05 * z - 0.012, 0, p.stone ? 'darkRoof' : 'amRoof');
+            for (const sd of [-1, 1]) for (const lean of [-0.7, 0.7]) k.box(0.005, 0.03 * z, 0.005, sd * 0.07 * z, 0.11 * z - 0.006, 0, 'wood').rotation.x = lean;
+            k.box(0.016 * z, 0.03 * z, 0.004, 0, 0.012 * z - 0.012, -0.031 * z, 'dark');
+            return k.done();
+        }
+        if (p.kind === 'menhirs') {
+            // standing stones in a ring
+            const k = this.kit('menhirs', at, p.rot || 0), n = p.n || 5, r = p.r || 0.035;
+            for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, hh = 0.045 + (i % 3) * 0.012; k.box(0.012, hh + 0.02, 0.009, Math.cos(a) * r, hh / 2 - 0.01, Math.sin(a) * r, 'ruin', -a); }
             return k.done();
         }
         if (p.kind === 'ruin') {

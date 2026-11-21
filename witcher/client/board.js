@@ -16,7 +16,7 @@ const PINS = {
     30: [2232, 430], 31: [1840, 1250], 32: [1840, 1650], 33: [1840, 2050], 34: [1840, 2450], 35: [1840, 2850],
 };
 /** Locations whose name banner is printed to the right of the badge (elsewhere it is to the left). */
-const BANNER_RIGHT = new Set([0, 1, 5, 6, 9]);
+const BANNER_RIGHT = new Set([0, 1, 5, 6, 9, 12, 13]);
 /** «Скеллиге»: the divisions of the Dagon track under his location (index 0 = the bottom one). */
 const DAGON_TRACK = [[2178, 1300], [2178, 1100], [2178, 905], [2178, 715]];
 const pxWorld = ([x, y]) => new BABYLON.Vector3(((x - 2050) / 3375 - 0.5) * MAP_W, 0, (0.5 - (y - 270) / 2725) * MAP_H);
