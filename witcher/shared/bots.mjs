@@ -12,9 +12,19 @@ import { ARMOR } from './data/legend-data.mjs';
 import { freeNeighbours } from './engine/legend.mjs';
 import { seaEdges, dagonUp, dagonLocOpen } from './engine/skellige.mjs';
 
+/** «Чародеи»: a mage card — fitted on ~36 000 bot fights with random decks (it14): the base damage
+ *  and the barrier win fights (a mage has no shield — the barrier is its only defence), the paid
+ *  extras, energy and draw barely matter. Units: 1 damage = 3. */
+const mageCardValue = (c) => {
+    const f = c.fx, x = c.extra ? c.extra.fx : {};
+    return (f.dmg || 0) * 3 + (f.barrier || 0) * 3.5 + (x.barrier || 0) * 1.8
+        + ((x.dmg || 0) + (x.dmgE ? 2 : 0)) * 0.4 + (f.energy || 0) * 0.3 + ((f.draw || 0) + (x.draw || 0) / 2) * 0.3
+        + (f.top ? 0.3 : 0) + c.links.reduce((a, l) => a + 0.5 + (l.fx.dmg || 0) * 0.5, 0);
+};
 export const cardValue = (id) => {
     const c = CARDS[id];
     if (!c) return 0;
+    if (c.mageCard) return mageCardValue(c);
     const f = c.fx;
     // «По следу монстра»: dice, Река гнева, any colour; «убрать карту» cost counts as 3.
     return (f.dmg || 0) * 3 + (f.shield || 0) * 2 + (f.draw || 0) + (f.top ? 2 : 0) + c.links.length * 1.5 + (c.burn ? 3 : c.cost)
@@ -34,6 +44,8 @@ function bestMageCombo(view, p) {
     const onlyOne = !!(f.cur && f.cur.onlyOne);
     const maxLen = f.cur && f.cur.r && f.cur.r.maxCombo != null ? f.cur.r.maxCombo : 7;
     let best = { ids: [], pay: [], score: -Infinity };
+    // Weights checked in isolated bot fights (it14): barrier 0.7–2.5 and energy 0–0.8 per point
+    // change the win rate by less than the noise, energy 1.5 loses ~20 % of the fights.
     const score = (t) => (t.dmg * 3 + Math.min(t.barrier || 0, 4) * 1.4 + (t.energyEnd || 0) * 0.8
         + (t.fixedDraw != null ? -4 : (t.draw + (t.drawE || 0) * (t.energyEnd || 0)) * 1.2) + t.top + (t.anyDiscard || 0) * 1.5 + t.ret.length * 2 + Math.min(t.shield, 4) * 0.5);
     const tryChain = (chain) => {
@@ -303,6 +315,8 @@ function duelTarget(view, p, o) {
 /** The skill the bot trains: the solo skill trophy first, then the one that raises the level. */
 function trainOrder(view, p) {
     const soloSkill = view.solo && view.skillTrophies.length ? SKILL_OF[view.skillTrophies[0].split('#')[0]] : null;
+    // The lowest skill first — the level-up cards are worth more than a high skill: «Сражение» first
+    // looks strong in isolated fights, but in whole games (200, it14) the mages won 72 instead of 84.
     return ['combat', 'defense', 'alchemy', 'spec'].slice().sort((a, b) =>
         (b === soloSkill) - (a === soloSkill) || p.skills[a] - p.skills[b] || (b === 'combat') - (a === 'combat'));
 }
@@ -514,7 +528,7 @@ const linkFx = (fx) => (fx.dmg || 0) * 3 + (fx.shield || 0) * 2 + (fx.draw || 0)
 /** Cards the bot knows it owns: hand, discard and the starting deck of its school. */
 function knownDeck(view, p) {
     const own = [...p.hand, ...p.discard];
-    if (own.length < 8) for (const c of Object.values(CARDS)) if (c.starter && c.school === p.school) own.push(c.id);
+    if (own.length < 8) for (const c of Object.values(CARDS)) if (c.starter && (c.school === p.school || c.mage === p.school)) own.push(c.id);
     return own.filter(id => CARDS[id]);
 }
 export function deckFit(view, p, id) {

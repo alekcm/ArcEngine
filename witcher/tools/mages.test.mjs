@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createGame, apply, options, actingSeat } from '../shared/engine/core.mjs';
 import { push, run } from '../shared/engine/flow.mjs';
 import { viewFor } from '../shared/view.mjs';
-import { botCommand, bestCombo } from '../shared/bots.mjs';
+import { botCommand, bestCombo, cardValue } from '../shared/bots.mjs';
 import { CARDS, maxShield } from '../shared/engine/util.mjs';
 import { comboError, comboTotals } from '../shared/engine/fight.mjs';
 import { MAGE_COMMON, MAGE_START, MAGES, MAGE_TROPHIES } from '../shared/data/mages-data.mjs';
@@ -512,4 +512,13 @@ test('боты-чародеи: энергия вне комбинации — «
     q.shield = 4;
     cmd = botCommand(viewFor(k, 0), { options: options(k, 0) });
     assert.equal(cmd.t, 'vulnAct');
+});
+
+test('боты-чародеи: ценность карты — урон и барьер, а не энергия и добор (подгонка по битвам ботов)', () => {
+    // Зовущая вода (1 урон, барьер 2) > Буря силы (2 урона) > Змеиный мираж (1 урон, добор, 4 связи)
+    // > Сила жизни (энергия 3) > Сила вод (барьер = энергии).
+    const order = ['M-A-15', 'M-B-40', 'M-B-24', 'M-B-02', 'M-A-12'].map(cardValue);
+    for (let i = 1; i < order.length; i++) assert.ok(order[i - 1] > order[i], `${i}: ${order}`);
+    // Witcher cards keep their old value.
+    assert.equal(cardValue('W-A-01'), 3 + 1.5 + 0);
 });
