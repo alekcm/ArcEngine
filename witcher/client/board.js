@@ -4,7 +4,7 @@
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { MONSTER, LOC } from '/shared/engine/util.mjs';
 import { toonMaterial, inkMini } from './toon.js';
-import { Relief } from './relief.js';
+import { Relief, BOARD_TOON } from './relief.js';
 
 // Board pins: pixel coordinates of the location number badges on Игровой стол.jpg.
 const PINS = {
@@ -144,10 +144,11 @@ export class Board {
         slab.material = sm; slab.receiveShadows = true; slab.isPickable = false;
         const map = this.map = BABYLON.MeshBuilder.CreateGround('map', { width: MAP_W, height: MAP_H }, scene);
         map.position.y = 0.0;
-        const mm = new BABYLON.StandardMaterial('mm', scene);
+        // the same toon lighting as the relief regions (relief.js), so they meet the flat board without a seam
+        const mm = toonMaterial(scene, 'mm', '#ffffff', BOARD_TOON);
         const mt = new BABYLON.Texture('assets/continent.jpg', scene, false, true, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
         mt.anisotropicFilteringLevel = 8;
-        mm.diffuseTexture = mt; mm.specularColor = new BABYLON.Color3(0.06, 0.06, 0.06);
+        mm.diffuseTexture = mt; mm.specularColor = new BABYLON.Color3(0, 0, 0);
         map.material = mm; map.receiveShadows = true; map.isPickable = true;
         this.shadows.getShadowMap().refreshRate = 1;
     }

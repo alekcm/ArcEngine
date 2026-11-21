@@ -3,15 +3,18 @@
 // client feeds them the pixels of a region of continent.jpg, a node test can feed them anything.
 //
 // How a pixel becomes height:
+//   * the land stands a little above the table (`base`), so that the painted rivers can be cut
+//     into it; the plains swell into gentle hills (the painter's own shading of the grass plus a
+//     soft noise);
+//   * rivers — pale cool strokes that are thin and run through grass — become beds below the land;
+//     under a painted bridge the bed is carved explicitly (the bridge itself is not water);
 //   * "rock" — the cool grey-blue and white of the painted mountains (not green: grass, forest;
-//     not warm: roads, parchment, wood; not saturated: rivers, sea, coloured badges);
-//   * the rock mask is blurred twice: a small blur shapes the slopes, a large one says how deep
-//     into a massif a point is (the middle of a range rises higher than its foothills);
-//   * the painted light finishes the job: snowy ridges are the brightest, gorges the darkest,
-//     so brightness inside the rock mask modulates the height;
-//   * flat zones are pressed back to the table: location plates and badges (they must be read
-//     and the miniatures stand there), the region edge (it meets the flat board) and a plateau
-//     for a 3D building that replaces the painted one.
+//     not warm: roads, parchment, wood; not saturated: badges; never a river) — rises: a small
+//     blur shapes the slopes, a large one says how deep into a massif a point is, the painted
+//     light (blurred: raw, every brushstroke became a needle) adds the ridges;
+//   * the steepness is capped (limitSlope): a steeper face stretched the painting into streaks;
+//   * level zones: location plates and badges (read there, miniatures stand there), terraces for
+//     3D buildings, and the region edge that meets the flat board.
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 export const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -58,61 +61,133 @@ export function classify(rgba, w, h) {
     return { rock, plate, lum };
 }
 
+/** Smooth deterministic value noise in [-1, 1] (gentle hills where nothing else is painted). */
+export function valueNoise(x, y, seed = 1) {
+    const hash = (i, j) => { let n = (i * 374761393 + j * 668265263 + seed * 2147483647) | 0; n = (n ^ (n >>> 13)) * 1274126177 | 0; return ((n ^ (n >>> 16)) >>> 0) / 4294967295 * 2 - 1; };
+    const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j;
+    const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+/** Rivers: pale, cool, light strokes that are THIN (their neighbourhood is mostly not water) and run
+ *  through grass — the light edge of a rock in the mountains is cool and light too, but it has no
+ *  grass beside it. Returns a 0..1 mask. */
+export function riverMask(rgba, w, h) {
+    const n = w * h, water = new Float32Array(n), grass = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+        const r = rgba[i * 4] / 255, g = rgba[i * 4 + 1] / 255, b = rgba[i * 4 + 2] / 255;
+        const l = 0.3 * r + 0.59 * g + 0.11 * b;
+        water[i] = smooth(0.01, 0.06, b - r) * smooth(0.3, 0.4, l) * (1 - smooth(0.8, 0.9, l)) * smooth(-0.06, -0.01, b - g);
+        // grass and forest (green over red, not bluer than green — the dark teal grass too) and roads
+        grass[i] = smooth(-0.025, 0.01, g - b) * smooth(0.0, 0.03, g - r) + smooth(0.04, 0.1, r - b) * (1 - smooth(0.5, 0.62, l));
+    }
+    const wide = blur2(water, w, h, 8), nearGrass = blur2(grass, w, h, 6);
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = water[i] * (1 - smooth(0.35, 0.6, wide[i])) * smooth(0.15, 0.35, nearGrass[i]);
+    // a river is a stroke, not a speck: the light tips of painted firs pass the colour test one by one
+    const body = blur2(out, w, h, 3);
+    for (let i = 0; i < n; i++) out[i] *= smooth(0.1, 0.25, body[i]);
+    return out;
+}
+
+/** Caps the steepness: no point may stand higher than a neighbour + `s` per pixel of distance (two
+ *  chamfer sweeps). Peaks that were steeper are cut down — a slope steeper than ~50° stretched the
+ *  painting into streaks. */
+export function limitSlope(f, w, h, s) {
+    const d = s * Math.SQRT2;
+    for (let pass = 0; pass < 2; pass++) {
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const i = y * w + x; let v = f[i];
+            if (x > 0) v = Math.min(v, f[i - 1] + s);
+            if (y > 0) { v = Math.min(v, f[i - w] + s); if (x > 0) v = Math.min(v, f[i - w - 1] + d); if (x < w - 1) v = Math.min(v, f[i - w + 1] + d); }
+            f[i] = v;
+        }
+        for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+            const i = y * w + x; let v = f[i];
+            if (x < w - 1) v = Math.min(v, f[i + 1] + s);
+            if (y < h - 1) { v = Math.min(v, f[i + w] + s); if (x < w - 1) v = Math.min(v, f[i + w + 1] + d); if (x > 0) v = Math.min(v, f[i + w - 1] + d); }
+            f[i] = v;
+        }
+    }
+    return f;
+}
+
 /**
- * Height field of one region (heights in world units, row-major w×h).
- * opt: { maxH, flat: [{x, y, rx, ry}] ellipses in region pixels pressed flat,
- *        plateau: {x, y, r, h} a round terrace for a building, edge: falloff in px at the
- *        region border, open: {top, right, bottom, left} sides that are the board edge
- *        (pressed flat sooner: the frame of the board is printed there) }
+ * Height field of one region (heights in world units, row-major w×h). The land stands `base` above
+ * the table so that rivers can be cut into it; the region border sinks to the table.
+ * opt: { maxH, base, hills, riverDepth, slope (max rise per pixel),
+ *        flat: [{x, y, rx, ry}] ellipses levelled to the base (plates, badges, miniature spots),
+ *        plateau: {x, y, r, h} — terraces for buildings (one object or an array),
+ *        carve: [{x, y, len, width, angle}] — river beds under painted bridges (angle — of the RIVER, radians),
+ *        edge: falloff in px at the region border, open: {top, right, bottom, left} board-edge sides }
  */
 export function heightField(rgba, w, h, opt = {}) {
-    const maxH = opt.maxH ?? 0.8, edge = opt.edge ?? 70;
+    const maxH = opt.maxH ?? 0.3, edge = opt.edge ?? 70, base = opt.base ?? 0.045;
+    const hillsH = opt.hills ?? 0.028, depth = opt.riverDepth ?? 0.04, slopeMax = opt.slope ?? 0.0065;
+    const n = w * h;
     const { rock, plate, lum } = classify(rgba, w, h);
+    const river = blur(riverMask(rgba, w, h), w, h, 2);
+    for (let i = 0; i < n; i++) rock[i] *= 1 - smooth(0.1, 0.4, river[i]);   // a river is never a mountain
     const slope = blur2(rock, w, h, 7);
     const massif = blur2(rock, w, h, 22);
     // The painted light is detail, not shape: blurred enough that a brushstroke does not become a
     // spike (raw, it turned every highlight into a crystal needle).
     const light = blur2(lum, w, h, 5);
+    // Hills of the plains: the painter shaded them (lighter toward the light, darker behind), so the
+    // difference between a near and a far average of the grass is the swell; noise breaks the rest.
+    const near = blur2(lum, w, h, 12), far = blur2(lum, w, h, 40);
     // plates: dilate the parchment so the slope stops before the text, not on it
     const plates = blur2(plate, w, h, 7);
-    const out = new Float32Array(w * h);
+    const out = new Float32Array(n);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const i = y * w + x;
-        // a thin cool stroke in the grass (a river, a road edge) is not a mountain: the massif
-        // blur of a 10-pixel line stays low, so it is cut off here
+        // a thin cool stroke in the grass (a road edge) is not a mountain: cut off by the massif blur
         const m = smooth(0.12, 0.75, slope[i]) * smooth(0.18, 0.45, massif[i]);
         const deep = 0.3 + 0.7 * smooth(0.25, 0.9, massif[i]);
         const ridge = 0.5 + 0.5 * smooth(0.2, 0.75, light[i]);
-        let v = maxH * m * deep * ridge;
-        v *= 1 - smooth(0.06, 0.22, plates[i]);
+        const swell = Math.max(-1, Math.min(1, (near[i] - far[i]) * 9)) * 0.5
+            + valueNoise(x / 110, y / 110, 3) * 0.35 + valueNoise(x / 45, y / 45, 7) * 0.15;
+        let v = base + hillsH * swell * (1 - m) + maxH * m * deep * ridge;
+        v *= 1 - smooth(0.06, 0.22, plates[i]) * (1 - base / Math.max(base, v));   // plates: down to the base
         out[i] = v;
     }
-    // the plateau of a 3D building: a level terrace that blends into the slope around it
-    const pl = opt.plateau;
-    if (pl) {
+    // terraces of 3D buildings: level, blending into the slope around them
+    for (const pl of [].concat(opt.plateau || [])) {
         for (let y = Math.max(0, Math.floor(pl.y - pl.r * 2)); y < Math.min(h, pl.y + pl.r * 2); y++) {
             for (let x = Math.max(0, Math.floor(pl.x - pl.r * 2)); x < Math.min(w, pl.x + pl.r * 2); x++) {
-                const d = Math.hypot(x - pl.x, y - pl.y) / pl.r;
-                const k = 1 - smooth(1, 1.8, d);
+                const k = 1 - smooth(1, 1.8, Math.hypot(x - pl.x, y - pl.y) / pl.r);
                 out[y * w + x] = out[y * w + x] * (1 - k) + pl.h * k;
             }
         }
     }
-    // flat zones (location plates, badges, the spots where miniatures stand) — after the
-    // plateau: a name banner next to a castle stays level even if the terrace reaches it
+    // river beds: the painted rivers, and the stretch hidden under a painted bridge
+    const bed = river.slice();
+    for (const c of opt.carve || []) {
+        const ca = Math.cos(c.angle), sa = Math.sin(c.angle), R = c.len / 2 + c.width;
+        for (let y = Math.max(0, Math.floor(c.y - R)); y < Math.min(h, c.y + R); y++) for (let x = Math.max(0, Math.floor(c.x - R)); x < Math.min(w, c.x + R); x++) {
+            const dx = x - c.x, dy = y - c.y, along = dx * ca + dy * sa, across = -dx * sa + dy * ca;
+            const k = (1 - smooth(c.len / 2 - 2, c.len / 2 + 2, Math.abs(along))) * (1 - smooth(c.width / 2 - 1.5, c.width / 2 + 1.5, Math.abs(across)));
+            bed[y * w + x] = Math.max(bed[y * w + x], k);
+        }
+    }
+    for (let i = 0; i < n; i++) out[i] -= depth * smooth(0.06, 0.3, bed[i]);
+    // level zones (location plates, badges, the spots where miniatures stand) — after the
+    // terraces: a name banner next to a castle stays level even if the terrace reaches it
     for (const f of opt.flat || []) {
         const x0 = Math.max(0, Math.floor(f.x - f.rx * 1.8)), x1 = Math.min(w - 1, Math.ceil(f.x + f.rx * 1.8));
         const y0 = Math.max(0, Math.floor(f.y - f.ry * 1.8)), y1 = Math.min(h - 1, Math.ceil(f.y + f.ry * 1.8));
         for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-            const d = Math.hypot((x - f.x) / f.rx, (y - f.y) / f.ry);
-            out[y * w + x] *= smooth(1, 1.8, d);
+            const k = smooth(1, 1.8, Math.hypot((x - f.x) / f.rx, (y - f.y) / f.ry));
+            out[y * w + x] = base + (out[y * w + x] - base) * k;
         }
     }
+    limitSlope(out, w, h, slopeMax);
     // region border: the relief sinks into the flat board (and sooner at the printed frame)
     const open = opt.open || {};
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const d = (side, dist) => (open[side] ? smooth(14, 64, dist) : smooth(0, edge, dist));
-        out[y * w + x] *= d('left', x) * d('right', w - 1 - x) * d('top', y) * d('bottom', h - 1 - y);
+        out[y * w + x] = Math.max(0, out[y * w + x] * d('left', x) * d('right', w - 1 - x) * d('top', y) * d('bottom', h - 1 - y));
     }
     return out;
 }
