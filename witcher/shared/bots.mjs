@@ -37,45 +37,48 @@ export const cardValue = (id) => {
 /** «Чародеи»: the best mage combo — chains through printed links or a paid any-colour link, and
  *  the best set of energy payments for the extras (all subsets of up to 4 such cards, else greedy).
  *  Returns the ids array with `.pay` (indices). */
-function bestMageCombo(view, p) {
+function bestMageCombo(view, p, useW = false) {
     const f = view.fight;
     const hand = p.hand;
     const forced = f.cur && f.cur.forcedFirst && hand.includes(f.cur.forcedFirst) ? f.cur.forcedFirst : null;
     const onlyOne = !!(f.cur && f.cur.onlyOne);
     const maxLen = f.cur && f.cur.r && f.cur.r.maxCombo != null ? f.cur.r.maxCombo : 7;
-    let best = { ids: [], pay: [], score: -Infinity };
+    let best = { ids: [], pay: [], wlink: null, score: -Infinity };
     // Weights checked in isolated bot fights (it14): barrier 0.7–2.5 and energy 0–0.8 per point
     // change the win rate by less than the noise, energy 1.5 loses ~20 % of the fights.
     const score = (t) => (t.dmg * 3 + Math.min(t.barrier || 0, 4) * 1.4 + (t.energyEnd || 0) * 0.8
         + (t.fixedDraw != null ? -4 : (t.draw + (t.drawE || 0) * (t.energyEnd || 0)) * 1.2) + t.top + (t.anyDiscard || 0) * 1.5 + t.ret.length * 2 + Math.min(t.shield, 4) * 0.5);
-    const tryChain = (chain) => {
+    const tryChain = (chain, wlink) => {
         const extras = chain.map((id, i) => (CARDS[id].extra ? i : -1)).filter(i => i >= 0);
         const sets = [];
         if (extras.length <= 4) for (let m = 0; m < (1 << extras.length); m++) sets.push(extras.filter((_, k) => m & (1 << k)));
         else { sets.push([]); sets.push(extras); }
         for (const pay of sets) {
-            if (comboError(view, p, chain, { pay })) continue;
-            const s = score(comboTotals(view, p, chain, { pay }));
-            if (s > best.score) best = { ids: chain.slice(), pay, score: s };
+            if (comboError(view, p, chain, { pay, wlink })) continue;
+            const s = score(comboTotals(view, p, chain, { pay, wlink })) - (wlink != null ? W_COST : 0);
+            if (s > best.score) best = { ids: chain.slice(), pay, wlink, score: s };
         }
     };
-    let budget = 600;
-    const dfs = (chain, rest) => {
+    let budget = useW ? 1500 : 600;
+    const dfs = (chain, rest, wlink) => {
         if (budget-- <= 0) return;
         if (chain.length) {
             if (forced && chain[0] !== forced) return;
-            tryChain(chain);
+            tryChain(chain, wlink);
             if (onlyOne || chain.length >= maxLen) return;
         }
         for (const id of rest) {
             const prev = chain.length ? CARDS[chain[chain.length - 1]] : null;
             const linked = !prev || linkIndex(prev, CARDS[id]) >= 0 || !!(prev.extra && prev.extra.fx.anyLink) || !!prev.fx.anyLink;
-            if (linked) dfs([...chain, id], rest.filter(x => x !== id));
+            if (linked) dfs([...chain, id], rest.filter(x => x !== id), wlink);
+            // Трофей Цири: a printed link of the previous card counts as the colour of this one.
+            else if (useW && wlink == null && prev.links.length) dfs([...chain, id], rest.filter(x => x !== id), chain.length);
         }
     };
-    dfs([], hand);
+    dfs([], hand, null);
     const out = best.ids.slice();
     out.pay = best.pay;
+    out.wlink = best.wlink;
     out.score = best.score;
     return out;
 }
@@ -96,38 +99,54 @@ function lightningValue(p) {
 
 /** Best combo by DFS over the hand (at most ~7 cards, cheap). With Цири's «Старшая Кровь»
  *  available, one link of the chain may be the any-colour blood link: returns { ids, blood }. */
-export function bestCombo(view, p, useBlood = false) {
-    if (isMage(p)) { const ids = bestMageCombo(view, p); return useBlood ? { ids, blood: null } : ids; }
+/** Трофей Цири and «Старшая Кровь» are once per fight: a link through them must gain more than
+ *  this (in combo-score units, 1 damage = 3) to be spent now rather than in a later turn. */
+const W_COST = 2.5;
+/** Best combo by DFS over the hand. `useBlood` — Цири's «Старшая Кровь» is available: returns
+ *  { ids, blood }. `useW` — the Ciri trophy is available: one printed link of a card may count as
+ *  the colour of the next card; its index is `ids.wlink` (null when not used). */
+export function bestCombo(view, p, useBlood = false, useW = false) {
+    if (isMage(p)) { const ids = bestMageCombo(view, p, useW); return useBlood ? { ids, blood: null } : ids; }
     const hand = p.hand;
     const f = view.fight;
     const forced = f.cur && f.cur.forcedFirst && hand.includes(f.cur.forcedFirst) ? f.cur.forcedFirst : null;
     // Special attacks («Уязвимости и особые атаки») may forbid cards: only legal chains count,
     // and with no legal card at all the combo is empty.
-    let best = { ids: [], blood: null, score: -Infinity };
+    let best = { ids: [], blood: null, wlink: null, score: -Infinity };
     // Whole-fight limits (Пугач: at most 3 colours, legendary abilities) are checked the same way.
     const restricted = !!(f.cur && f.cur.r && Object.keys(f.cur.r).length) || !!(MONSTER[f.mon] && MONSTER[f.mon].legend) || !!(f.whole && Object.keys(f.whole).length);
-    const score = (ids, blood) => {
-        const t = comboTotals(view, p, ids, { blood });
+    const score = (ids, blood, wlink) => {
+        const t = comboTotals(view, p, ids, { blood, wlink });
         // Blood is once per fight: only spend it for a real gain.
         const diceEv = t.dice.reduce((a, d) => a + (d.kind === 'aard' ? 1 : 2.67), 0);
-        return (t.dmg + diceEv) * 3 + Math.min(t.shield, 4 - p.shield) * 2 + (t.fixedDraw != null ? -4 : t.draw * 1.2) + t.top + t.ret.length * 2 - (blood != null ? 2.5 : 0);
+        return (t.dmg + diceEv) * 3 + Math.min(t.shield, 4 - p.shield) * 2 + (t.fixedDraw != null ? -4 : t.draw * 1.2) + t.top + t.ret.length * 2 - (blood != null ? W_COST : 0) - (wlink != null ? W_COST : 0);
     };
-    const dfs = (chain, rest, blood) => {
+    // Both any-colour links make every order of the hand a chain: the search is capped.
+    let budget = 20000;
+    const dfs = (chain, rest, blood, wlink) => {
+        if (budget-- <= 0) return;
         if (chain.length) {
             if (forced && chain[0] !== forced) return;
-            if (restricted && comboError(view, p, chain, { blood })) return;
-            const s = score(chain, blood);
-            if (s > best.score) best = { ids: chain.slice(), blood, score: s };
+            if (restricted && comboError(view, p, chain, { blood, wlink })) return;
+            const s = score(chain, blood, wlink);
+            if (s > best.score) best = { ids: chain.slice(), blood, wlink, score: s };
             if (f.cur && f.cur.onlyOne) return;
         }
+        const last = chain.length ? CARDS[chain[chain.length - 1]] : null;
         for (const id of rest) {
-            const linked = !chain.length || linkIndex(CARDS[chain[chain.length - 1]], CARDS[id]) >= 0;
-            if (linked) dfs([...chain, id], rest.filter(x => x !== id), blood);
-            if (chain.length && useBlood && blood == null) dfs([...chain, id], rest.filter(x => x !== id), chain.length);
+            const more = rest.filter(x => x !== id);
+            const linked = !last || linkIndex(last, CARDS[id]) >= 0;
+            if (linked) dfs([...chain, id], more, blood, wlink);
+            if (last && useBlood && blood == null) dfs([...chain, id], more, chain.length, wlink);
+            // Трофей Цири: the strongest printed link of the previous card takes this card's colour
+            // (also worth it when a weaker link of the right colour exists).
+            if (last && useW && wlink == null && last.links.length) dfs([...chain, id], more, blood, chain.length);
         }
     };
-    dfs([], hand, null);
-    return useBlood ? { ids: best.ids, blood: best.blood } : best.ids;
+    dfs([], hand, null, null);
+    const ids = best.ids.slice();
+    ids.wlink = best.wlink;
+    return useBlood ? { ids, blood: best.blood } : ids;
 }
 
 let R = Math.random;
@@ -171,10 +190,14 @@ export function botCommand(view, opts = {}) {
             && (a.k === 'kDie' || (isMage(p) ? a.dmg * 3 >= energyLoss(view, p, a.cost) : p.shield >= 2)));
         if (va) return { t: 'vulnAct', i: va.i };
         const canBlood = !!(opts.options && opts.options.fight && opts.options.fight.blood === null);
-        const best = bestCombo(view, p, canBlood);
+        const canW = !!(opts.options && opts.options.fight && opts.options.fight.wlink === null);
+        const best = bestCombo(view, p, canBlood, canW);
         const ids = canBlood ? best.ids : best, blood = canBlood ? best.blood : null;
-        if (ids.pay && ids.pay.length) return { t: 'combo', ids: ids.slice(), pay: ids.pay };
-        return blood != null ? { t: 'combo', ids, blood } : { t: 'combo', ids };
+        const cmd = { t: 'combo', ids: ids.slice() };
+        if (ids.pay && ids.pay.length) cmd.pay = ids.pay;
+        if (blood != null) cmd.blood = blood;
+        if (ids.wlink != null) cmd.wlink = ids.wlink;
+        return cmd;
     }
     const t = view.turn;
     if (!t || t.seat !== me || t.phase !== 1 || f) return null;

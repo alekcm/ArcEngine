@@ -1199,6 +1199,8 @@ export function mageChain(state, p, ids, chainLen, opts = {}) {
             const link = c.links[li];
             const off = (f && ab(f) === 'MON-08' && c.color === 'purple') || (f && ab(f) === 'MON-29' && next.color === 'purple');
             if (!off && !R.noLinks) apply(link.fx, ids[i], 'link', link.color);
+            // Marks the trophy as used for this fight (playCombo) and for the log line.
+            out.wlink = { at: i + 1, li, from: link.color, color: next.color, off };
             continue;
         }
         const li = linkIndex(c, next, opts.links ? opts.links[i + 1] : null);

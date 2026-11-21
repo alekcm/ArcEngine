@@ -522,3 +522,31 @@ test('боты-чародеи: ценность карты — урон и ба�
     // Witcher cards keep their old value.
     assert.equal(cardValue('W-A-01'), 3 + 1.5 + 0);
 });
+
+test('боты: трофей Цири в комбинации — у ведьмака и у чародея, раз за битву', () => {
+    for (const [school, pair] of [['wolf', ['W-A-01', 'W-A-19']], ['alzur', ['M-A-11', 'M-B-40']]]) {
+        const st = game({ schools: [school, 'cat'] });
+        const p = st.players[0];
+        p.trophies.push({ kind: 'witcher', id: 'ciri', card: 'WITCHER-TROPHY-25' });
+        fightWith(st);
+        st.fight.once.spec = true;   // no specialization in the way
+        setHand(p, pair);
+        assert.ok(comboError(st, p, pair), `${school}: без трофея карты не соединяются`);
+        assert.equal(options(st, 0).fight.wlink, null);
+        const cmd = botCommand(viewFor(st, 0), { options: options(st, 0) });
+        assert.deepEqual([cmd.t, cmd.ids, cmd.wlink], ['combo', pair, 1], school);
+        ok(apply(st, 0, cmd));
+        assert.ok(st.fight.once.wCiri, `${school}: трофей отмечен использованным`);
+        assert.match(st.log.map(l => l.t).join('\n'), /трофей Цири/);
+        // Used: the next turn the bot no longer counts on it.
+        settle(st);
+        assert.ok(st.fight && st.fight.stage === 'witcher' && st.fight.seat === 0, `${school}: битва продолжается`);
+        {
+            setHand(p, pair);
+            assert.ok(options(st, 0).fight.wlink);
+            const again = botCommand(viewFor(st, 0), { options: options(st, 0) });
+            assert.equal(again.wlink, undefined);
+            assert.equal(again.ids.length, 1);
+        }
+    }
+});
