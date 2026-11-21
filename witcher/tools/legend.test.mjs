@@ -6,7 +6,7 @@ import { createGame, apply, options, actingSeat } from '../shared/engine/core.mj
 import { push, run } from '../shared/engine/flow.mjs';
 import { viewFor } from '../shared/view.mjs';
 import { botCommand } from '../shared/bots.mjs';
-import { ADJ, MONSTER, ATTACK } from '../shared/engine/util.mjs';
+import { ADJ, MONSTER, ATTACK, CARDS } from '../shared/engine/util.mjs';
 import { normalizeExp } from '../shared/data/rules-data.mjs';
 import { LEGEND, LEGEND_BY_KEY, LEG_ATTACK, LEG_MOVE, RUIN, ARMOR, SOLO_MOVES, legendOpts, LEG_SPECIAL } from '../shared/data/legend-data.mjs';
 import { distTo, stepOptions, freeNeighbours } from '../shared/engine/legend.mjs';
@@ -202,4 +202,65 @@ test('одиночная партия бота доходит до конца (�
 
 test('боевые карты легендарного монстра входят в общий справочник атак', () => {
     for (const id of Object.keys(LEG_ATTACK)) assert.ok(ATTACK[id]);
+});
+
+test('Скрытый: +урон за руины в первый ход и у особой атаки без урона («Подчинение разума»)', () => {
+    for (const [n, purple] of [[2, false], [1, true]]) {
+        const st = game({ exp: ['legendary', 'legendary:mon:unseen'] });
+        const p = st.players[0];
+        p.loc = st.legend.loc; st.turn.moved = true; p.ruins = ['RUIN-01', 'RUIN-02'];
+        ok(apply(st, 0, { t: 'legend' }));
+        // I «Нечеловеческая сила» with a purple card in hand: the card is discarded, no damage.
+        if (purple) p.hand.push(Object.values(CARDS).find(c => c.color === 'purple' && !p.hand.includes(c.id)).id);
+        const f = st.fight; f.turn = 'monster'; f.mTurns = 1; f.stage = 'busy';
+        f.lastAttack = { id: 'x', type: 'special', n };
+        const mark = st.log.length;
+        step(st, { op: 'spAttack', fight: 1, n });
+        if (st.prompt && st.prompt.seat === 0) ok(apply(st, 0, { t: 'answer', ids: st.prompt.ids.slice(0, st.prompt.min || 1) }));
+        const text = st.log.slice(mark).map(l => l.t).join('\n');
+        assert.match(text, /Скрытый \+2 \(руины\)/, `атака ${n}`);
+        assert.match(text, /получает 2 урона/, `атака ${n}`);
+    }
+});
+
+test('боты: «Прогнать», пока к битве не готовы; соло — монстр туда, где больше свободных соседей', () => {
+    for (const players of [2, 1]) {
+        const st = game({ exp: players === 1 ? ['legendary', 'legendary:solo:normal'] : ['legendary', 'legendary:mon:kayran'], players });
+        const p = st.players[0], L = st.legend;
+        p.loc = L.loc; st.turn.moved = true; p.quests = []; p.hunts = [];
+        for (const s of st.slots) if (s.token === L.loc) s.mon = null;
+        for (const n of Object.keys(L.ruins)) delete L.ruins[n];
+        assert.equal(options(st, 0).chase.err, null);
+        const cmd = botCommand(viewFor(st, 0), { options: options(st, 0) });
+        assert.deepEqual(cmd, { t: 'chase' }, `${players} игрок(а): руины за 1 карту вместо безнадёжной битвы`);
+        if (players === 1) {
+            const from = L.loc;
+            const free = (n) => freeNeighbours(st, n).filter(x => x !== from).length;
+            const best = Math.max(...freeNeighbours(st, from).map(free));
+            p.bot = 1;
+            ok(apply(st, 0, cmd));
+            assert.ok(L.ruins[from] != null);
+            assert.equal(free(L.loc), best, 'выбрана соседняя локация с наибольшим числом свободных соседей');
+        }
+    }
+});
+
+test('боты: в битве с Пугачом комбинация не больше чем из 3 цветов', () => {
+    const st = game({ exp: ['legendary', 'legendary:mon:fiend'] });
+    const p = st.players[0];
+    p.loc = st.legend.loc; st.turn.moved = true;
+    ok(apply(st, 0, { t: 'legend' }));
+    for (let i = 0; i < 20 && st.prompt && st.prompt.seat === 0; i++) ok(apply(st, 0, st.prompt.kind === 'choice' ? { t: 'answer', choice: st.prompt.options[0].id } : { t: 'answer', ids: st.prompt.ids.slice(0, st.prompt.min) }));
+    settle(st);
+    const f = st.fight;
+    if (f.stage !== 'witcher') { f.stage = 'witcher'; f.turn = 'witcher'; }
+    // The chain a bot used to play here: 4 linked cards of 4 colours.
+    const hand = ['W-B-13', 'W-A-15', 'W-A-41', 'W-START-10'];
+    for (const id of hand) for (const pile of [p.deck, p.discard]) { const i = pile.indexOf(id); if (i >= 0) pile.splice(i, 1); }
+    p.deck.push(...p.hand); p.hand = hand.slice();
+    assert.ok(new Set(hand.map(id => CARDS[id].color)).size > 3);
+    const cmd = botCommand(viewFor(st, 0), { options: options(st, 0) });
+    assert.equal(cmd.t, 'combo');
+    assert.ok(new Set(cmd.ids.map(id => CARDS[id].color)).size <= 3);
+    ok(apply(st, 0, cmd));
 });

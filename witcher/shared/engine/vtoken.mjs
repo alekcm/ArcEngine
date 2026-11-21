@@ -703,7 +703,7 @@ export function vtActs(state, p) {
     const f = state.fight;
     if (!f || !f.vt || !f.vt.acts || !f.vt.acts.length || f.seat !== p.seat) return [];
     return f.vt.acts.map((a, i) => ({
-        i, n: a.n,
+        i, n: a.n, k: a.k, cost: a.cost || 0, dmg: a.dmg || 0,
         label: a.k === 'kDie' ? `Уязвимость ${ROMAN[a.n - 1]}: бросок кубика` : `Уязвимость ${ROMAN[a.n - 1]}: ${isMage(p) ? 'энергия' : 'щит'} −${a.cost} → ${a.dmg} урона`,
         text: vulnText(f.mon, a.n),
         err: vtActError(state, p, i),

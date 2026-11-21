@@ -2,13 +2,14 @@
 // botCommand(view, opts) returns one command or null: route planning to the best goal on the map,
 // fight readiness by «hand + deck», phase III buying by deck fit (see docs/witcher/02-decisions.md).
 import { CARDS, LOC, ADJ, MONSTER, homeOf } from './engine/util.mjs';
-import { LOC_ACTIONS, SCHOOLS, ELIXIR_LIMIT, isMage } from './data/rules-data.mjs';
+import { LOC_ACTIONS, SCHOOLS, ELIXIR_LIMIT, SPEC_TABLE, isMage } from './data/rules-data.mjs';
 import { autoReroll } from './engine/turn.mjs';
 import { linkIndex, comboTotals, comboError, elixirError } from './engine/fight.mjs';
 import { movePaymentError } from './engine/turn.mjs';
 import { findChain } from './engine/vuln.mjs';
 import { trainCost, hasWitcherTrophy } from './engine/effects.mjs';
 import { ARMOR } from './data/legend-data.mjs';
+import { freeNeighbours } from './engine/legend.mjs';
 import { seaEdges, dagonUp, dagonLocOpen } from './engine/skellige.mjs';
 
 export const cardValue = (id) => {
@@ -63,7 +64,22 @@ function bestMageCombo(view, p) {
     dfs([], hand);
     const out = best.ids.slice();
     out.pay = best.pay;
+    out.score = best.score;
     return out;
+}
+/** «Чародеи»: what the best combo of this turn loses when `n` energy is spent outside it first
+ *  («Молнии», Кащей's «энергия −1 → урон»): the paid extras it can no longer afford and the
+ *  energy left at the end (in the combo score's units: 1 damage = 3). */
+function energyLoss(view, p, n) {
+    if (p.shield < n) return Infinity;
+    return bestMageCombo(view, p).score - bestMageCombo(view, { ...p, shield: p.shield - n }).score;
+}
+/** «Молнии» (Альзур): the expected damage of the die + the level modifier, in combo-score units. */
+function lightningValue(p) {
+    const [mod] = SPEC_TABLE.alzur[Math.max(0, p.skills.spec - 1)];
+    let ev = 0;
+    for (let r = 1; r <= 6; r++) { const v = r + mod; ev += (v >= 6 ? 3 : v >= 4 ? 2 : v >= 2 ? 1 : 0) / 6; }
+    return ev * 3;
 }
 
 /** Best combo by DFS over the hand (at most ~7 cards, cheap). With Цири's «Старшая Кровь»
@@ -76,7 +92,8 @@ export function bestCombo(view, p, useBlood = false) {
     // Special attacks («Уязвимости и особые атаки») may forbid cards: only legal chains count,
     // and with no legal card at all the combo is empty.
     let best = { ids: [], blood: null, score: -Infinity };
-    const restricted = !!(f.cur && f.cur.r && Object.keys(f.cur.r).length);
+    // Whole-fight limits (Пугач: at most 3 colours, legendary abilities) are checked the same way.
+    const restricted = !!(f.cur && f.cur.r && Object.keys(f.cur.r).length) || !!(MONSTER[f.mon] && MONSTER[f.mon].legend) || !!(f.whole && Object.keys(f.whole).length);
     const score = (ids, blood) => {
         const t = comboTotals(view, p, ids, { blood });
         // Blood is once per fight: only spend it for a real gain.
@@ -120,7 +137,9 @@ export function botCommand(view, opts = {}) {
             if (id === 'POTION-06' || id === 'POTION-07') return { t: 'elixir', id: e };
             if (id === 'POTION-04' && p.shield >= 1 && p.deckCount >= 4) return { t: 'elixir', id: e };
         }
-        if (opts.options && opts.options.fight && !opts.options.fight.spec) return { t: 'spec' };
+        // «Молнии» costs 1 energy: only when the die is worth more than what the combo loses.
+        if (opts.options && opts.options.fight && !opts.options.fight.spec
+            && (p.school !== 'alzur' || lightningValue(p) >= energyLoss(view, p, 1))) return { t: 'spec' };
         // Bombs: damage ones at once, «Самум» with a short hand, «Лунная пыль» when the shield is low.
         for (const b of (opts.options && opts.options.fight && opts.options.fight.bombs) || []) {
             if (b.err) continue;
@@ -134,8 +153,10 @@ export function botCommand(view, opts = {}) {
         const gear = act.find(a => a.key === 'CONT79-14' || a.key === 'CONT79-20' || a.key === 'CONT79-56'
             || ((a.key === 'CONT79-15' || a.key === 'CONT79-01') && p.hand.length >= 3));
         if (gear) return { t: 'active', key: gear.key };
-        // Кащей's vulnerabilities: the die at once; «shield/energy −1 → damage» with shield to spare.
-        const va = ((opts.options && opts.options.fight && opts.options.fight.vulnActs) || []).find(a => !a.err && (/бросок/.test(a.label) || p.shield >= 2));
+        // Кащей's vulnerabilities: the die at once; «shield −1 → damage» with shield to spare; a mage
+        // pays energy when the damage is worth more than what the combo loses without it.
+        const va = ((opts.options && opts.options.fight && opts.options.fight.vulnActs) || []).find(a => !a.err
+            && (a.k === 'kDie' || (isMage(p) ? a.dmg * 3 >= energyLoss(view, p, a.cost) : p.shield >= 2)));
         if (va) return { t: 'vulnAct', i: va.i };
         const canBlood = !!(opts.options && opts.options.fight && opts.options.fight.blood === null);
         const best = bestCombo(view, p, canBlood);
@@ -165,10 +186,13 @@ export function botCommand(view, opts = {}) {
     // Phase II right here when it is the best thing to do: a fight costs no more cards this way.
     const fightOpt = o.phase2.find(x => x.id === 'fight');
     const here = view.slots.find(s => s.mon && s.token === p.loc);
-    if (fightOpt && !fightOpt.err && here && winChance(view, p, here) >= FIGHT_NOW) return { t: 'fight' };
+    if (fightOpt && !fightOpt.err && here && winChance(view, p, here) >= (soloLegendRush(view, p) > 1 ? 0.45 : FIGHT_NOW)) return { t: 'fight' };
     // «Легендарная охота»: the legendary monster here and the odds are good — that wins the game.
     const legOpt = o.phase2.find(x => x.id === 'legend' && !x.err);
     if (legOpt && legendChance(view, p) >= legendNeed(view)) return { t: 'legend' };
+    // «Прогнать» (p. 5): 1 card — the monster leaves a ruin token right here, and ending phase I on
+    // it gives its bonus (and −1 life of the monster in the fight; solo: −1 per 2 tokens).
+    if (chaseWorth(view, p, p.loc) && o.chase && !o.chase.err) return { t: 'chase' };
     const duel = duelTarget(view, p, o);
     if (duel != null && (t.moved || !o.moves.length)) return { t: 'duel', seat: duel };
     // Route: the best goal on the map (monsters, quests, hunting tokens, useful actions), one
@@ -185,7 +209,7 @@ function phase2(view, p, o, fightOpt, here) {
     const med = o.phase2.find(x => x.id === 'meditate');
     const leg = o.phase2.find(x => x.id === 'legend' && !x.err);
     if (leg && legendChance(view, p) >= legendNeed(view)) return { t: 'legend' };
-    if (canFight && wc >= 0.7) return { t: 'fight' };
+    if (canFight && wc >= (soloLegendRush(view, p) > 1 ? 0.45 : 0.7)) return { t: 'fight' };
     const sea = o.phase2.find(x => x.id === 'skFight' && !x.err);
     if (sea && seaFoe(view) && winChance(view, p, { mon: seaFoe(view), terrain: 'joker' }) >= 0.5) return { t: 'skFight' };
     if (med && !med.err) return { t: 'meditate', trophy: med.trophies[0] };
@@ -213,6 +237,20 @@ export function legendChance(view, p, handLoss = 0) {
     hp += (view.solo ? Math.floor(ruins / 2) : ruins) * 1.2 + (ruins ? 3 : 0) - armor * 3 - 4;
     return 1 / (1 + Math.exp(-(hp - 15) / 2));
 }
+/** Solo «Легендарная охота»: the movement deck is the clock and the armor falls with every trophy —
+ *  normal monsters first (×1.6 while the armor is up), with the last cards — only the legend. */
+function soloLegendRush(view, p) {
+    if (!view.solo || !view.legend) return 1;
+    if (view.legend.moveDeck <= 2) return 0.3;
+    return ARMOR[view.legend.side][Math.max(0, Math.min(4, p.track))] > 0 ? 1.6 : 1;
+}
+/** «Прогнать» is worth a card when the fight is not on yet and a new ruin token stays at `loc`. */
+function chaseWorth(view, p, loc, handLoss = 0) {
+    const L = view.legend;
+    if (!L || L.loc !== loc || !L.ruinPool || L.ruins.includes(loc)) return false;
+    if (!freeNeighbours(view, loc).length || p.hand.length - handLoss < 2) return false;
+    return legendChance(view, p, handLoss + 1) < legendNeed(view);
+}
 /** The odds a bot wants: lower when the solo movement deck runs out. */
 function legendNeed(view) {
     const L = view.legend;
@@ -231,8 +269,10 @@ export function winChance(view, p, slot, handLoss = 0) {
     let hp = Math.max(0, p.hand.length - handLoss) + (p.deckCount || 0);
     if (p.trackTokens[slot.terrain] || (slot.mon === 'DAGON' && p.skToken)) hp += 3;
     // «Чародеи»: the mage's «щит» is energy — it pays for damage and extras, it does not absorb
-    // hits; the barrier is gained in the fight, so Мудрость (max energy) stands for both.
-    if (isMage(p)) hp += p.shield * 0.75 + (p.skills.defense - 1) * 0.75 + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
+    // hits. Fitted on ~1100 bot fights of mages (it13) to the scale of the witchers' estimate: the
+    // level gap decides (a mage's level grows with its four skills, its deck — with the level),
+    // the energy at the start barely matters, and the same cards are worth less than a witcher's.
+    if (isMage(p)) hp += p.shield * 0.25 + (p.level - mon.level) * 6 - 3;
     else hp += p.shield + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
     return 1 / (1 + Math.exp(-(hp - 15) / 2));
 }
@@ -344,7 +384,7 @@ function goalValue(view, p, n, d, reach) {
     if (slot && fightable(view, p, slot)) {
         // Cards spent on the way are cards missing in the fight; a far monster is a plan for later turns.
         const wc = reach ? winChance(view, p, slot, d) : winChance(view, p, slot, 0) * 0.7;
-        v += 16 * wc * (wc >= 0.45 ? 1 : 0.5);
+        v += 16 * wc * (wc >= 0.45 ? 1 : 0.5) * soloLegendRush(view, p);
     }
     // «Скеллиге»: the siren (trophy and 2 gold, no exhaustion) or Dagon (gold, a card and a gift).
     // Sailing there starts the fight at once, so only a good chance makes it a goal.
@@ -365,8 +405,10 @@ function goalValue(view, p, n, d, reach) {
             v += 24 * wc * (wc >= legendNeed(view) ? 1 : 0.3);
             // Solo: the movement deck is the clock — the last turns go to the monster whatever the odds.
             if (view.solo && view.legend.moveDeck <= 2) v += 30;
+            // Not ready yet: chasing it from there is a ruin token for one card.
+            else if (reach && chaseWorth(view, p, n, d)) v += view.solo ? 9 : 5;
         }
-        if (reach && view.legend.ruins.includes(n)) v += 3.5;
+        if (reach && view.legend.ruins.includes(n)) v += view.solo ? 6 : 3.5;
     }
     return v;
 }
@@ -390,7 +432,9 @@ function planStep(view, p, o) {
     const stay = (() => {
         const slot = view.slots.find(s => s.mon && s.token === p.loc);
         const leg = view.legend && view.legend.loc === p.loc ? 24 * legendChance(view, p) * (legendChance(view, p) >= legendNeed(view) ? 1 : 0.3) : 0;
-        return Math.max(leg, slot && fightable(view, p, slot) ? 16 * winChance(view, p, slot) : 0);
+        // A ruin token here is taken at the end of phase I (e.g. just left by «Прогнать»).
+        const ruin = view.legend && view.legend.ruins.includes(p.loc) ? 3.5 : 0;
+        return Math.max(leg, slot && fightable(view, p, slot) ? 16 * winChance(view, p, slot) : 0) + ruin;
     })();
     if (!best || best.score <= Math.max(1, stay)) return null;
     // A far goal: spend only the cards above 3 (phase III draws back up to 3 anyway).

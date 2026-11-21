@@ -40,8 +40,12 @@ export function distTo(to) {
     }
     return d;
 }
-/** Neighbours the monster may enter now (no ruin token). */
-export const freeNeighbours = (state, loc) => (ADJ[loc] || []).filter(n => BOARD_LOCS(n) && state.legend.ruins[n] == null);
+/** Neighbours the monster may enter now (no ruin token). Works on the state and on a player's view
+ *  (where `ruins` is the list of locations). */
+export const freeNeighbours = (state, loc) => {
+    const r = state.legend.ruins;
+    return (ADJ[loc] || []).filter(n => BOARD_LOCS(n) && (Array.isArray(r) ? !r.includes(n) : r[n] == null));
+};
 /** Where one movement point may take the monster toward `dest`: the nearest neighbours without
  *  ruins; if all nearest ones hold ruins — any neighbour without ruins; none — []. */
 export function stepOptions(state, dest) {
@@ -156,8 +160,12 @@ STEPS.chaseDo = (state, step) => {
     if (opts.length === 1 || p.bot) { push(state, { op: 'legendGo', to: p.bot ? botChaseSolo(state, p, opts) : opts[0] }); return; }
     ask(state, { seat: p.seat, kind: 'choice', ui: 'map', title: 'Прогнать легендарного монстра', text: 'Выберите соседнюю локацию без руин, куда уйдёт монстр.', options: opts.map(n => ({ id: String(n), label: `${n}. ${LOC[n].name}`, loc: n })), op: 'legendGoChosen', args: { next: null } });
 };
-/** Solo bot: send the monster toward the bot's school / away is irrelevant — the lowest number. */
-function botChaseSolo(state, p, opts) { return opts[0]; }
+/** Solo bot: the ruin stays where the bot stands; send the monster where it can be chased again
+ *  (most free neighbours besides the bot's location), ties — the lowest number. */
+function botChaseSolo(state, p, opts) {
+    const free = (n) => freeNeighbours(state, n).filter(x => x !== p.loc).length;
+    return opts.slice().sort((a, b) => free(b) - free(a) || a - b)[0];
+}
 
 // ---------------------------------------------------------------------------------------------
 // Ruin tokens (pp. 5–6)

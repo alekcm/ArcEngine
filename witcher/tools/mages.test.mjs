@@ -485,3 +485,31 @@ test('Гюнтер О’Дим I «Управление временем»: ча
     step(w, { op: 'spOp', fight: 1, o: { k: 'shield0', mageBarrier: true } });
     assert.equal(q.shield, 0);
 });
+
+test('боты-чародеи: энергия вне комбинации — «Молнии» и «энергия → урон» Кащея, только если комбинация не теряет больше', () => {
+    // «M-START-03»: no base damage, 3 damage for 2 energy — with energy 2 the die (level I: 1/3 damage)
+    // would leave the extra unpaid.
+    const st = game({ schools: ['alzur', 'wolf'] });
+    const p = st.players[0];
+    fightWith(st);
+    setHand(p, ['M-START-03']);
+    p.shield = 2; p.skills.spec = 1;
+    let cmd = botCommand(viewFor(st, 0), { options: options(st, 0) });
+    assert.equal(cmd.t, 'combo');
+    assert.deepEqual(cmd.pay, [0], 'энергия идёт на доплату «У3»');
+    // Level IV (+2 to the die: 2⅓ damage on average) and spare energy — the die first.
+    p.shield = 4; p.skills.spec = 4;
+    cmd = botCommand(viewFor(st, 0), { options: options(st, 0) });
+    assert.deepEqual(cmd, { t: 'spec' });
+    // Кащей V: «энергия −1 → 1 урон» — not with the last 2 energy needed for the extra.
+    const k = kGame(['otar', 'wolf']); const q = k.players[0];
+    kFight(k, [5]);
+    setHand(q, ['M-START-03']);
+    k.fight.once.spec = 1;
+    q.shield = 2;
+    cmd = botCommand(viewFor(k, 0), { options: options(k, 0) });
+    assert.equal(cmd.t, 'combo');
+    q.shield = 4;
+    cmd = botCommand(viewFor(k, 0), { options: options(k, 0) });
+    assert.equal(cmd.t, 'vulnAct');
+});
