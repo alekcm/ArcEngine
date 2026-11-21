@@ -172,7 +172,8 @@ export function limitSlope(f, w, h, s, keep = null) {
  * the table so that rivers can be cut into it; the region border sinks to the table.
  * opt: { maxH, base, hills, riverDepth, slope (max rise per pixel),
  *        flat: [{x, y, rx, ry}] ellipses levelled to the base (plates, badges, miniature spots),
- *        plateau: {x, y, r, h, mound} — terraces for buildings (one object or an array): level at h
+ *        plateau: {x, y, r, ry?, h, mound} — terraces for buildings (one object or an array): level at h
+ *                 (an ellipse r × ry when ry is given: a town spread along its river)
  *                 over the whole footprint r (cut into a slope, filled over a valley), standing on a
  *                 spur that falls by `mound` per pixel (default 0.0035) — no edge of a building hangs
  *                 in the air,
@@ -223,11 +224,13 @@ export function heightField(rgba, w, h, opt = {}) {
     for (let i = 0; i < n; i++) out[i] -= depth * smooth(0.06, 0.3, bed[i]);
     // terraces of 3D buildings, before the slope cap (a spur is gentler than the cap, so the cap
     // only grinds down rock that would tower over the terrace)
+    // distance from a terrace's centre in units of its x radius (elliptical terraces squeezed in y)
+    const pd = (pl, x, y) => Math.hypot(x - pl.x, (y - pl.y) * (pl.ry ? pl.r / pl.ry : 1));
     for (const pl of [].concat(opt.plateau || [])) {
         const ms = pl.mound ?? 0.0035, R = pl.r + Math.max(0, pl.h) / ms + 1;
         for (let y = Math.max(0, Math.floor(pl.y - R)); y < Math.min(h, pl.y + R); y++) {
             for (let x = Math.max(0, Math.floor(pl.x - R)); x < Math.min(w, pl.x + R); x++) {
-                const d = Math.hypot(x - pl.x, y - pl.y), i = y * w + x;
+                const d = pd(pl, x, y), i = y * w + x;
                 out[i] = d <= pl.r + 2 ? pl.h : Math.max(out[i], pl.h - ms * (d - pl.r - 2));
             }
         }
@@ -239,7 +242,7 @@ export function heightField(rgba, w, h, opt = {}) {
         const x0 = Math.max(0, Math.floor(f.x - f.rx * 1.8)), x1 = Math.min(w - 1, Math.ceil(f.x + f.rx * 1.8));
         const y0 = Math.max(0, Math.floor(f.y - f.ry * 1.8)), y1 = Math.min(h - 1, Math.ceil(f.y + f.ry * 1.8));
         for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-            if (plats.some(pl => Math.hypot(x - pl.x, y - pl.y) <= pl.r + 2)) continue;
+            if (plats.some(pl => pd(pl, x, y) <= pl.r + 2)) continue;
             const k = smooth(1, 1.8, Math.hypot((x - f.x) / f.rx, (y - f.y) / f.ry));
             out[y * w + x] = base + (out[y * w + x] - base) * k;
         }
@@ -247,7 +250,7 @@ export function heightField(rgba, w, h, opt = {}) {
     let keep = null;
     if (plats.length) {
         keep = new Uint8Array(n);
-        for (const pl of plats) for (let y = Math.max(0, Math.floor(pl.y - pl.r - 2)); y <= Math.min(h - 1, pl.y + pl.r + 2); y++) for (let x = Math.max(0, Math.floor(pl.x - pl.r - 2)); x <= Math.min(w - 1, pl.x + pl.r + 2); x++) if (Math.hypot(x - pl.x, y - pl.y) <= pl.r + 2) keep[y * w + x] = 1;
+        for (const pl of plats) for (let y = Math.max(0, Math.floor(pl.y - pl.r - 2)); y <= Math.min(h - 1, pl.y + pl.r + 2); y++) for (let x = Math.max(0, Math.floor(pl.x - pl.r - 2)); x <= Math.min(w - 1, pl.x + pl.r + 2); x++) if (pd(pl, x, y) <= pl.r + 2) keep[y * w + x] = 1;
     }
     limitSlope(out, w, h, slopeMax, keep);
     // region border: the relief sinks into the flat board (and sooner at the printed frame)
