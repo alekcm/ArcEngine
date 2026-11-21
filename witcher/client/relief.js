@@ -13,7 +13,7 @@
 // The first region is Kaer Morhen (location 3) with Ban Ard (4) and the valley between them;
 // more regions are entries of REGIONS. Pure presentation: no rule reads anything from here.
 /* global BABYLON */
-import { heightField, sample, isForest, inpaint } from './relief-height.mjs';
+import { heightField, sample, isForest, inpaint, rockDetail } from './relief-height.mjs';
 import { toonMaterial } from './toon.js';
 
 /** Lighting of everything painted on the board (soft bands, no hard glint, a faint rim). */
@@ -28,8 +28,11 @@ export const REGIONS = [{
     maxH: 0.3,                             // the highest peak, world units (a miniature is 0.95)
     open: { top: true, right: true },      // sides that are the edge of the board
     buildings: [
-        { kind: 'kaerMorhen', x: 3585, y: 236, r: 52, h: 0.24, scale: 1.1, rot: 0.12, hole: { x: 3606, y: 200, rx: 104, ry: 102 } },
-        { kind: 'banArd', x: 3742, y: 590, r: 40, h: 0.12, scale: 1, rot: 0, hole: { x: 3740, y: 560, rx: 70, ry: 84 } },
+        // foot — the radius of the building's plinth in its own units: the terrace is levelled under
+        // all of it (r = foot · scale in pixels), on a spur falling by `mound` per pixel. Kaer
+        // Morhen keeps clear of its name banner (y ≥ 296) and of the school medallion to the east.
+        { kind: 'kaerMorhen', x: 3606, y: 196, foot: 0.45, h: 0.13, mound: 0.005, scale: 0.72, rot: 0.12, hole: { x: 3610, y: 203, rx: 100, ry: 90 } },
+        { kind: 'banArd', x: 3742, y: 590, foot: 0.24, h: 0.12, scale: 1, rot: 0, hole: { x: 3740, y: 560, rx: 70, ry: 84 } },
     ],
     props: [
         { kind: 'bridge', stone: true, x: 3257, y: 369, angle: 0, len: 52, width: 24 },
@@ -51,8 +54,73 @@ export const REGIONS = [{
     ],
 }];
 
+/**
+ * Sharp rock on the terrain's faces. The painting is laid on the terrain from above, so on a steep
+ * face a pixel of it covers a long strip and blurs into streaks. Over those faces (and, fainter,
+ * over all high ground) this plugin multiplies the painting by painted rock — rockDetail sampled in
+ * world space on the three axis planes (triplanar: it is never stretched), in two scales. The
+ * painting still gives the colour and the big shapes; the rock gives the surface something sharp.
+ * A: (tile scale per world unit, strength, steepness from, steepness to); B: (high ground from,
+ * high ground to, strength there, —).
+ */
+export const ROCK = { scale: 2.6, strength: 0.85, steepFrom: 0.22, steepTo: 0.55, highFrom: 0.1, highTo: 0.22, high: 0.45 };
+class RockPlugin extends BABYLON.MaterialPluginBase {
+    constructor(material, tex, cfg = ROCK) {
+        super(material, 'ReliefRock', 210, { RELIEFROCK: false }, true, true);
+        this.tex = tex; this.cfg = cfg;
+    }
+    getClassName() { return 'ReliefRockPlugin'; }
+    prepareDefines(defines) { defines.RELIEFROCK = true; }
+    isReadyForSubMesh() { return this.tex.isReady(); }
+    getSamplers(samplers) { samplers.push('reliefRockSampler'); }
+    getUniforms() {
+        return {
+            ubo: [{ name: 'reliefRockA', size: 4, type: 'vec4' }, { name: 'reliefRockB', size: 4, type: 'vec4' }],
+            fragment: '#ifdef RELIEFROCK\nuniform vec4 reliefRockA;\nuniform vec4 reliefRockB;\n#endif',
+        };
+    }
+    bindForSubMesh(ubo) {
+        const c = this.cfg;
+        ubo.updateFloat4('reliefRockA', c.scale, c.strength, c.steepFrom, c.steepTo);
+        ubo.updateFloat4('reliefRockB', c.highFrom, c.highTo, c.high, 0);
+        ubo.setTexture('reliefRockSampler', this.tex);
+    }
+    getCustomCode(shaderType) {
+        if (shaderType !== 'fragment') return null;
+        return {
+            CUSTOM_FRAGMENT_DEFINITIONS: `
+#ifdef RELIEFROCK
+uniform sampler2D reliefRockSampler;
+float reliefRockAt(vec3 p, vec3 bw) {
+    return texture2D(reliefRockSampler, p.zy).r * bw.x + texture2D(reliefRockSampler, p.xz).r * bw.y + texture2D(reliefRockSampler, p.xy).r * bw.z;
+}
+#endif
+`,
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `
+#ifdef RELIEFROCK
+{
+    vec3 rn = normalize(vNormalW);
+    float steep = 1.0 - abs(rn.y);
+    float rk = max(smoothstep(reliefRockA.z, reliefRockA.w, steep) * reliefRockA.y,
+                   smoothstep(reliefRockB.x, reliefRockB.y, vPositionW.y) * reliefRockB.z);
+    if (rk > 0.002) {
+        vec3 bw = pow(abs(rn), vec3(4.0));
+        bw /= (bw.x + bw.y + bw.z);
+        vec3 p = vPositionW * reliefRockA.x;
+        float d = reliefRockAt(p, bw) * 0.6 + reliefRockAt(p * 2.7 + 0.37, bw) * 0.4;
+        baseColor.rgb *= mix(1.0, 0.45 + d * 1.1, rk);
+    }
+}
+#endif
+`,
+        };
+    }
+}
+
 /** Image-pixel size → world size (the map plane is 16 wide over 4096 pixels). */
 const PX = 16 / 4096;
+/** The terrace radius of a building, image pixels. */
+export const footPx = (b) => b.foot * b.scale / PX;
 
 export class Relief {
     /**
@@ -121,6 +189,15 @@ export class Relief {
         tex.update();
         tex.wrapU = tex.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE;
         this.stoneTex = tex;
+        // Painted rock (rockDetail: facets, cracks, grain) — the terrain's steep faces and the plinths
+        const R = 256, rock = rockDetail(R), rt = new BABYLON.DynamicTexture('reliefRock', { width: R, height: R }, S, true, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+        const rg = rt.getContext(), rid = rg.createImageData(R, R);
+        for (let i = 0; i < R * R; i++) { rid.data[i * 4] = rid.data[i * 4 + 1] = rid.data[i * 4 + 2] = rock[i]; rid.data[i * 4 + 3] = 255; }
+        rg.putImageData(rid, 0, 0);
+        rt.update();
+        rt.wrapU = rt.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE;
+        rt.anisotropicFilteringLevel = 8;
+        this.rockTex = rt;
         const mk = (name, hex, textured = true) => {
             const m = toonMaterial(S, 'rl_' + name, hex, BOARD_TOON);
             m.specularColor = new BABYLON.Color3(0, 0, 0);
@@ -136,6 +213,7 @@ export class Relief {
             white: mk('white', '#d6d3cb'), ruin: mk('ruin', '#9a988f'), roofBrown: mk('roofBrown', '#5a4136'),
             plaster: mk('plaster', '#cdbb94'), timber: mk('timber', '#7a5a3c'), thatch: mk('thatch', '#9a7442'),
             plank: mk('plank', '#8a6644'),
+            rock: (() => { const m = mk('rock', '#a4adbf'); m.diffuseTexture = rt; rt.uScale = 3; rt.level = 1.65; return m; })(),
         };
     }
 
@@ -164,7 +242,7 @@ export class Relief {
         const loc = (o) => ({ ...o, x: o.x - x0, y: o.y - y0 });
         const field = heightField(rgba, w, h, {
             maxH: reg.maxH, flat, open: reg.open,
-            plateau: reg.buildings.map(b => loc({ x: b.x, y: b.y, r: b.r, h: b.h })),
+            plateau: reg.buildings.map(b => loc({ x: b.x, y: b.y, r: footPx(b), h: b.h, mound: b.mound })),
             // the river runs on under a painted bridge: across the road
             carve: reg.props.filter(p => p.kind === 'bridge').map(p => loc({ x: p.x, y: p.y, len: p.width + 10, width: p.len * 0.62, angle: p.angle + Math.PI / 2 })),
         });
@@ -220,6 +298,7 @@ export class Relief {
         const m = toonMaterial(S, 'reliefM_' + reg.id, '#ffffff', BOARD_TOON);
         m.diffuseTexture = tex; m.specularColor = new BABYLON.Color3(0, 0, 0);
         m.zOffset = -2;   // the rim of the patch lies on the flat board: it wins the depth tie
+        if (BABYLON.MaterialPluginBase) m.reliefRock = new RockPlugin(m, this.rockTex);
         mesh.material = m; mesh.receiveShadows = true; mesh.isPickable = false;
         this.shadows.addShadowCaster(mesh);
         this.mesh = mesh;
@@ -261,7 +340,7 @@ export class Relief {
             fir.isPickable = false; fir.receiveShadows = true;
             return { fir, mats: [] };
         });
-        const busy = [...reg.buildings.map(b => ({ x: b.x, y: b.y, r: b.r * 1.5 })), ...this.holes.map(o => ({ x: o.x, y: o.y, r: Math.max(o.rx, o.ry) + 4 }))];
+        const busy = [...reg.buildings.map(b => ({ x: b.x, y: b.y, r: footPx(b) + 6 })), ...this.holes.map(o => ({ x: o.x, y: o.y, r: Math.max(o.rx, o.ry) + 4 }))];
         const STEP = 9;
         for (let y = 4; y < h - 4; y += STEP) for (let x = 4; x < w - 4; x += STEP) {
             const jx = Math.round(x + (rnd() - 0.5) * STEP), jy = Math.round(y + (rnd() - 0.5) * STEP);
@@ -349,8 +428,9 @@ export class Relief {
         let seed = 5;
         const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
         const Y = 0;
-        // footing: a low ledge of stone under the walls, so the ring sits in the terrace
-        cyl(0.78, 0.86, 0.05, 0, -0.015, 0, 'ruin', 9);
+        // the plinth: a rock the walls are built on, reaching well below the terrace — where the
+        // spur falls away the castle still stands on stone, never in the air
+        cyl(0.86, 1.04, 0.34, 0, -0.175, 0, 'rock', 11);   // its top just under the terrace
 
         const tower = (x, z, d, hh, cone = false) => {
             cyl(d, d * 1.08, hh, x, Y + hh / 2, z, 'tower', 12);
@@ -421,7 +501,7 @@ export class Relief {
     buildBanArd(at, scale = 1, rot = 0) {
         const k = this.kit('banArd', at, rot, scale);
         const { box, cyl, crown } = k;
-        cyl(0.4, 0.46, 0.05, 0, -0.015, 0, 'ruin', 9);
+        cyl(0.46, 0.56, 0.26, 0, -0.135, 0, 'rock', 10);   // the plinth (see Kaer Morhen)
         const spire = (x, z, d, hh, roofH) => {
             cyl(d, d * 1.06, hh, x, hh / 2, z, 'white', 12);
             cyl(d + 0.016, d + 0.016, 0.014, x, hh, z, 'white', 12);

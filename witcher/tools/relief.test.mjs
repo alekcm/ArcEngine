@@ -1,7 +1,7 @@
 // Relief of the board (client/relief-height.mjs): the height field read from the painting.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heightField, sample, inpaint, isForest, riverMask, limitSlope } from '../client/relief-height.mjs';
+import { heightField, sample, inpaint, isForest, riverMask, limitSlope, rockDetail } from '../client/relief-height.mjs';
 
 const W = 240, H = 160, BASE = 0.045;
 /** A synthetic "painting": green grass, a blue-grey massif (left), a thin pale-blue river
@@ -54,4 +54,32 @@ test('рельеф: закраска нарисованного замка — �
     const i = (20 * w + 20) * 4;
     assert.ok(Math.abs(px[i] - 100) < 15 && Math.abs(px[i + 2] - 140) < 15, `filled ${px[i]},${px[i + 1]},${px[i + 2]}`);
     assert.ok(isForest(33, 49, 46) && !isForest(70, 110, 50) && !isForest(110, 125, 150));
+});
+
+test('рельеф: терраса замка ровная по всему основанию и стоит на отроге (ничего не висит в воздухе), табличка рядом остаётся ровной', () => {
+    // the castle over the grass east of the massif, a name banner just south of its footprint
+    const pl = { x: 172, y: 62, r: 26, h: 0.13, mound: 0.005 };
+    const f = heightField(painting(), W, H, { edge: 30, plateau: [pl], flat: [{ x: 172, y: 120, rx: 40, ry: 12 }] });
+    for (let a = 0; a < 6.28; a += 0.3) for (const rr of [0, 10, 20, 26]) {
+        const v = sample(f, W, H, pl.x + Math.cos(a) * rr, pl.y + Math.sin(a) * rr);
+        assert.ok(Math.abs(v - 0.13) < 0.006, `footprint level at r ${rr}: ${v}`);
+    }
+    // just outside, the ground falls gently (the spur), not a cliff
+    for (let a = 0; a < 6.28; a += 0.5) {
+        const v = sample(f, W, H, pl.x + Math.cos(a) * (pl.r + 6), pl.y + Math.sin(a) * (pl.r + 6));
+        assert.ok(v > 0.13 - 6 * 0.0066, `spur at angle ${a.toFixed(1)}: ${v}`);
+    }
+    assert.ok(Math.abs(sample(f, W, H, 172, 120) - 0.045) < 0.004, 'the banner stays level');
+});
+
+test('рельеф: текстура скалы бесшовная, средняя яркость 128, с контрастом', () => {
+    const S = 64, r = rockDetail(S);
+    const mean = r.reduce((a, b) => a + b, 0) / r.length;
+    assert.ok(Math.abs(mean - 128) < 4, `mean ${mean}`);
+    let sd = 0; for (const v of r) sd += (v - mean) ** 2;
+    assert.ok(Math.sqrt(sd / r.length) > 25, 'contrast');
+    // the seam: neighbours across the wrap differ no more than neighbours inside
+    let edge = 0, inner = 0;
+    for (let y = 0; y < S; y++) { edge += Math.abs(r[y * S] - r[y * S + S - 1]); inner += Math.abs(r[y * S + 31] - r[y * S + 32]); }
+    assert.ok(edge < inner * 1.8 + S * 4, `seam ${edge} vs ${inner}`);
 });

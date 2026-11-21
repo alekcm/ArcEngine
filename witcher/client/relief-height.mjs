@@ -70,6 +70,60 @@ export function valueNoise(x, y, seed = 1) {
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
+/**
+ * Painted rock detail (size × size grey, tileable, mean ≈ 128): angular facets — Voronoi cells
+ * with their own light, as the board painter draws a cliff — dark cracks between them, and a
+ * grain of value noise. The terrain lays it over its steep faces in world space (triplanar), so
+ * where the top-down painting is stretched over a slope there is still sharp rock to see.
+ */
+export function rockDetail(size = 256, seed = 9, cells = 6) {
+    let s = seed;
+    const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    // one jittered point per cell of a cells×cells grid; the grid wraps, so the texture tiles
+    const pts = [];
+    for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) pts.push([(i + 0.1 + rnd() * 0.8) / cells, (j + 0.1 + rnd() * 0.8) / cells, rnd(), (rnd() - 0.5) * 2.4]);
+    const per = (x, y, f, sd = seed) => {   // periodic value noise: f lattice cells per tile
+        const fx = x * f, fy = y * f, i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
+        const H = (a, b) => valueNoise(((a % f) + f) % f, ((b % f) + f) % f, sd);
+        const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+        const a = H(i, j), b = H(i + 1, j), c = H(i, j + 1), d = H(i + 1, j + 1);
+        return a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv;
+    };
+    const raw = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        // a warped plane: the facet edges wander instead of running straight
+        let u = x / size, v = y / size;
+        const wu = per(u, v, 4, seed + 1) * 0.045 + per(u, v, 11, seed + 2) * 0.015;
+        const wv = per(u, v, 4, seed + 3) * 0.045 + per(u, v, 11, seed + 4) * 0.015;
+        u += wu; v += wv;
+        const ci = Math.floor(u * cells), cj = Math.floor(v * cells);
+        let d1 = 9, d2 = 9, best = null;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+            const ii = ci + di, jj = cj + dj, p = pts[(((jj % cells) + cells) % cells) * cells + (((ii % cells) + cells) % cells)];
+            const px = p[0] + Math.floor(ii / cells), py = p[1] + Math.floor(jj / cells);
+            // facets are taller than wide: on a cliff (v is vertical there) the rock splits downward
+            const d = Math.hypot(u - px, (v - py) * 0.6);
+            if (d < d1) { d2 = d1; d1 = d; best = [p, px, py]; } else if (d < d2) d2 = d;
+        }
+        const [p, px, py] = best;
+        // a facet is lit along its own slant: light on one side, shade on the other
+        const slant = ((u - px) * Math.cos(p[3]) + (v - py) * 0.6 * Math.sin(p[3])) * cells;
+        // cracks: thin, and not along every edge
+        const crack = (1 - smooth(0, 0.012, d2 - d1)) * smooth(-0.2, 0.4, per(u, v, 8, seed + 5));
+        // brush grain: short vertical strokes and a fine noise
+        const grain = per(u * 3, v, 24, seed + 6) * 0.5 + per(u, v, 64, seed + 7) * 0.5;
+        raw[y * size + x] = (p[2] - 0.5) * 0.8 + slant * 0.55 + grain * 0.45 - crack * 0.8;
+    }
+    let m = 0, sd = 0;
+    for (const v of raw) m += v;
+    m /= raw.length;
+    for (const v of raw) sd += (v - m) ** 2;
+    sd = Math.sqrt(sd / raw.length) || 1;
+    const out = new Uint8Array(size * size);
+    for (let i = 0; i < out.length; i++) out[i] = Math.max(0, Math.min(255, Math.round(128 + (raw[i] - m) / sd * 40)));
+    return out;
+}
+
 /** Rivers: pale, cool, light strokes that are THIN (their neighbourhood is mostly not water) and run
  *  through grass — the light edge of a rock in the mountains is cool and light too, but it has no
  *  grass beside it. Returns a 0..1 mask. */
@@ -93,21 +147,21 @@ export function riverMask(rgba, w, h) {
 
 /** Caps the steepness: no point may stand higher than a neighbour + `s` per pixel of distance (two
  *  chamfer sweeps). Peaks that were steeper are cut down — a slope steeper than ~50° stretched the
- *  painting into streaks. */
-export function limitSlope(f, w, h, s) {
+ *  painting into streaks. Cells marked in `keep` (building terraces) are never cut. */
+export function limitSlope(f, w, h, s, keep = null) {
     const d = s * Math.SQRT2;
     for (let pass = 0; pass < 2; pass++) {
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
             const i = y * w + x; let v = f[i];
             if (x > 0) v = Math.min(v, f[i - 1] + s);
             if (y > 0) { v = Math.min(v, f[i - w] + s); if (x > 0) v = Math.min(v, f[i - w - 1] + d); if (x < w - 1) v = Math.min(v, f[i - w + 1] + d); }
-            f[i] = v;
+            if (!keep || !keep[i]) f[i] = v;
         }
         for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
             const i = y * w + x; let v = f[i];
             if (x < w - 1) v = Math.min(v, f[i + 1] + s);
             if (y < h - 1) { v = Math.min(v, f[i + w] + s); if (x < w - 1) v = Math.min(v, f[i + w + 1] + d); if (x > 0) v = Math.min(v, f[i + w - 1] + d); }
-            f[i] = v;
+            if (!keep || !keep[i]) f[i] = v;
         }
     }
     return f;
@@ -118,7 +172,10 @@ export function limitSlope(f, w, h, s) {
  * the table so that rivers can be cut into it; the region border sinks to the table.
  * opt: { maxH, base, hills, riverDepth, slope (max rise per pixel),
  *        flat: [{x, y, rx, ry}] ellipses levelled to the base (plates, badges, miniature spots),
- *        plateau: {x, y, r, h} — terraces for buildings (one object or an array),
+ *        plateau: {x, y, r, h, mound} — terraces for buildings (one object or an array): level at h
+ *                 over the whole footprint r (cut into a slope, filled over a valley), standing on a
+ *                 spur that falls by `mound` per pixel (default 0.0035) — no edge of a building hangs
+ *                 in the air,
  *        carve: [{x, y, len, width, angle}] — river beds under painted bridges (angle — of the RIVER, radians),
  *        edge: falloff in px at the region border, open: {top, right, bottom, left} board-edge sides }
  */
@@ -152,15 +209,6 @@ export function heightField(rgba, w, h, opt = {}) {
         v *= 1 - smooth(0.06, 0.22, plates[i]) * (1 - base / Math.max(base, v));   // plates: down to the base
         out[i] = v;
     }
-    // terraces of 3D buildings: level, blending into the slope around them
-    for (const pl of [].concat(opt.plateau || [])) {
-        for (let y = Math.max(0, Math.floor(pl.y - pl.r * 2)); y < Math.min(h, pl.y + pl.r * 2); y++) {
-            for (let x = Math.max(0, Math.floor(pl.x - pl.r * 2)); x < Math.min(w, pl.x + pl.r * 2); x++) {
-                const k = 1 - smooth(1, 1.8, Math.hypot(x - pl.x, y - pl.y) / pl.r);
-                out[y * w + x] = out[y * w + x] * (1 - k) + pl.h * k;
-            }
-        }
-    }
     // river beds: the painted rivers, and the stretch hidden under a painted bridge
     const bed = river.slice();
     for (const c of opt.carve || []) {
@@ -172,17 +220,35 @@ export function heightField(rgba, w, h, opt = {}) {
         }
     }
     for (let i = 0; i < n; i++) out[i] -= depth * smooth(0.06, 0.3, bed[i]);
+    // terraces of 3D buildings, before the slope cap (a spur is gentler than the cap, so the cap
+    // only grinds down rock that would tower over the terrace)
+    for (const pl of [].concat(opt.plateau || [])) {
+        const ms = pl.mound ?? 0.0035, R = pl.r + Math.max(0, pl.h) / ms + 1;
+        for (let y = Math.max(0, Math.floor(pl.y - R)); y < Math.min(h, pl.y + R); y++) {
+            for (let x = Math.max(0, Math.floor(pl.x - R)); x < Math.min(w, pl.x + R); x++) {
+                const d = Math.hypot(x - pl.x, y - pl.y), i = y * w + x;
+                out[i] = d <= pl.r + 2 ? pl.h : Math.max(out[i], pl.h - ms * (d - pl.r - 2));
+            }
+        }
+    }
     // level zones (location plates, badges, the spots where miniatures stand) — after the
-    // terraces: a name banner next to a castle stays level even if the terrace reaches it
+    // terraces, so a spur never lifts a plate; only a building's footprint itself is spared
+    const plats = [].concat(opt.plateau || []);
     for (const f of opt.flat || []) {
         const x0 = Math.max(0, Math.floor(f.x - f.rx * 1.8)), x1 = Math.min(w - 1, Math.ceil(f.x + f.rx * 1.8));
         const y0 = Math.max(0, Math.floor(f.y - f.ry * 1.8)), y1 = Math.min(h - 1, Math.ceil(f.y + f.ry * 1.8));
         for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+            if (plats.some(pl => Math.hypot(x - pl.x, y - pl.y) <= pl.r + 2)) continue;
             const k = smooth(1, 1.8, Math.hypot((x - f.x) / f.rx, (y - f.y) / f.ry));
             out[y * w + x] = base + (out[y * w + x] - base) * k;
         }
     }
-    limitSlope(out, w, h, slopeMax);
+    let keep = null;
+    if (plats.length) {
+        keep = new Uint8Array(n);
+        for (const pl of plats) for (let y = Math.max(0, Math.floor(pl.y - pl.r - 2)); y <= Math.min(h - 1, pl.y + pl.r + 2); y++) for (let x = Math.max(0, Math.floor(pl.x - pl.r - 2)); x <= Math.min(w - 1, pl.x + pl.r + 2); x++) if (Math.hypot(x - pl.x, y - pl.y) <= pl.r + 2) keep[y * w + x] = 1;
+    }
+    limitSlope(out, w, h, slopeMax, keep);
     // region border: the relief sinks into the flat board (and sooner at the printed frame)
     const open = opt.open || {};
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
