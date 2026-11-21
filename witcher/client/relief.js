@@ -193,6 +193,8 @@ export class Relief {
         await img.decode();
         this.imgW = img.naturalWidth; this.imgH = img.naturalHeight;
         this.mats = this.makeMaterials();
+        // courtyard floors lie just over the levelled terrace: drawn in front of it at any depth precision
+        for (const f of ['yard', 'vengGrass', 'hengGrass']) this.mats[f].zOffset = -2;
         // heights and painting-over of all regions in parallel; then built one by one, each
         // stitched to the ones before it
         const lanes = Math.max(1, Math.min(REGIONS.length, (navigator.hardwareConcurrency || 2) - 1));
@@ -273,9 +275,17 @@ export class Relief {
             plank: mk('plank', '#8a6644'), yard: mk('yard', '#b3a68c'),
             // the other cities: Vengerberg's blue roofs, Beauclair's terracotta, Bechelt Nar's brown
             // stone, the red shingles of the villages, the mage's lilac, a grassy bastion
-            roofBlue: mk('roofBlue', '#3d6f93'), terracotta: mk('terracotta', '#b5643c'), roofRed: mk('roofRed', '#8c5246'),
-            brownStone: mk('brownStone', '#80604c'), darkRoof: mk('darkRoof', '#45322a'), lilac: mk('lilac', '#8b6bb0'),
+            roofBlue: mk('roofBlue', '#2b7aa3'), terracotta: mk('terracotta', '#d27e66'), roofRed: mk('roofRed', '#8c5246'),
+            brownStone: mk('brownStone', '#80604c'), darkRoof: mk('darkRoof', '#56433b'), lilac: mk('lilac', '#8b6bb0'),
             grass: mk('grass', '#6f8a4a'), pale: mk('pale', '#d9d6cc'), leaf: mk('leaf', '#2f4f2c', false),
+            // each city in its own colours, sampled from its painting (lit side, brightened the way
+            // the approved Kaer Morhen stone is: painted #8e8fa1 -> #b9bccb)
+            hengStone: mk('hengStone', '#b4c4cb'), hengWall: mk('hengWall', '#9eadb6'), hengGrass: mk('hengGrass', '#a3b26e'),
+            vizTower: mk('vizTower', '#b3a9b2'), vizKeep: mk('vizKeep', '#d2cac8'), vizRoof: mk('vizRoof', '#4d6a7e'), vizPlaster: mk('vizPlaster', '#d8d0c8'),
+            hcStone: mk('hcStone', '#dcdeee'),
+            vengWall: mk('vengWall', '#d2cfcc'), vengGrass: mk('vengGrass', '#4f6e3c'),
+            bnStone: mk('bnStone', '#ad866b'), bnDark: mk('bnDark', '#7a5641'),
+            beauWhite: mk('beauWhite', '#e6e6e3'),
             rock: (() => { const m = mk('rock', '#a4adbf'); m.diffuseTexture = rt; rt.uScale = 3; rt.level = 1.65; return m; })(),
         };
     }
@@ -562,12 +572,11 @@ export class Relief {
             /** A flat floor over an outline [[x, z]…] star-shaped around its centroid (a courtyard). */
             floor: (pts, y, mat) => {
                 const cx = pts.reduce((q, p) => q + p[0], 0) / pts.length, cz = pts.reduce((q, p) => q + p[1], 0) / pts.length;
-                let area = 0;
-                for (let i = 0; i < pts.length; i++) { const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length]; area += ax * bz - bx * az; }
                 const pos = [cx, y, cz], uv = [0.5 + cx * 2, 0.5 + cz * 2], ind = [];
                 for (const [x, z] of pts) { pos.push(x, y, z); uv.push(0.5 + x * 2, 0.5 + z * 2); }
                 // facing up (Babylon: clockwise from the viewer) whichever way the outline runs
-                for (let i = 0; i < pts.length; i++) { const a = 1 + i, b = 1 + ((i + 1) % pts.length); if (area > 0) ind.push(0, a, b); else ind.push(0, b, a); }
+                // both faces: seen from above whichever way the outline runs (never culled away)
+                for (let i = 0; i < pts.length; i++) { const a = 1 + i, b = 1 + ((i + 1) % pts.length); ind.push(0, a, b, 0, b, a); }
                 const nrm = []; for (let i = 0; i <= pts.length; i++) nrm.push(0, 1, 0);
                 const m = new BABYLON.Mesh('p', S), vd = new BABYLON.VertexData();
                 vd.positions = pos; vd.indices = ind; vd.normals = nrm; vd.uvs = uv;
@@ -633,7 +642,7 @@ export class Relief {
         }
         ring.forEach(([x, z], i) => tower(x, z, i === 4 ? 0.1 : 0.085, i === 4 ? 0.24 : 0.17 + rnd() * 0.03, i === 3));
         // the courtyard: flagstones inside the walls (the ground under them is painted-over rock)
-        k.floor(ring, Y + 0.004, 'yard');
+        k.floor(ring, Y + 0.012, 'yard');
 
         // gatehouse between the two south-west towers, the gate, the road down to the valley
         const gx = (ring[0][0] + ring[1][0]) / 2, gz = (ring[0][1] + ring[1][1]) / 2;
@@ -702,7 +711,7 @@ export class Relief {
             k.crenels(ax, az, bx, bz, 0.07, 0.026, 'wall');
         }
         ring.forEach(([x, z], i) => spire(x, z, 0.05, 0.1 + (i % 3) * 0.025, 0.07));
-        k.floor(ring, 0.004, 'yard');
+        k.floor(ring, 0.012, 'yard');
         // the halls around the tower and the great tower itself
         box(0.16, 0.1, 0.09, -0.04, 0.05, 0.05, 'wall', 0.4);
         k.roof(0.17, 0.1, 0.06, -0.04, 0.1, 0.05, 'roofBrown', 0.4);
@@ -719,22 +728,40 @@ export class Relief {
     plinth(k, foot) { k.cyl(foot * 1.9, foot * 2.7, 0.34, 0, -0.175, 0, 'rock', 11); }
 
     /** A ring of walls through `pts` with merlons, optionally a round tower at every corner. */
-    curtain(k, pts, hh, t, mat, towers = null) {
+    curtain(k, pts, hh, t, mat, towers = null, skip = []) {
         for (let i = 0; i < pts.length; i++) {
+            if (skip.includes(i)) continue;
             const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length];
             const len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
             k.box(t, hh, len, (ax + bx) / 2, hh / 2, (az + bz) / 2, mat, ry);
+            k.box(t + 0.01, 0.01, len, (ax + bx) / 2, hh, (az + bz) / 2, mat, ry);
             k.crenels(ax, az, bx, bz, hh + 0.006, t, mat);
         }
-        if (towers) pts.forEach(([x, z], i) => this.roundTower(k, x, z, towers.d, towers.h + (i % 3) * 0.02, towers.mat || mat, towers.roof));
+        if (towers) pts.forEach(([x, z], i) => this.roundTower(k, x, z, towers.d, towers.h + (i % 3) * 0.015, towers.mat || mat, towers.roof, towers.coneH));
     }
 
-    /** A round tower: crenellated, or with a cone roof of material `roof`. */
-    roundTower(k, x, z, d, hh, mat, roof = null, coneH = null) {
-        k.cyl(d, d * 1.08, hh, x, hh / 2, z, mat, 12);
-        if (roof) { k.cyl(d + 0.016, d + 0.016, 0.012, x, hh, z, mat, 12); k.cyl(0, d + 0.024, coneH || d * 1.6, x, hh + (coneH || d * 1.6) / 2 + 0.006, z, roof, 12); }
-        else k.crown(x, z, d, hh, mat);
+    /** A round tower: crenellated, or with a cone roof of material `roof` (`coneH` tall). */
+    roundTower(k, x, z, d, hh, mat, roof = null, coneH = null, tess = 12) {
+        k.cyl(d, d * 1.08, hh, x, hh / 2, z, mat, tess);
+        if (roof) {
+            const ch = coneH || d * 1.6;
+            k.cyl(d + 0.014, d + 0.014, 0.012, x, hh, z, mat, tess);
+            k.cyl(0, d + 0.022, ch, x, hh + ch / 2 + 0.006, z, roof, tess);
+        } else k.crown(x, z, d, hh, mat);
         for (let i = 0; i < Math.floor(hh / 0.09); i++) k.box(0.011, 0.024, 0.006, x, 0.05 + i * 0.08, z - d / 2 - 0.002, 'dark');
+    }
+
+    /** A round tower ribbed with buttresses (Haern Caduch, Bechelt Nar), crenellated on top. */
+    ribbedTower(k, x, z, d, hh, mat, ribs = 8, flare = 1.08) {
+        k.cyl(d, d * flare, hh, x, hh / 2, z, mat, 16);
+        for (let i = 0; i < ribs; i++) {
+            const a = (i + 0.5) / ribs * Math.PI * 2, r = d / 2 * (1 + (flare - 1) / 2);
+            k.box(0.014, hh * 0.92, 0.014, x + Math.cos(a) * r, hh * 0.46, z + Math.sin(a) * r, mat, -a);
+        }
+        // a corbelled parapet over the ribs
+        k.cyl(d + 0.03, d, 0.03, x, hh + 0.005, z, mat, 16);
+        k.crown(x, z, d + 0.02, hh + 0.02, mat);
+        for (let i = 0; i < Math.floor(hh / 0.1); i++) k.box(0.011, 0.03, 0.006, x, 0.06 + i * 0.09, z - d / 2 - 0.004, 'dark');
     }
 
     /** A square tower with merlons (or a pyramid roof). */
@@ -751,170 +778,218 @@ export class Relief {
         for (let i = 0; i < Math.floor(hh / 0.1); i++) k.box(0.014, 0.026, 0.006, x, 0.06 + i * 0.09, z - w / 2 - 0.003, 'dark', ry);
     }
 
-    /** A town house: walls, a gabled roof, two windows. */
-    townHouse(k, x, z, w, d, hh, wall, roof, ry = 0) {
+    /** A house: walls, a gabled roof (`pitch` of the depth), windows; `timber` adds the dark
+     *  beams of a half-timbered upper storey (Vizima). */
+    townHouse(k, x, z, w, d, hh, wall, roof, ry = 0, timber = null, pitch = 0.62) {
         k.box(w, hh, d, x, hh / 2, z, wall, ry);
-        k.roof(w * 1.06, d * 1.1, d * 0.62, x, hh, z, roof, ry);
+        k.roof(w * 1.06, d * 1.12, d * pitch, x, hh, z, roof, ry);
         const c = Math.cos(ry), s = Math.sin(ry);
-        for (const u of [-w * 0.22, w * 0.22]) k.box(0.01, 0.016, 0.004, x + u * c - (d / 2 + 0.002) * s, hh * 0.6, z - u * s - (d / 2 + 0.002) * c, 'dark', ry);
+        const at = (u, v) => [x + u * c + v * s, z - u * s + v * c];
+        if (timber) {
+            k.box(w + 0.004, 0.006, d + 0.004, x, hh * 0.5, z, timber, ry);
+            k.box(w + 0.004, 0.006, d + 0.004, x, hh - 0.003, z, timber, ry);
+            for (const u of [-w / 2, 0, w / 2]) { const [px, pz] = at(u, -d / 2 - 0.002); k.box(0.006, hh * 0.5, 0.004, px, hh * 0.75, pz, timber, ry); }
+        }
+        for (const u of [-w * 0.22, w * 0.22]) { const [px, pz] = at(u, -d / 2 - 0.003); k.box(0.01, 0.016, 0.004, px, hh * (timber ? 0.3 : 0.6), pz, 'dark', ry); }
+    }
+
+    /** A pennant on a pole. */
+    flag(k, x, y, z, mat = 'pale') {
+        k.cyl(0.004, 0.004, 0.07, x, y + 0.035, z, 'dark', 4);
+        k.box(0.004, 0.018, 0.04, x, y + 0.058, z + 0.02, mat);
+    }
+
+    /** A tree of the gardens (a trunk and a round crown). */
+    tree(k, x, z, s = 1) {
+        k.cyl(0.008 * s, 0.01 * s, 0.026 * s, x, 0.013 * s, z, 'wood', 5);
+        k.poly(0.028 * s, x, 0.048 * s, z, 'leaf');
+    }
+
+    /** A ring of dark arches round a drum (Beauclair's arcades). */
+    arcade(k, x, z, d, y, n, aw = 0.026, ah = 0.045, from = 0, to = Math.PI * 2) {
+        for (let i = 0; i < n; i++) {
+            const a = from + (i + 0.5) / n * (to - from), r = d / 2 + 0.002;
+            k.box(aw, ah, 0.006, x + Math.cos(a) * r, y, z + Math.sin(a) * r, 'dark', -a + Math.PI / 2);
+        }
     }
 
     /**
-     * Hengfors, as on the board: a tall square keep on the rock, a round bastion with a green yard
-     * before it, a long wall running east through a gatehouse to a pair of towers.
+     * Hengfors, as on the board: a tall square keep with a lesser tower at its side, before it a
+     * low round bastion holding a yellow-green lawn, and a crenellated wall running east to the
+     * square gatehouse — all in the cool blue-grey stone of the north.
      */
     buildHengfors(at, scale = 1, rot = 0) {
-        const k = this.kit('hengfors', at, rot, scale);
+        const k = this.kit('hengfors', at, rot, scale), M = 'hengStone', W = 'hengWall';
         this.plinth(k, 0.42);
-        this.squareTower(k, -0.14, 0.12, 0.17, 0.4, 'tower');
-        this.squareTower(k, -0.02, 0.2, 0.09, 0.26, 'tower');
-        // the round bastion with grass inside
-        k.cyl(0.3, 0.32, 0.1, -0.12, 0.05, -0.12, 'wall', 16);
-        k.crown(-0.12, -0.12, 0.3, 0.1, 'wall');
-        k.cyl(0.27, 0.27, 0.01, -0.12, 0.112, -0.12, 'grass', 16);
-        // the great hall behind it
-        k.box(0.16, 0.12, 0.1, 0.06, 0.06, 0.06, 'keep', 0.1);
-        k.roof(0.17, 0.11, 0.07, 0.06, 0.12, 0.06, 'slate', 0.1);
-        // the wall east through the gatehouse to the towers
-        this.curtain(k, [[0.02, -0.02], [0.33, -0.08], [0.33, 0.14], [0.08, 0.2]], 0.11, 0.032, 'wall');
-        this.squareTower(k, 0.17, -0.05, 0.09, 0.2, 'tower', 0.2);
-        k.box(0.006, 0.07, 0.04, 0.17, 0.035, -0.096, 'wood', 0.2);
-        this.squareTower(k, 0.33, -0.08, 0.1, 0.24, 'tower');
-        this.squareTower(k, 0.33, 0.14, 0.09, 0.2, 'tower');
-        k.floor([[0.02, -0.02], [0.33, -0.08], [0.33, 0.14], [0.08, 0.2]], 0.004, 'yard');
+        this.squareTower(k, -0.16, 0.12, 0.16, 0.42, M);
+        this.squareTower(k, -0.03, 0.17, 0.1, 0.3, M);
+        k.box(0.2, 0.15, 0.12, -0.08, 0.075, 0.05, M);
+        this.curtain(k, [[-0.2, 0.02], [0.02, 0.0], [0.04, 0.12]], 0.13, 0.03, W, null, [2]);
+        // the round bastion: a ring of wall round a lawn
+        const bx = -0.12, bz = -0.13, br = 0.15;
+        k.cyl(br * 2, br * 2.06, 0.1, bx, 0.05, bz, W, 20);
+        k.crown(bx, bz, br * 2, 0.1, W);
+        k.cyl(br * 2 - 0.03, br * 2 - 0.03, 0.004, bx, 0.132, bz, 'hengGrass', 20);   // over the crown's floor
+        for (let i = 0; i < 4; i++) { const a = -Math.PI / 2 + (i - 1.5) * 0.45; k.box(0.012, 0.022, 0.006, bx + Math.cos(a) * (br + 0.003), 0.05, bz + Math.sin(a) * (br + 0.003), 'dark', -a + Math.PI / 2); }
+        // the wall east to the gatehouse, the gatehouse of two towers
+        const ring = [[0.02, -0.06], [0.3, -0.1], [0.32, 0.12], [0.06, 0.16]];
+        this.curtain(k, ring, 0.11, 0.03, W);
+        k.floor(ring, 0.012, 'yard');
+        this.squareTower(k, 0.3, -0.1, 0.12, 0.25, M);
+        this.squareTower(k, 0.32, 0.1, 0.1, 0.21, M);
+        this.squareTower(k, 0.15, -0.08, 0.08, 0.17, M, 0.15);
+        k.box(0.04, 0.06, 0.006, 0.3, 0.03, -0.163, 'wood');
         return k.done();
     }
 
     /**
-     * Vizima: the walled capital on its river — an oval curtain with round towers, a gate to the
-     * west, the royal castle in the middle (a ring of round towers and the tall square donjon),
-     * and the town's slate-roofed houses packed between.
+     * Vizima: a cluster of fat round towers of mauve stone in the middle, the tall square donjon
+     * behind them, half-timbered houses under steep slate-teal roofs packed round, a low wall
+     * with a few towers and the bridge gate to the west.
      */
     buildVizima(at, scale = 1, rot = 0) {
-        const k = this.kit('vizima', at, rot, scale);
+        const k = this.kit('vizima', at, rot, scale), T = 'vizTower';
         let seed = 17;
         const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
         this.plinth(k, 0.46);
         const ring = [];
-        for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2; ring.push([Math.cos(a) * 0.44, Math.sin(a) * 0.3]); }
-        this.curtain(k, ring, 0.08, 0.026, 'wall', { d: 0.06, h: 0.12, mat: 'tower' });
-        k.floor(ring, 0.004, 'yard');
-        // the gate to the west with a stretch of road
-        this.squareTower(k, -0.45, 0.0, 0.08, 0.15, 'tower');
-        k.box(0.006, 0.06, 0.04, -0.492, 0.03, 0, 'wood', Math.PI / 2);
-        // the castle: round towers around a court, the donjon
-        const cx = 0.04, cz = 0.0;
-        for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + 0.3; this.roundTower(k, cx + Math.cos(a) * 0.1, cz + Math.sin(a) * 0.08, 0.075, 0.2 + (i % 2) * 0.04, 'tower'); }
-        k.cyl(0.18, 0.19, 0.12, cx, 0.06, cz, 'keep', 10);
-        this.squareTower(k, 0.17, 0.13, 0.1, 0.38, 'keep');
-        // houses between the castle and the walls
-        for (let i = 0; i < 24; i++) {
-            const a = rnd() * Math.PI * 2, r = 0.62 + rnd() * 0.28;
-            const x = Math.cos(a) * 0.4 * r, z = Math.sin(a) * 0.27 * r;
-            if (Math.hypot((x - cx) / 0.16, (z - cz) / 0.13) < 1 || Math.hypot((x - 0.17) / 0.09, (z - 0.13) / 0.09) < 1) continue;
+        for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; ring.push([Math.cos(a) * 0.44, Math.sin(a) * 0.3]); }
+        this.curtain(k, ring, 0.07, 0.024, T);
+        ring.forEach(([x, z], i) => { if (i % 2 === 0) this.roundTower(k, x, z, 0.065, 0.11, T); });
+        k.floor(ring, 0.012, 'yard');
+        // the bridge gate to the west
+        this.squareTower(k, -0.46, 0.0, 0.08, 0.14, T);
+        k.box(0.12, 0.02, 0.05, -0.54, 0.01, 0, 'vizKeep');
+        k.box(0.006, 0.06, 0.04, -0.502, 0.03, 0, 'wood', Math.PI / 2);
+        // the castle: fat round towers round a little court, the donjon behind
+        const C = [[-0.04, -0.06, 0.12, 0.2], [0.08, -0.08, 0.11, 0.18], [0.14, 0.03, 0.1, 0.22], [-0.1, 0.04, 0.1, 0.17], [0.02, 0.07, 0.11, 0.24], [-0.14, -0.1, 0.08, 0.14]];
+        k.cyl(0.24, 0.25, 0.1, 0.02, 0.05, -0.01, T, 14);
+        for (const [x, z, d, hh] of C) this.roundTower(k, x, z, d, hh, T);
+        this.squareTower(k, 0.2, 0.14, 0.11, 0.42, 'vizKeep');
+        // the town
+        for (let i = 0; i < 30; i++) {
+            const a = rnd() * Math.PI * 2, r = 0.55 + rnd() * 0.33;
+            const x = Math.cos(a) * 0.41 * r, z = Math.sin(a) * 0.27 * r;
+            if (Math.hypot((x - 0.02) / 0.2, (z + 0.01) / 0.15) < 1 || Math.hypot((x - 0.2) / 0.09, (z - 0.14) / 0.09) < 1) continue;
             const w = 0.05 + rnd() * 0.03;
-            this.townHouse(k, x, z, w, w * 0.75, 0.045 + rnd() * 0.035, rnd() < 0.5 ? 'plaster' : 'pale', rnd() < 0.7 ? 'slate' : 'roofBrown', -a + Math.PI / 2);
+            this.townHouse(k, x, z, w, w * 0.72, 0.055 + rnd() * 0.04, 'vizPlaster', 'vizRoof', -a + Math.PI / 2, 'timber', 0.95);
         }
         return k.done();
     }
 
-    /** Haern Caduch, the School of the Bear: a white fortress of square towers on a mountain
-     *  ledge, a long wall with a gate tower, a keep with a high tower. */
+    /** Haern Caduch, the School of the Bear: a fortress of pale lavender-white stone on a ledge —
+     *  two ribbed round towers guard the gate in front, tall octagonal towers stand behind, joined
+     *  by crenellated walls and a gallery. */
     buildHaernCaduch(at, scale = 1, rot = 0) {
-        const k = this.kit('haernCaduch', at, rot, scale);
+        const k = this.kit('haernCaduch', at, rot, scale), M = 'hcStone';
         this.plinth(k, 0.42);
-        const ring = [[-0.3, -0.2], [0.1, -0.32], [0.32, -0.08], [0.24, 0.26], [-0.14, 0.3], [-0.34, 0.08]];
-        this.curtain(k, ring, 0.13, 0.034, 'white');
-        k.floor(ring, 0.004, 'yard');
-        ring.forEach(([x, z], i) => this.squareTower(k, x, z, 0.085, 0.2 + (i % 2) * 0.04, 'white', Math.atan2(x, z)));
-        // the gate tower on the south wall
-        this.squareTower(k, -0.1, -0.26, 0.11, 0.26, 'white', 0.3);
-        k.box(0.05, 0.08, 0.006, -0.12, 0.04, -0.318, 'wood', 0.3);
-        // the keep and its tower
-        k.box(0.22, 0.24, 0.16, 0.02, 0.12, 0.08, 'white', -0.2);
-        k.roof(0.23, 0.17, 0.08, 0.02, 0.24, 0.08, 'slate', -0.2);
-        this.squareTower(k, -0.12, 0.12, 0.11, 0.5, 'white');
-        this.squareTower(k, 0.15, 0.16, 0.08, 0.34, 'white');
+        const ring = [[-0.3, -0.2], [0.24, -0.2], [0.32, 0.1], [0.14, 0.3], [-0.2, 0.3], [-0.34, 0.06]];
+        this.curtain(k, ring, 0.13, 0.034, M);
+        k.floor(ring, 0.012, 'yard');
+        // the gate: two ribbed round towers and the arch between
+        this.ribbedTower(k, -0.14, -0.22, 0.16, 0.3, M, 9);
+        this.ribbedTower(k, 0.16, -0.21, 0.14, 0.27, M, 8);
+        k.box(0.18, 0.18, 0.06, 0.01, 0.09, -0.22, M);
+        k.crenels(-0.08, -0.25, 0.1, -0.25, 0.186, 0.02, M);
+        k.box(0.06, 0.09, 0.006, 0.01, 0.045, -0.252, 'dark');
+        // the octagonal towers behind, the tallest last, and the gallery between them
+        this.roundTower(k, -0.22, 0.16, 0.15, 0.42, M, null, null, 8);
+        this.roundTower(k, 0.08, 0.2, 0.15, 0.56, M, null, null, 8);
+        this.roundTower(k, 0.28, 0.06, 0.1, 0.3, M, null, null, 8);
+        k.box(0.16, 0.26, 0.09, -0.07, 0.13, 0.18, M, 0.2);
+        k.crenels(-0.14, 0.12, 0.01, 0.15, 0.266, 0.02, M);
+        for (let i = 0; i < 4; i++) k.box(0.014, 0.05, 0.006, -0.12 + i * 0.035, 0.18, 0.13 - i * 0.007, 'dark', 0.2);
         return k.done();
     }
 
-    /** Vengerberg: the white castle under blue roofs — a wide round donjon, slender towers with
-     *  tall blue cones, blue-roofed halls, a low crenellated outer wall with trees inside. */
+    /** Vengerberg: the white castle under teal-blue roofs — a wide round donjon, slender towers
+     *  with tall cones and pennants, blue-roofed halls, a low crenellated wall round a green
+     *  bailey with trees. */
     buildVengerberg(at, scale = 1, rot = 0) {
-        const k = this.kit('vengerberg', at, rot, scale);
+        const k = this.kit('vengerberg', at, rot, scale), M = 'vengWall', R = 'roofBlue';
         this.plinth(k, 0.44);
-        const ring = [[-0.36, -0.22], [0.06, -0.36], [0.36, -0.16], [0.32, 0.22], [-0.04, 0.34], [-0.38, 0.12]];
-        this.curtain(k, ring, 0.07, 0.026, 'pale', { d: 0.06, h: 0.11, mat: 'pale', roof: 'roofBlue' });
-        k.floor(ring, 0.004, 'grass');
+        const ring = [[-0.36, -0.22], [0.06, -0.34], [0.36, -0.16], [0.32, 0.22], [-0.04, 0.34], [-0.38, 0.12]];
+        this.curtain(k, ring, 0.07, 0.026, M);
+        ring.forEach(([x, z], i) => { if (i % 2 === 0) this.roundTower(k, x, z, 0.055, 0.1, M, R, 0.12); else this.roundTower(k, x, z, 0.05, 0.09, M); });
+        k.floor(ring, 0.012, 'vengGrass');
         // the round donjon
-        k.cyl(0.2, 0.21, 0.2, 0.05, 0.1, 0.06, 'pale', 16);
-        k.crown(0.05, 0.06, 0.2, 0.2, 'pale');
-        // slender towers with blue cones and the halls
-        this.roundTower(k, -0.17, 0.12, 0.075, 0.34, 'pale', 'roofBlue', 0.16);
-        this.roundTower(k, 0.22, 0.14, 0.07, 0.28, 'pale', 'roofBlue', 0.13);
-        this.roundTower(k, -0.24, -0.08, 0.06, 0.24, 'pale', 'roofBlue', 0.11);
-        this.townHouse(k, -0.1, -0.12, 0.17, 0.09, 0.09, 'pale', 'roofBlue', 0.25);
-        this.townHouse(k, 0.18, -0.12, 0.14, 0.08, 0.08, 'pale', 'roofBlue', -0.4);
-        this.townHouse(k, -0.06, 0.22, 0.14, 0.08, 0.08, 'pale', 'roofBlue', 0.1);
-        // trees in the bailey
-        for (const [x, z] of [[0.24, -0.02], [-0.3, 0.02], [0.08, -0.25], [-0.2, -0.24]]) { k.cyl(0.01, 0.012, 0.03, x, 0.015, z, 'wood', 5); k.poly(0.03, x, 0.05, z, 'leaf'); }
+        k.cyl(0.2, 0.21, 0.2, 0.06, 0.1, 0.06, M, 18);
+        k.crown(0.06, 0.06, 0.2, 0.2, M);
+        k.cyl(0.18, 0.18, 0.004, 0.06, 0.205, 0.06, 'dark', 18);
+        // slender towers with tall cones and the halls
+        const tw = [[-0.16, 0.14, 0.07, 0.36, 0.2], [0.22, 0.16, 0.07, 0.3, 0.17], [-0.25, -0.06, 0.06, 0.25, 0.15], [0.18, -0.06, 0.055, 0.22, 0.14]];
+        for (const [x, z, d, hh, ch] of tw) { this.roundTower(k, x, z, d, hh, M, R, ch); this.flag(k, x, hh + ch, z); }
+        this.townHouse(k, -0.1, -0.12, 0.17, 0.09, 0.09, M, R, 0.25, null, 0.75);
+        this.townHouse(k, -0.24, -0.2, 0.12, 0.08, 0.07, M, R, 0.45, null, 0.75);
+        this.townHouse(k, -0.04, 0.24, 0.14, 0.08, 0.08, M, R, 0.1, null, 0.75);
+        for (const [x, z] of [[0.26, 0.02], [-0.3, 0.04], [0.1, -0.24], [0.04, -0.18], [-0.18, 0.02]]) this.tree(k, x, z);
         return k.done();
     }
 
-    /** Bechelt Nar: a dark brown keep of spires — a tall round tower with a pointed crown, a
-     *  steep-roofed great hall with its own spire, smaller spired turrets. */
+    /** Bechelt Nar: a copper-brown gothic keep — a tall ribbed round tower flaring at its foot,
+     *  a gallery and a crown of spires on top, beside it a hall under a steep dark roof with a
+     *  round apse and a spire. No outer wall (as painted). */
     buildBecheltNar(at, scale = 1, rot = 0) {
-        const k = this.kit('becheltNar', at, rot, scale);
+        const k = this.kit('becheltNar', at, rot, scale), M = 'bnStone', R = 'darkRoof';
         this.plinth(k, 0.4);
-        const ring = [[-0.3, -0.24], [0.2, -0.3], [0.34, 0.02], [0.2, 0.3], [-0.24, 0.3], [-0.36, 0.0]];
-        this.curtain(k, ring, 0.07, 0.026, 'brownStone');
-        k.floor(ring, 0.004, 'yard');
-        // the great tower
-        k.cyl(0.15, 0.18, 0.5, -0.12, 0.25, 0.02, 'brownStone', 14);
-        k.cyl(0.19, 0.15, 0.04, -0.12, 0.52, 0.02, 'brownStone', 14);
-        k.crown(-0.12, 0.02, 0.18, 0.54, 'brownStone');
-        k.cyl(0, 0.1, 0.26, -0.12, 0.7, 0.02, 'darkRoof', 10);
-        for (let i = 0; i < 5; i++) k.box(0.012, 0.03, 0.006, -0.12, 0.08 + i * 0.09, -0.065, 'dark');
-        // the hall with its spire
-        k.box(0.2, 0.16, 0.13, 0.13, 0.08, 0.02, 'brownStone', -0.1);
-        k.roof(0.21, 0.15, 0.14, 0.13, 0.16, 0.02, 'darkRoof', -0.1);
-        k.box(0.03, 0.08, 0.03, 0.2, 0.26, 0.02, 'brownStone');
-        k.cyl(0, 0.05, 0.2, 0.2, 0.4, 0.02, 'darkRoof', 8);
-        for (const sx of [0.06, 0.12, 0.18]) k.box(0.012, 0.04, 0.006, sx, 0.08, -0.05, 'dark', -0.1);
-        // spired turrets
-        this.roundTower(k, 0.0, -0.18, 0.06, 0.2, 'brownStone', 'darkRoof', 0.16);
-        this.roundTower(k, 0.26, 0.18, 0.06, 0.18, 'brownStone', 'darkRoof', 0.14);
-        this.roundTower(k, -0.26, 0.2, 0.05, 0.16, 'brownStone', 'darkRoof', 0.12);
+        // the tower: a flared ribbed skirt, the shaft, a gallery, the crown of spires
+        const tx = -0.12, tz = -0.02;
+        this.ribbedTower(k, tx, tz, 0.2, 0.14, M, 12, 1.5);
+        k.cyl(0.15, 0.17, 0.42, tx, 0.14 + 0.21, tz, M, 16);
+        for (let i = 0; i < 10; i++) { const a = (i + 0.5) / 10 * Math.PI * 2; k.box(0.01, 0.4, 0.01, tx + Math.cos(a) * 0.08, 0.35, tz + Math.sin(a) * 0.08, 'bnDark', -a); }
+        k.cyl(0.21, 0.15, 0.05, tx, 0.585, tz, M, 16);
+        k.cyl(0.13, 0.13, 0.06, tx, 0.64, tz, M, 16);
+        k.cyl(0, 0.12, 0.2, tx, 0.77, tz, R, 12);
+        for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; k.cyl(0, 0.022, 0.1, tx + Math.cos(a) * 0.09, 0.66, tz + Math.sin(a) * 0.09, R, 6); }
+        for (let i = 0; i < 4; i++) k.box(0.012, 0.035, 0.006, tx, 0.2 + i * 0.09, tz - 0.083, 'dark');
+        // the hall with its steep roof, the round apse in front, the spire
+        k.box(0.22, 0.17, 0.14, 0.13, 0.085, 0.04, M, -0.1);
+        k.roof(0.23, 0.16, 0.17, 0.13, 0.17, 0.04, R, -0.1);
+        this.ribbedTower(k, 0.06, -0.05, 0.12, 0.12, M, 7, 1.05);
+        k.cyl(0, 0.13, 0.09, 0.06, 0.18, -0.05, R, 12);
+        k.box(0.03, 0.06, 0.03, 0.22, 0.31, 0.04, M);
+        k.cyl(0, 0.045, 0.2, 0.22, 0.44, 0.04, R, 8);
+        for (const sx of [0.1, 0.15, 0.2]) k.box(0.012, 0.04, 0.006, sx, 0.09, -0.03 - (sx - 0.13) * 0.1, 'dark', -0.1);
         return k.done();
     }
 
-    /** Beauclair: the white palace of the duchy — tiers of pale walls with arcades, towers under
-     *  terracotta cones, and the red-roofed town at its feet in front. */
+    /** Beauclair: the white palace of the duchy — round tiers ringed with arcades, the main
+     *  block under salmon roofs, slender turrets with needle cones, the tall tower with its
+     *  lantern and spire; before it a little walled town with red roofs among trees. */
     buildBeauclair(at, scale = 1, rot = 0) {
-        const k = this.kit('beauclair', at, rot, scale);
+        const k = this.kit('beauclair', at, rot, scale), M = 'beauWhite', R = 'terracotta';
         let seed = 29;
         const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
         this.plinth(k, 0.48);
-        // the lower town wall in front and its houses
-        const ring = [[-0.42, -0.1], [-0.2, -0.4], [0.2, -0.4], [0.42, -0.1], [0.36, 0.3], [-0.36, 0.3]];
-        this.curtain(k, ring, 0.06, 0.024, 'pale', { d: 0.05, h: 0.09, mat: 'pale', roof: 'terracotta' });
-        k.floor(ring, 0.004, 'yard');
+        // the lower town in front with its wall and turrets
+        const ring = [[-0.42, -0.08], [-0.24, -0.4], [0.22, -0.4], [0.42, -0.08], [0.36, 0.3], [-0.36, 0.3]];
+        this.curtain(k, ring, 0.055, 0.022, M, { d: 0.045, h: 0.09, mat: M, roof: R, coneH: 0.1 });
+        k.floor(ring, 0.012, 'yard');
         for (let i = 0; i < 12; i++) {
-            const x = -0.32 + rnd() * 0.64, z = -0.32 + rnd() * 0.14;
-            this.townHouse(k, x, z, 0.05 + rnd() * 0.025, 0.04, 0.04 + rnd() * 0.02, 'pale', 'terracotta', (rnd() - 0.5) * 0.6);
+            const x = -0.3 + rnd() * 0.6, z = -0.34 + rnd() * 0.12;
+            if (Math.abs(x) < 0.05) continue;   // the street up to the palace
+            this.townHouse(k, x, z, 0.05 + rnd() * 0.025, 0.04, 0.04 + rnd() * 0.02, M, R, (rnd() - 0.5) * 0.6, null, 0.8);
         }
-        // the palace: a terrace with an arcade, the main block, a dome-like tower and cone towers
-        k.box(0.5, 0.1, 0.3, 0, 0.05, 0.1, 'pale');
-        for (let i = 0; i < 7; i++) k.box(0.026, 0.05, 0.006, -0.21 + i * 0.07, 0.05, -0.053, 'dark');
-        k.box(0.3, 0.14, 0.18, 0, 0.17, 0.12, 'white');
-        k.roof(0.31, 0.19, 0.08, 0, 0.24, 0.12, 'terracotta');
-        for (let i = 0; i < 5; i++) k.box(0.02, 0.04, 0.006, -0.1 + i * 0.05, 0.18, 0.027, 'dark');
-        this.roundTower(k, 0.0, 0.22, 0.11, 0.42, 'white', 'terracotta', 0.17);
-        this.roundTower(k, -0.2, 0.06, 0.07, 0.3, 'white', 'terracotta', 0.13);
-        this.roundTower(k, 0.21, 0.06, 0.07, 0.3, 'white', 'terracotta', 0.13);
-        this.roundTower(k, -0.18, 0.22, 0.06, 0.26, 'white', 'terracotta', 0.11);
-        this.roundTower(k, 0.18, 0.22, 0.06, 0.26, 'white', 'terracotta', 0.11);
-        for (const [x, z] of [[-0.3, 0.12], [0.3, 0.14], [-0.08, -0.18], [0.1, -0.2]]) { k.cyl(0.008, 0.01, 0.025, x, 0.012, z, 'wood', 5); k.poly(0.026, x, 0.045, z, 'leaf'); }
+        for (const [x, z] of [[-0.34, 0.12], [0.33, 0.14], [-0.3, -0.12], [0.3, -0.14], [0.36, 0.0]]) this.tree(k, x, z, 1.2);
+        // the palace: two round tiers with arcades
+        k.cyl(0.52, 0.54, 0.1, 0, 0.05, 0.1, M, 24);
+        this.arcade(k, 0, 0.1, 0.52, 0.05, 11, 0.022, 0.05, Math.PI * 1.08, Math.PI * 1.92);
+        k.cyl(0.54, 0.54, 0.012, 0, 0.104, 0.1, M, 24);
+        k.cyl(0.36, 0.37, 0.09, 0, 0.145, 0.12, M, 20);
+        this.arcade(k, 0, 0.12, 0.36, 0.145, 8, 0.02, 0.042, Math.PI * 1.1, Math.PI * 1.9);
+        // the main block, the tall tower with its lantern and spire, the turrets
+        k.box(0.26, 0.12, 0.14, 0, 0.25, 0.14, M);
+        k.roof(0.27, 0.15, 0.08, 0, 0.31, 0.14, R);
+        for (let i = 0; i < 5; i++) k.box(0.018, 0.04, 0.006, -0.09 + i * 0.045, 0.25, 0.067, 'dark');
+        const tz = 0.2;
+        k.cyl(0.1, 0.11, 0.5, 0, 0.25, tz, M, 14);
+        k.cyl(0.12, 0.12, 0.014, 0, 0.5, tz, M, 14);
+        k.cyl(0.07, 0.07, 0.07, 0, 0.54, tz, M, 10);
+        this.arcade(k, 0, tz, 0.07, 0.54, 5, 0.016, 0.03);
+        k.cyl(0, 0.09, 0.2, 0, 0.675, tz, R, 12);
+        for (let i = 0; i < 3; i++) k.box(0.014, 0.03, 0.006, 0, 0.32 + i * 0.05, tz - 0.053, 'dark');
+        for (const [x, z, hh, ch] of [[-0.15, 0.08, 0.32, 0.16], [0.15, 0.08, 0.32, 0.16], [-0.17, 0.22, 0.28, 0.14], [0.17, 0.22, 0.28, 0.14], [-0.24, -0.02, 0.2, 0.12], [0.24, -0.02, 0.2, 0.12]])
+            this.roundTower(k, x, z, 0.055, hh, M, R, ch);
         return k.done();
     }
 
