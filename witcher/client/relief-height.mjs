@@ -177,7 +177,8 @@ export function limitSlope(f, w, h, s, keep = null) {
  *                 spur that falls by `mound` per pixel (default 0.0035) — no edge of a building hangs
  *                 in the air,
  *        carve: [{x, y, len, width, angle}] — river beds under painted bridges (angle — of the RIVER, radians),
- *        edge: falloff in px at the region border, open: {top, right, bottom, left} board-edge sides }
+ *        edge: falloff in px at the region border, open: {top, right, bottom, left} board-edge sides,
+ *        none: sides with no falloff at all (another region continues there) }
  */
 export function heightField(rgba, w, h, opt = {}) {
     const maxH = opt.maxH ?? 0.3, edge = opt.edge ?? 70, base = opt.base ?? 0.045;
@@ -250,9 +251,9 @@ export function heightField(rgba, w, h, opt = {}) {
     }
     limitSlope(out, w, h, slopeMax, keep);
     // region border: the relief sinks into the flat board (and sooner at the printed frame)
-    const open = opt.open || {};
+    const open = opt.open || {}, none = opt.none || {};
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const d = (side, dist) => (open[side] ? smooth(14, 64, dist) : smooth(0, edge, dist));
+        const d = (side, dist) => (none[side] ? 1 : open[side] ? smooth(14, 64, dist) : smooth(0, edge, dist));
         out[y * w + x] = Math.max(0, out[y * w + x] * d('left', x) * d('right', w - 1 - x) * d('top', y) * d('bottom', h - 1 - y));
     }
     return out;

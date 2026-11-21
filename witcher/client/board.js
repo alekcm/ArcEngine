@@ -15,6 +15,8 @@ const PINS = {
     // cards, laid on the table to the left of the Skellige strip.
     30: [2232, 430], 31: [1840, 1250], 32: [1840, 1650], 33: [1840, 2050], 34: [1840, 2450], 35: [1840, 2850],
 };
+/** Locations whose name banner is printed to the right of the badge (elsewhere it is to the left). */
+const BANNER_RIGHT = new Set([0]);
 /** «Скеллиге»: the divisions of the Dagon track under his location (index 0 = the bottom one). */
 const DAGON_TRACK = [[2178, 1300], [2178, 1100], [2178, 905], [2178, 715]];
 const pxWorld = ([x, y]) => new BABYLON.Vector3(((x - 2050) / 3375 - 0.5) * MAP_W, 0, (0.5 - (y - 270) / 2725) * MAP_H);
@@ -90,7 +92,7 @@ export class Board {
         // Relief (relief.js): mountains, forests and Kaer Morhen in 3D over the painted board.
         // Everything placed on the board takes its height from it (ground()); until the painting is
         // read the board is flat, then resnap() lifts what already stands on it.
-        this.relief = new Relief(scene, this.shadows, { mapW: MAP_W, mapH: MAP_H, url: 'assets/continent.jpg', pins: Object.values(PINS).map(pxImage) });
+        this.relief = new Relief(scene, this.shadows, { mapW: MAP_W, mapH: MAP_H, url: 'assets/continent.jpg', pins: Object.entries(PINS).map(([n, p]) => [...pxImage(p), BANNER_RIGHT.has(+n)]) });
         this.relief.ready.then(() => this.resnap());
         this.witchers = {};   // seat -> { root, school }
         this.monsters = {};   // slot -> { root, mon, loc }

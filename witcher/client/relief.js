@@ -22,8 +22,11 @@ export const BOARD_TOON = { bands: 4, soft: 0.07, low: 0.5, spec: 0, specSize: 0
 /** Regions of continent.jpg (image pixels: 4096 × 3307) that are built in 3D. Angles are image
  *  angles in radians (0 = east, π/2 = south); a bridge's angle is the direction of its road. */
 export const REGIONS = [{
+    // ---- the north-east: Kaer Morhen (3), Ban Ard (4) and the valley between them -----------
+    // Regions tile the board: their x0/y0 are aligned to the mesh step (3) so neighbours share their
+    // edge vertices (Relief.stitch), and a side that another region continues has no falloff.
     id: 'kaer-morhen',
-    px: [2900, 0, 1196, 900],              // x, y, width, height in image pixels
+    px: [2901, 0, 1195, 901],              // x, y, width, height in image pixels
     step: 3,                               // pixels per grid cell of the terrain mesh
     maxH: 0.3,                             // the highest peak, world units (a miniature is 0.95)
     open: { top: true, right: true },      // sides that are the edge of the board
@@ -52,6 +55,53 @@ export const REGIONS = [{
         { kind: 'hut', x: 3099, y: 392, rot: 0.3, size: 0.8 },
         { kind: 'ruin', x: 3121, y: 370 },
         { kind: 'watchtower', x: 3281, y: 872, hole: { x: 3281, y: 852, rx: 17, ry: 38 } },
+    ],
+}, {
+    // ---- the north: Hengfors (2), Vizima (7), Haern Caduch (10) ----------------------------
+    id: 'north',
+    px: [1950, 0, 952, 2200],
+    step: 3, maxH: 0.3,
+    open: { top: true },
+    noCopy: [{ x: 2533, y: 1747, rx: 64, ry: 64 }],   // the Bear school medallion
+    buildings: [
+        { kind: 'hengfors', x: 2482, y: 350, foot: 0.42, h: 0.065, scale: 0.75, rot: 0.05, hole: { x: 2497, y: 355, rx: 128, ry: 92 } },
+        { kind: 'vizima', x: 2345, y: 893, foot: 0.47, h: 0.06, scale: 0.8, rot: 0.08, hole: { x: 2350, y: 895, rx: 155, ry: 95 } },
+        { kind: 'haernCaduch', x: 2392, y: 1795, foot: 0.42, h: 0.07, mound: 0.003, scale: 0.78, rot: -0.1, hole: { x: 2397, y: 1793, rx: 85, ry: 101 } },
+    ],
+    holes: [{ x: 2603, y: 392, rx: 42, ry: 58 }],   // Hengfors' gate towers by the badge: the miniatures stand there
+    props: [
+        { kind: 'bridge', x: 2075, y: 680, angle: 1.04, len: 24, width: 14 },
+        { kind: 'bridge', x: 2400, y: 760, angle: -0.86, len: 26, width: 14 },
+        { kind: 'bridge', stone: true, x: 2480, y: 810, angle: -0.37, len: 40, width: 14 },
+        { kind: 'bridge', x: 2227, y: 1230, angle: 1.35, len: 22, width: 14 },
+        { kind: 'bridge', stone: true, x: 2305, y: 1285, angle: 0.62, len: 36, width: 16 },
+        { kind: 'bridge', stone: true, x: 2571, y: 1177, angle: 0.36, len: 50, width: 14 },
+        { kind: 'rocks', x: 2185, y: 674, size: 1.3 }, { kind: 'rocks', x: 2560, y: 733, size: 1.3 }, { kind: 'rocks', x: 2085, y: 895, size: 1 },
+        // the village under the mountains of Haern Caduch, lone huts
+        { kind: 'hut', x: 2298, y: 1437, rot: -0.3, size: 1.1, roof: 'roofRed' }, { kind: 'hut', x: 2278, y: 1452, rot: -0.2, size: 1, roof: 'roofRed' },
+        { kind: 'hut', x: 2258, y: 1474, rot: -0.35, size: 1.05, roof: 'roofRed' }, { kind: 'hut', x: 2347, y: 1449, rot: 0.1, size: 1.15, roof: 'roofRed' },
+        { kind: 'hut', x: 2357, y: 1497, rot: -0.15, size: 1.25, roof: 'roofRed' }, { kind: 'hut', x: 2322, y: 1486, rot: -0.4, size: 1, roof: 'roofRed' },
+        { kind: 'hut', x: 2750, y: 1890, rot: 0.1, size: 1 }, { kind: 'hut', x: 2730, y: 1380, rot: -0.1, size: 1.25 },
+    ],
+}, {
+    // ---- the east: Vengerberg (8), Bechelt Nar (0), Beauclair (11) -------------------------
+    id: 'east',
+    px: [2901, 900, 1195, 1300],
+    step: 3, maxH: 0.3,
+    open: { right: true },
+    noCopy: [{ x: 3716, y: 1576, rx: 64, ry: 64 }],   // the medallion by Bechelt Nar
+    buildings: [
+        { kind: 'vengerberg', x: 3497, y: 1022, foot: 0.44, h: 0.07, scale: 0.75, rot: 0, hole: { x: 3503, y: 1022, rx: 102, ry: 98 } },
+        { kind: 'becheltNar', x: 3890, y: 1548, foot: 0.4, h: 0.09, scale: 0.8, rot: 0, hole: { x: 3888, y: 1548, rx: 95, ry: 100 } },
+        { kind: 'beauclair', x: 3378, y: 1818, foot: 0.48, h: 0.12, scale: 0.8, rot: 0, hole: { x: 3385, y: 1815, rx: 100, ry: 118 } },
+    ],
+    props: [
+        { kind: 'bridge', x: 3399, y: 1502, angle: 0.56, len: 30, width: 14 },
+        { kind: 'hut', x: 3410, y: 1330, rot: -0.1, size: 1 }, { kind: 'hut', x: 3378, y: 1312, rot: 0.15, size: 0.9 },
+        { kind: 'house', x: 3862, y: 1304, rot: 0.2 },
+        { kind: 'hut', x: 3462, y: 1468, rot: 0, size: 1.1 },
+        { kind: 'hall', x: 3789, y: 1649, rot: 0.1 }, { kind: 'hall', x: 3925, y: 1668, rot: -0.15, size: 0.85 },
+        { kind: 'watchtower', x: 3000, y: 1592, roof: 'lilac', hole: { x: 3000, y: 1560, rx: 16, ry: 46 } },
     ],
 }];
 
@@ -133,6 +183,7 @@ export class Relief {
     constructor(scene, shadows, o) {
         this.scene = scene; this.shadows = shadows; this.o = o;
         this.parts = [];   // { reg, field, w, h }
+        this.meshes = []; this.buildings = {};
         this.ready = this.load().catch((e) => { console.error('relief', e); });
     }
 
@@ -142,7 +193,13 @@ export class Relief {
         await img.decode();
         this.imgW = img.naturalWidth; this.imgH = img.naturalHeight;
         this.mats = this.makeMaterials();
-        for (const reg of REGIONS) this.buildRegion(img, reg);
+        // heights and painting-over of all regions in parallel; then built one by one, each
+        // stitched to the ones before it
+        const lanes = Math.max(1, Math.min(REGIONS.length, (navigator.hardwareConcurrency || 2) - 1));
+        const preps = REGIONS.map((reg, i) => this.prepareRegion(img, reg, i % lanes));
+        for (const p of preps) this.buildRegion(await p);
+        for (const wk of this.workers || []) if (wk) wk.terminate();
+        this.workers = null;
     }
 
     /** Image pixel -> world (the map plane spans the whole image). */
@@ -214,6 +271,11 @@ export class Relief {
             white: mk('white', '#d6d3cb'), ruin: mk('ruin', '#9a988f'), roofBrown: mk('roofBrown', '#5a4136'),
             plaster: mk('plaster', '#cdbb94'), timber: mk('timber', '#7a5a3c'), thatch: mk('thatch', '#9a7442'),
             plank: mk('plank', '#8a6644'), yard: mk('yard', '#b3a68c'),
+            // the other cities: Vengerberg's blue roofs, Beauclair's terracotta, Bechelt Nar's brown
+            // stone, the red shingles of the villages, the mage's lilac, a grassy bastion
+            roofBlue: mk('roofBlue', '#3d6f93'), terracotta: mk('terracotta', '#b5643c'), roofRed: mk('roofRed', '#8c5246'),
+            brownStone: mk('brownStone', '#80604c'), darkRoof: mk('darkRoof', '#45322a'), lilac: mk('lilac', '#8b6bb0'),
+            grass: mk('grass', '#6f8a4a'), pale: mk('pale', '#d9d6cc'), leaf: mk('leaf', '#2f4f2c', false),
             rock: (() => { const m = mk('rock', '#a4adbf'); m.diffuseTexture = rt; rt.uScale = 3; rt.level = 1.65; return m; })(),
         };
     }
@@ -221,50 +283,126 @@ export class Relief {
     // ---------------------------------------------------------------------------------------
     // A region: terrain, firs, buildings, props
     // ---------------------------------------------------------------------------------------
-    buildRegion(img, reg) {
-        const S = this.scene;
-        const [x0, y0, w, h] = reg.px;
-        const cv = document.createElement('canvas');
-        cv.width = w; cv.height = h;
-        const g = cv.getContext('2d', { willReadFrequently: true });
-        g.drawImage(img, x0, y0, w, h, 0, 0, w, h);
-        const id = g.getImageData(0, 0, w, h);
-        const px = id.data;
-        const rgba = new Uint8ClampedArray(px);   // the untouched painting: heights and forests read it
-
-        // Level zones: each location badge with its terrain icon and the miniatures' spot above it,
-        // and its name banner to the left (grey-lilac: the rock mask would lift it otherwise).
-        const flat = [];
-        for (const [bx, by] of this.o.pins) {
-            const lx = bx - x0, ly = by - y0;
-            if (lx < -260 || ly < -260 || lx > w + 260 || ly > h + 260) continue;
-            flat.push({ x: lx, y: ly - 60, rx: 110, ry: 110 }, { x: lx - 185, y: ly - 52, rx: 140, ry: 40 });
+    /** Runs a pure relief job (relief-worker.mjs) off the main thread — on worker `lane` (one per
+     *  region, so the regions are computed in parallel); inline if workers are unavailable. */
+    job(op, a, transfer, lane = 0) {
+        const inline = () => {
+            if (op === 'field') return heightField(a.rgba, a.w, a.h, a.opt);
+            inpaint(a.px, a.w, a.h, a.mask, a.iters, { avoid: a.avoid });
+            return a.px;
+        };
+        this.workers = this.workers || [];
+        if (this.workers[lane] === undefined) {
+            try {
+                const wk = new Worker(new URL('./relief-worker.mjs', import.meta.url), { type: 'module' });
+                wk.jobs = new Map();
+                wk.onmessage = (e) => { const j = wk.jobs.get(e.data.id); wk.jobs.delete(e.data.id); if (e.data.error) j.reject(new Error(e.data.error)); else j.resolve(e.data.out); };
+                wk.onerror = (e) => { console.warn('relief worker', e.message); for (const j of wk.jobs.values()) j.retry(); wk.jobs.clear(); this.workers[lane] = null; };
+                this.workers[lane] = wk;
+            } catch (e) { this.workers[lane] = null; }
         }
-        const loc = (o) => ({ ...o, x: o.x - x0, y: o.y - y0 });
-        const field = heightField(rgba, w, h, {
-            maxH: reg.maxH, flat, open: reg.open,
-            plateau: reg.buildings.map(b => loc({ x: b.x, y: b.y, r: footPx(b), h: b.h, mound: b.mound })),
-            // the river runs on under a painted bridge: across the road
-            carve: reg.props.filter(p => p.kind === 'bridge').map(p => loc({ x: p.x, y: p.y, len: p.width + 10, width: p.len * 0.62, angle: p.angle + Math.PI / 2 })),
+        const wk = this.workers[lane];
+        if (!wk) return Promise.resolve(inline());
+        return new Promise((resolve, reject) => {
+            const id = (this.jobId = (this.jobId || 0) + 1);
+            wk.jobs.set(id, { resolve, reject, retry: () => { try { resolve(inline()); } catch (e) { reject(e); } } });
+            wk.postMessage({ id, op, a }, transfer);
         });
-        this.parts.push({ reg, field, w, h });
+    }
 
-        // Paint over what is now built in 3D.
+    /** How each side of a region meets the rest: 'board' (the edge of the board), 'shared'
+     *  (other regions continue it over its whole length) or 'fall' (it sinks into the flat board). */
+    sidesOf(reg) {
+        const [x0, y0, w, h] = reg.px, x1 = x0 + w - 1, y1 = y0 + h - 1;
+        const others = REGIONS.filter(r => r !== reg).map(r => [r.px[0], r.px[1], r.px[0] + r.px[2] - 1, r.px[1] + r.px[3] - 1]);
+        // a side is shared when every point of it lies on (the first row/column of) another region
+        const covered = (pts) => pts.every(([x, y]) => others.some(([a0, b0, a1, b1]) => x >= a0 && x <= a1 && y >= b0 && y <= b1));
+        const line = (ax, ay, bx, by) => { const out = []; const n = Math.max(Math.abs(bx - ax), Math.abs(by - ay)); for (let i = 0; i <= n; i += 7) out.push([Math.round(ax + (bx - ax) * i / n), Math.round(ay + (by - ay) * i / n)]); out.push([bx, by]); return out; };
+        const open = reg.open || {}, side = (name, pts) => (open[name] ? 'board' : covered(pts) ? 'shared' : 'fall');
+        return {
+            left: side('left', line(x0, y0, x0, y1)), right: side('right', line(x1, y0, x1, y1)),
+            top: side('top', line(x0, y0, x1, y0)), bottom: side('bottom', line(x0, y1, x1, y1)),
+        };
+    }
+
+    /** Level zones of every location: the badge with the miniatures' spot above it and the name
+     *  banner (to the left of the badge; to the right where the board has it there). */
+    flatZones() {
+        const out = [];
+        for (const [bx, by, right] of this.o.pins) {
+            out.push({ x: bx, y: by - 60, rx: 110, ry: 110 }, { x: right ? bx + 185 : bx - 185, y: by - 52, rx: 140, ry: 40 });
+        }
+        // and the tokens printed on the map (school medallions): level, like the badges
+        for (const reg of REGIONS) out.push(...(reg.flat || []), ...(reg.noCopy || []));
+        return out;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // A region: terrain, firs, buildings, props
+    // ---------------------------------------------------------------------------------------
+    async prepareRegion(img, reg, lane) {
+        const [x0, y0, w, h] = reg.px;
+        const sides = this.sidesOf(reg);
+        // Heights are computed over the region plus a margin on its shared sides, so the blurs see
+        // the same painting as the neighbour does and both fields agree along the seam.
+        const P = 96;
+        const px0 = Math.max(0, x0 - (sides.left === 'shared' ? P : 0)), py0 = Math.max(0, y0 - (sides.top === 'shared' ? P : 0));
+        const px1 = Math.min(this.imgW, x0 + w + (sides.right === 'shared' ? P : 0)), py1 = Math.min(this.imgH, y0 + h + (sides.bottom === 'shared' ? P : 0));
+        const pw = px1 - px0, ph = py1 - py0;
+        const cv = document.createElement('canvas');
+        cv.width = pw; cv.height = ph;
+        const g = cv.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, px0, py0, pw, ph, 0, 0, pw, ph);
+        const prgba = g.getImageData(0, 0, pw, ph).data;
+        const at = (o) => ({ ...o, x: o.x - px0, y: o.y - py0 });
+        const all = REGIONS.flatMap(r => r.buildings), bridges = REGIONS.flatMap(r => r.props.filter(p => p.kind === 'bridge'));
+        const flat = this.flatZones();
+        const opt = {
+            maxH: reg.maxH, flat: flat.map(at),
+            open: Object.fromEntries(Object.entries(sides).map(([k, v]) => [k, v === 'board'])),
+            none: Object.fromEntries(Object.entries(sides).map(([k, v]) => [k, v === 'shared'])),
+            // terraces and bridge beds of every region: a spur or a bed reaching over a seam is the same on both sides
+            plateau: all.map(b => at({ x: b.x, y: b.y, r: footPx(b), h: b.h, mound: b.mound })),
+            carve: bridges.map(p => at({ x: p.x, y: p.y, len: p.width + 10, width: p.len * 0.62, angle: p.angle + Math.PI / 2 })),
+        };
+        const fieldJob = this.job('field', { rgba: prgba.slice(), w: pw, h: ph, opt }, [], lane);
+        const rgba = new Uint8ClampedArray(w * h * 4);
+        for (let y = 0; y < h; y++) {
+            const sy = y + y0 - py0;
+            for (let x = 0; x < w; x++) { const i = sy * pw + x + x0 - px0; for (let c = 0; c < 4; c++) rgba[(y * w + x) * 4 + c] = prgba[i * 4 + c]; }
+        }
+        // Paint over what is now built in 3D (texture from the painting around, never from the
+        // plates, badges and banners or from tokens painted on the map).
+        const loc = (o) => ({ ...o, x: o.x - x0, y: o.y - y0 });
         const holes = [];
         for (const b of reg.buildings) holes.push(b.hole);
         for (const p of reg.props) holes.push(p.hole || this.holeOf(p));
+        for (const hz of reg.holes || []) holes.push(hz);   // painted things removed without a 3D twin
         const mask = markEllipses(new Uint8Array(w * h), w, h, holes.map(loc));
-        // texture is never copied from parchment, from a location's badges and banner, or from a
-        // token painted on the map (noCopy)
         const avoid = classify(rgba, w, h).plate;
-        markEllipses(avoid, w, h, flat);
+        markEllipses(avoid, w, h, flat.map(loc));
         markEllipses(avoid, w, h, (reg.noCopy || []).map(loc));
-        inpaint(px, w, h, mask, 120, { avoid });
-        g.putImageData(id, 0, 0);
+        const paintJob = this.job('inpaint', { px: rgba.slice(), w, h, mask, iters: 120, avoid }, [], lane);
+        const pfield = await fieldJob;
+        const field = new Float32Array(w * h);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) field[y * w + x] = pfield[(y + y0 - py0) * pw + x + x0 - px0];
+        return { reg, field, rgba, px: await paintJob, holes };
+    }
+
+    /** Builds a prepared region (on the main thread, in order: the seams follow the ones before). */
+    buildRegion({ reg, field, rgba, px, holes }) {
+        const S = this.scene;
+        const [x0, y0, w, h] = reg.px;
+        this.stitch(reg, field, w, h);
+        this.parts.push({ reg, field, w, h });
+        const tcv = document.createElement('canvas');
+        tcv.width = w; tcv.height = h;
+        const tg = tcv.getContext('2d');
+        tg.putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, w * h * 4), w, h), 0, 0);
         this.holes = holes;
 
         // --- the terrain mesh ---------------------------------------------------------------
-        const st = reg.step, gw = Math.floor((w - 1) / st) + 1, gh = Math.floor((h - 1) / st) + 1;
+        const st = reg.step, gw = Math.floor((w - 1) / st) + 1 + ((w - 1) % st ? 1 : 0), gh = Math.floor((h - 1) / st) + 1 + ((h - 1) % st ? 1 : 0);
         const pos = new Float32Array(gw * gh * 3), uv = new Float32Array(gw * gh * 2);
         for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
             const lx = Math.min(w - 1, i * st), ly = Math.min(h - 1, j * st), k = j * gw + i;
@@ -289,7 +427,7 @@ export class Relief {
         vd.positions = pos; vd.indices = idx; vd.normals = nrm; vd.uvs = uv;
         const mesh = new BABYLON.Mesh('relief_' + reg.id, S);
         vd.applyToMesh(mesh);
-        const tex = new BABYLON.DynamicTexture('reliefTex_' + reg.id, cv, S, true, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+        const tex = new BABYLON.DynamicTexture('reliefTex_' + reg.id, tcv, S, true, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
         tex.update();
         tex.anisotropicFilteringLevel = 8;
         tex.wrapU = tex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
@@ -299,15 +437,48 @@ export class Relief {
         if (BABYLON.MaterialPluginBase) m.reliefRock = new RockPlugin(m, this.rockTex);
         mesh.material = m; mesh.receiveShadows = true; mesh.isPickable = false;
         this.shadows.addShadowCaster(mesh);
-        this.mesh = mesh;
+        this.meshes.push(mesh);
+        this.mesh = this.meshes[0];
 
         this.plantFirs(reg, rgba, field, w, h);
         for (const b of reg.buildings) {
-            const at = this.world(b.x, b.y, b.h);
-            if (b.kind === 'kaerMorhen') this.buildKaerMorhen(at, b.scale, b.rot);
-            if (b.kind === 'banArd') this.buildBanArd(at, b.scale, b.rot);
+            const p = this.world(b.x, b.y, b.h);
+            const build = this['build' + b.kind[0].toUpperCase() + b.kind.slice(1)];
+            const root = build.call(this, p, b.scale, b.rot);
+            this.buildings[b.kind] = root;
         }
         for (const p of reg.props) this.buildProp(p);
+    }
+
+    /** The seam with regions already built: their border values are taken over exactly (so the
+     *  meshes share their edge vertices) and the difference fades out over 32 pixels inside. */
+    stitch(reg, field, w, h) {
+        const [x0, y0] = reg.px, F = 32;
+        const other = (ix, iy) => {
+            for (const p of this.parts) {
+                const lx = ix - p.reg.px[0], ly = iy - p.reg.px[1];
+                if (lx >= 0 && ly >= 0 && lx <= p.w - 1 && ly <= p.h - 1) return p.field[ly * p.w + lx];
+            }
+            return null;
+        };
+        // the difference on each border pixel that another region owns, spread inward
+        const sides = [
+            { n: h, at: (k) => [0, k], dir: [1, 0] }, { n: h, at: (k) => [w - 1, k], dir: [-1, 0] },
+            { n: w, at: (k) => [k, 0], dir: [0, 1] }, { n: w, at: (k) => [k, h - 1], dir: [0, -1] },
+        ];
+        for (const sd of sides) {
+            for (let k = 0; k < sd.n; k++) {
+                const [bx, by] = sd.at(k), v = other(x0 + bx, y0 + by);
+                if (v === null) continue;
+                const delta = v - field[by * w + bx];
+                for (let d = 0; d < F; d++) {
+                    const x = bx + sd.dir[0] * d, y = by + sd.dir[1] * d;
+                    if (x < 0 || y < 0 || x >= w || y >= h) break;
+                    const f = 1 - d / F;
+                    field[y * w + x] += delta * f * f * (3 - 2 * f);
+                }
+            }
+        }
     }
 
     /** The painted original of a prop: the ellipse painted over under it. */
@@ -364,7 +535,7 @@ export class Relief {
             k.fir.thinInstanceRefreshBoundingInfo();
             this.shadows.addShadowCaster(k.fir);
         }
-        this.firCount = kinds.reduce((s, k) => s + k.mats.length, 0);
+        this.firCount = (this.firCount || 0) + kinds.reduce((s, k) => s + k.mats.length, 0);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -388,11 +559,15 @@ export class Relief {
                 r.rotation.set(0, ry, Math.PI / 2); r.scaling.set(hh * 1.33, 1, span * 1.16);
                 r.position.set(x, y + hh * 0.333, z); return add(r, mat);   // the eaves on y
             },
-            /** A flat floor over a star-shaped outline [[x, z]…] (a courtyard inside the walls). */
+            /** A flat floor over an outline [[x, z]…] star-shaped around its centroid (a courtyard). */
             floor: (pts, y, mat) => {
-                const pos = [0, y, 0], uv = [0.5, 0.5], ind = [];
+                const cx = pts.reduce((q, p) => q + p[0], 0) / pts.length, cz = pts.reduce((q, p) => q + p[1], 0) / pts.length;
+                let area = 0;
+                for (let i = 0; i < pts.length; i++) { const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length]; area += ax * bz - bx * az; }
+                const pos = [cx, y, cz], uv = [0.5 + cx * 2, 0.5 + cz * 2], ind = [];
                 for (const [x, z] of pts) { pos.push(x, y, z); uv.push(0.5 + x * 2, 0.5 + z * 2); }
-                for (let i = 0; i < pts.length; i++) ind.push(0, 1 + i, 1 + ((i + 1) % pts.length));   // facing up (Babylon: clockwise from the viewer)
+                // facing up (Babylon: clockwise from the viewer) whichever way the outline runs
+                for (let i = 0; i < pts.length; i++) { const a = 1 + i, b = 1 + ((i + 1) % pts.length); if (area > 0) ind.push(0, a, b); else ind.push(0, b, a); }
                 const nrm = []; for (let i = 0; i <= pts.length; i++) nrm.push(0, 1, 0);
                 const m = new BABYLON.Mesh('p', S), vd = new BABYLON.VertexData();
                 vd.positions = pos; vd.indices = ind; vd.normals = nrm; vd.uvs = uv;
@@ -537,6 +712,212 @@ export class Relief {
         return k.done();
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Shared pieces of the cities (local units of a building; its plinth radius is `foot`)
+    // ---------------------------------------------------------------------------------------
+    /** The plinth of rock under a building (see Kaer Morhen): its top just under the terrace. */
+    plinth(k, foot) { k.cyl(foot * 1.9, foot * 2.7, 0.34, 0, -0.175, 0, 'rock', 11); }
+
+    /** A ring of walls through `pts` with merlons, optionally a round tower at every corner. */
+    curtain(k, pts, hh, t, mat, towers = null) {
+        for (let i = 0; i < pts.length; i++) {
+            const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length];
+            const len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
+            k.box(t, hh, len, (ax + bx) / 2, hh / 2, (az + bz) / 2, mat, ry);
+            k.crenels(ax, az, bx, bz, hh + 0.006, t, mat);
+        }
+        if (towers) pts.forEach(([x, z], i) => this.roundTower(k, x, z, towers.d, towers.h + (i % 3) * 0.02, towers.mat || mat, towers.roof));
+    }
+
+    /** A round tower: crenellated, or with a cone roof of material `roof`. */
+    roundTower(k, x, z, d, hh, mat, roof = null, coneH = null) {
+        k.cyl(d, d * 1.08, hh, x, hh / 2, z, mat, 12);
+        if (roof) { k.cyl(d + 0.016, d + 0.016, 0.012, x, hh, z, mat, 12); k.cyl(0, d + 0.024, coneH || d * 1.6, x, hh + (coneH || d * 1.6) / 2 + 0.006, z, roof, 12); }
+        else k.crown(x, z, d, hh, mat);
+        for (let i = 0; i < Math.floor(hh / 0.09); i++) k.box(0.011, 0.024, 0.006, x, 0.05 + i * 0.08, z - d / 2 - 0.002, 'dark');
+    }
+
+    /** A square tower with merlons (or a pyramid roof). */
+    squareTower(k, x, z, w, hh, mat, ry = 0, roof = null) {
+        k.box(w, hh, w, x, hh / 2, z, mat, ry);
+        k.box(w + 0.014, 0.016, w + 0.014, x, hh, z, mat, ry);
+        if (roof) k.cyl(0, w * 1.45, w * 1.1, x, hh + w * 0.55 + 0.008, z, roof, 4).rotation.y = ry + Math.PI / 4;
+        else {
+            const c = Math.cos(ry), s = Math.sin(ry), q = (w + 0.01) / 2;
+            const corner = (u, v) => [x + u * c + v * s, z - u * s + v * c];
+            const cs = [corner(-q, -q), corner(q, -q), corner(q, q), corner(-q, q)];
+            for (let i = 0; i < 4; i++) k.crenels(...cs[i], ...cs[(i + 1) % 4], hh + 0.008, 0.018, mat);
+        }
+        for (let i = 0; i < Math.floor(hh / 0.1); i++) k.box(0.014, 0.026, 0.006, x, 0.06 + i * 0.09, z - w / 2 - 0.003, 'dark', ry);
+    }
+
+    /** A town house: walls, a gabled roof, two windows. */
+    townHouse(k, x, z, w, d, hh, wall, roof, ry = 0) {
+        k.box(w, hh, d, x, hh / 2, z, wall, ry);
+        k.roof(w * 1.06, d * 1.1, d * 0.62, x, hh, z, roof, ry);
+        const c = Math.cos(ry), s = Math.sin(ry);
+        for (const u of [-w * 0.22, w * 0.22]) k.box(0.01, 0.016, 0.004, x + u * c - (d / 2 + 0.002) * s, hh * 0.6, z - u * s - (d / 2 + 0.002) * c, 'dark', ry);
+    }
+
+    /**
+     * Hengfors, as on the board: a tall square keep on the rock, a round bastion with a green yard
+     * before it, a long wall running east through a gatehouse to a pair of towers.
+     */
+    buildHengfors(at, scale = 1, rot = 0) {
+        const k = this.kit('hengfors', at, rot, scale);
+        this.plinth(k, 0.42);
+        this.squareTower(k, -0.14, 0.12, 0.17, 0.4, 'tower');
+        this.squareTower(k, -0.02, 0.2, 0.09, 0.26, 'tower');
+        // the round bastion with grass inside
+        k.cyl(0.3, 0.32, 0.1, -0.12, 0.05, -0.12, 'wall', 16);
+        k.crown(-0.12, -0.12, 0.3, 0.1, 'wall');
+        k.cyl(0.27, 0.27, 0.01, -0.12, 0.112, -0.12, 'grass', 16);
+        // the great hall behind it
+        k.box(0.16, 0.12, 0.1, 0.06, 0.06, 0.06, 'keep', 0.1);
+        k.roof(0.17, 0.11, 0.07, 0.06, 0.12, 0.06, 'slate', 0.1);
+        // the wall east through the gatehouse to the towers
+        this.curtain(k, [[0.02, -0.02], [0.33, -0.08], [0.33, 0.14], [0.08, 0.2]], 0.11, 0.032, 'wall');
+        this.squareTower(k, 0.17, -0.05, 0.09, 0.2, 'tower', 0.2);
+        k.box(0.006, 0.07, 0.04, 0.17, 0.035, -0.096, 'wood', 0.2);
+        this.squareTower(k, 0.33, -0.08, 0.1, 0.24, 'tower');
+        this.squareTower(k, 0.33, 0.14, 0.09, 0.2, 'tower');
+        k.floor([[0.02, -0.02], [0.33, -0.08], [0.33, 0.14], [0.08, 0.2]], 0.004, 'yard');
+        return k.done();
+    }
+
+    /**
+     * Vizima: the walled capital on its river — an oval curtain with round towers, a gate to the
+     * west, the royal castle in the middle (a ring of round towers and the tall square donjon),
+     * and the town's slate-roofed houses packed between.
+     */
+    buildVizima(at, scale = 1, rot = 0) {
+        const k = this.kit('vizima', at, rot, scale);
+        let seed = 17;
+        const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+        this.plinth(k, 0.46);
+        const ring = [];
+        for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2; ring.push([Math.cos(a) * 0.44, Math.sin(a) * 0.3]); }
+        this.curtain(k, ring, 0.08, 0.026, 'wall', { d: 0.06, h: 0.12, mat: 'tower' });
+        k.floor(ring, 0.004, 'yard');
+        // the gate to the west with a stretch of road
+        this.squareTower(k, -0.45, 0.0, 0.08, 0.15, 'tower');
+        k.box(0.006, 0.06, 0.04, -0.492, 0.03, 0, 'wood', Math.PI / 2);
+        // the castle: round towers around a court, the donjon
+        const cx = 0.04, cz = 0.0;
+        for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + 0.3; this.roundTower(k, cx + Math.cos(a) * 0.1, cz + Math.sin(a) * 0.08, 0.075, 0.2 + (i % 2) * 0.04, 'tower'); }
+        k.cyl(0.18, 0.19, 0.12, cx, 0.06, cz, 'keep', 10);
+        this.squareTower(k, 0.17, 0.13, 0.1, 0.38, 'keep');
+        // houses between the castle and the walls
+        for (let i = 0; i < 24; i++) {
+            const a = rnd() * Math.PI * 2, r = 0.62 + rnd() * 0.28;
+            const x = Math.cos(a) * 0.4 * r, z = Math.sin(a) * 0.27 * r;
+            if (Math.hypot((x - cx) / 0.16, (z - cz) / 0.13) < 1 || Math.hypot((x - 0.17) / 0.09, (z - 0.13) / 0.09) < 1) continue;
+            const w = 0.05 + rnd() * 0.03;
+            this.townHouse(k, x, z, w, w * 0.75, 0.045 + rnd() * 0.035, rnd() < 0.5 ? 'plaster' : 'pale', rnd() < 0.7 ? 'slate' : 'roofBrown', -a + Math.PI / 2);
+        }
+        return k.done();
+    }
+
+    /** Haern Caduch, the School of the Bear: a white fortress of square towers on a mountain
+     *  ledge, a long wall with a gate tower, a keep with a high tower. */
+    buildHaernCaduch(at, scale = 1, rot = 0) {
+        const k = this.kit('haernCaduch', at, rot, scale);
+        this.plinth(k, 0.42);
+        const ring = [[-0.3, -0.2], [0.1, -0.32], [0.32, -0.08], [0.24, 0.26], [-0.14, 0.3], [-0.34, 0.08]];
+        this.curtain(k, ring, 0.13, 0.034, 'white');
+        k.floor(ring, 0.004, 'yard');
+        ring.forEach(([x, z], i) => this.squareTower(k, x, z, 0.085, 0.2 + (i % 2) * 0.04, 'white', Math.atan2(x, z)));
+        // the gate tower on the south wall
+        this.squareTower(k, -0.1, -0.26, 0.11, 0.26, 'white', 0.3);
+        k.box(0.05, 0.08, 0.006, -0.12, 0.04, -0.318, 'wood', 0.3);
+        // the keep and its tower
+        k.box(0.22, 0.24, 0.16, 0.02, 0.12, 0.08, 'white', -0.2);
+        k.roof(0.23, 0.17, 0.08, 0.02, 0.24, 0.08, 'slate', -0.2);
+        this.squareTower(k, -0.12, 0.12, 0.11, 0.5, 'white');
+        this.squareTower(k, 0.15, 0.16, 0.08, 0.34, 'white');
+        return k.done();
+    }
+
+    /** Vengerberg: the white castle under blue roofs — a wide round donjon, slender towers with
+     *  tall blue cones, blue-roofed halls, a low crenellated outer wall with trees inside. */
+    buildVengerberg(at, scale = 1, rot = 0) {
+        const k = this.kit('vengerberg', at, rot, scale);
+        this.plinth(k, 0.44);
+        const ring = [[-0.36, -0.22], [0.06, -0.36], [0.36, -0.16], [0.32, 0.22], [-0.04, 0.34], [-0.38, 0.12]];
+        this.curtain(k, ring, 0.07, 0.026, 'pale', { d: 0.06, h: 0.11, mat: 'pale', roof: 'roofBlue' });
+        k.floor(ring, 0.004, 'grass');
+        // the round donjon
+        k.cyl(0.2, 0.21, 0.2, 0.05, 0.1, 0.06, 'pale', 16);
+        k.crown(0.05, 0.06, 0.2, 0.2, 'pale');
+        // slender towers with blue cones and the halls
+        this.roundTower(k, -0.17, 0.12, 0.075, 0.34, 'pale', 'roofBlue', 0.16);
+        this.roundTower(k, 0.22, 0.14, 0.07, 0.28, 'pale', 'roofBlue', 0.13);
+        this.roundTower(k, -0.24, -0.08, 0.06, 0.24, 'pale', 'roofBlue', 0.11);
+        this.townHouse(k, -0.1, -0.12, 0.17, 0.09, 0.09, 'pale', 'roofBlue', 0.25);
+        this.townHouse(k, 0.18, -0.12, 0.14, 0.08, 0.08, 'pale', 'roofBlue', -0.4);
+        this.townHouse(k, -0.06, 0.22, 0.14, 0.08, 0.08, 'pale', 'roofBlue', 0.1);
+        // trees in the bailey
+        for (const [x, z] of [[0.24, -0.02], [-0.3, 0.02], [0.08, -0.25], [-0.2, -0.24]]) { k.cyl(0.01, 0.012, 0.03, x, 0.015, z, 'wood', 5); k.poly(0.03, x, 0.05, z, 'leaf'); }
+        return k.done();
+    }
+
+    /** Bechelt Nar: a dark brown keep of spires — a tall round tower with a pointed crown, a
+     *  steep-roofed great hall with its own spire, smaller spired turrets. */
+    buildBecheltNar(at, scale = 1, rot = 0) {
+        const k = this.kit('becheltNar', at, rot, scale);
+        this.plinth(k, 0.4);
+        const ring = [[-0.3, -0.24], [0.2, -0.3], [0.34, 0.02], [0.2, 0.3], [-0.24, 0.3], [-0.36, 0.0]];
+        this.curtain(k, ring, 0.07, 0.026, 'brownStone');
+        k.floor(ring, 0.004, 'yard');
+        // the great tower
+        k.cyl(0.15, 0.18, 0.5, -0.12, 0.25, 0.02, 'brownStone', 14);
+        k.cyl(0.19, 0.15, 0.04, -0.12, 0.52, 0.02, 'brownStone', 14);
+        k.crown(-0.12, 0.02, 0.18, 0.54, 'brownStone');
+        k.cyl(0, 0.1, 0.26, -0.12, 0.7, 0.02, 'darkRoof', 10);
+        for (let i = 0; i < 5; i++) k.box(0.012, 0.03, 0.006, -0.12, 0.08 + i * 0.09, -0.065, 'dark');
+        // the hall with its spire
+        k.box(0.2, 0.16, 0.13, 0.13, 0.08, 0.02, 'brownStone', -0.1);
+        k.roof(0.21, 0.15, 0.14, 0.13, 0.16, 0.02, 'darkRoof', -0.1);
+        k.box(0.03, 0.08, 0.03, 0.2, 0.26, 0.02, 'brownStone');
+        k.cyl(0, 0.05, 0.2, 0.2, 0.4, 0.02, 'darkRoof', 8);
+        for (const sx of [0.06, 0.12, 0.18]) k.box(0.012, 0.04, 0.006, sx, 0.08, -0.05, 'dark', -0.1);
+        // spired turrets
+        this.roundTower(k, 0.0, -0.18, 0.06, 0.2, 'brownStone', 'darkRoof', 0.16);
+        this.roundTower(k, 0.26, 0.18, 0.06, 0.18, 'brownStone', 'darkRoof', 0.14);
+        this.roundTower(k, -0.26, 0.2, 0.05, 0.16, 'brownStone', 'darkRoof', 0.12);
+        return k.done();
+    }
+
+    /** Beauclair: the white palace of the duchy — tiers of pale walls with arcades, towers under
+     *  terracotta cones, and the red-roofed town at its feet in front. */
+    buildBeauclair(at, scale = 1, rot = 0) {
+        const k = this.kit('beauclair', at, rot, scale);
+        let seed = 29;
+        const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+        this.plinth(k, 0.48);
+        // the lower town wall in front and its houses
+        const ring = [[-0.42, -0.1], [-0.2, -0.4], [0.2, -0.4], [0.42, -0.1], [0.36, 0.3], [-0.36, 0.3]];
+        this.curtain(k, ring, 0.06, 0.024, 'pale', { d: 0.05, h: 0.09, mat: 'pale', roof: 'terracotta' });
+        k.floor(ring, 0.004, 'yard');
+        for (let i = 0; i < 12; i++) {
+            const x = -0.32 + rnd() * 0.64, z = -0.32 + rnd() * 0.14;
+            this.townHouse(k, x, z, 0.05 + rnd() * 0.025, 0.04, 0.04 + rnd() * 0.02, 'pale', 'terracotta', (rnd() - 0.5) * 0.6);
+        }
+        // the palace: a terrace with an arcade, the main block, a dome-like tower and cone towers
+        k.box(0.5, 0.1, 0.3, 0, 0.05, 0.1, 'pale');
+        for (let i = 0; i < 7; i++) k.box(0.026, 0.05, 0.006, -0.21 + i * 0.07, 0.05, -0.053, 'dark');
+        k.box(0.3, 0.14, 0.18, 0, 0.17, 0.12, 'white');
+        k.roof(0.31, 0.19, 0.08, 0, 0.24, 0.12, 'terracotta');
+        for (let i = 0; i < 5; i++) k.box(0.02, 0.04, 0.006, -0.1 + i * 0.05, 0.18, 0.027, 'dark');
+        this.roundTower(k, 0.0, 0.22, 0.11, 0.42, 'white', 'terracotta', 0.17);
+        this.roundTower(k, -0.2, 0.06, 0.07, 0.3, 'white', 'terracotta', 0.13);
+        this.roundTower(k, 0.21, 0.06, 0.07, 0.3, 'white', 'terracotta', 0.13);
+        this.roundTower(k, -0.18, 0.22, 0.06, 0.26, 'white', 'terracotta', 0.11);
+        this.roundTower(k, 0.18, 0.22, 0.06, 0.26, 'white', 'terracotta', 0.11);
+        for (const [x, z] of [[-0.3, 0.12], [0.3, 0.14], [-0.08, -0.18], [0.1, -0.2]]) { k.cyl(0.008, 0.01, 0.025, x, 0.012, z, 'wood', 5); k.poly(0.026, x, 0.045, z, 'leaf'); }
+        return k.done();
+    }
+
     /** Small things painted on the map: bridges, huts, a farmstead, a watchtower, ruins. */
     buildProp(p) {
         const at = this.world(p.x, p.y, this.heightPx(p.x, p.y));
@@ -578,7 +959,7 @@ export class Relief {
                 k.cyl(0, s * 1.0, s * 0.55, 0, s * 0.5 + s * 0.27 - 0.01, 0, 'thatch', 9);
             } else {
                 k.box(s, s * 0.5, s * 0.72, 0, s * 0.25 - 0.012, 0, (p.x + p.y) % 2 ? 'plaster' : 'timber');
-                k.roof(s * 1.12, s * 0.86, s * 0.42, 0, s * 0.5 - 0.012, 0, 'thatch');
+                k.roof(s * 1.12, s * 0.86, s * 0.42, 0, s * 0.5 - 0.012, 0, p.roof || 'thatch');
                 k.box(s * 0.12, s * 0.3, s * 0.12, s * 0.28, s * 0.72, s * 0.12, 'ruin');      // chimney
                 k.box(s * 0.16, s * 0.28, 0.004, -s * 0.2, s * 0.13 - 0.012, -s * 0.36 - 0.002, 'dark');   // door
             }
@@ -600,8 +981,25 @@ export class Relief {
         if (p.kind === 'watchtower') {
             const k = this.kit('watchtower', at, 0);
             k.cyl(0.06, 0.07, 0.21, 0, 0.095, 0, 'white', 10);
-            k.crown(0, 0, 0.06, 0.2, 'white');
+            if (p.roof) { k.cyl(0.075, 0.075, 0.012, 0, 0.205, 0, 'white', 10); k.cyl(0, 0.08, 0.12, 0, 0.27, 0, p.roof, 10); }   // a mage's tower: a pointed roof
+            else k.crown(0, 0, 0.06, 0.2, 'white');
             for (let i = 0; i < 3; i++) k.box(0.01, 0.024, 0.006, 0, 0.06 + i * 0.05, -0.032, 'dark');
+            return k.done();
+        }
+        if (p.kind === 'rocks') {
+            // boulders lying in the grass: a few rough stones, the biggest in the middle
+            const k = this.kit('rocks', at, (p.x * 7 + p.y) % 6.28), z = p.size || 1;
+            const st = [[0, 0, 0.034], [0.04, 0.012, 0.022], [-0.038, -0.01, 0.026], [0.012, -0.034, 0.016], [-0.012, 0.032, 0.014]];
+            for (const [x, zz, r] of st) { const b = k.poly(r * z, x * z, r * z * 0.25 - 0.008, zz * z, 'rock'); b.scaling.y = 0.6; }
+            return k.done();
+        }
+        if (p.kind === 'hall') {
+            // a dark timbered hall of Bechelt Nar's estate: a steep roof, a gable porch
+            const k = this.kit('hall', at, p.rot || 0), z = p.size || 1;
+            k.box(0.12 * z, 0.07 * z, 0.08 * z, 0, 0.035 * z - 0.01, 0, 'brownStone');
+            k.roof(0.13 * z, 0.09 * z, 0.08 * z, 0, 0.07 * z - 0.01, 0, 'darkRoof');
+            k.box(0.04 * z, 0.05 * z, 0.04 * z, 0.03 * z, 0.025 * z - 0.01, -0.055 * z, 'timber');
+            for (const sx of [-0.04, 0, 0.04]) k.box(0.012 * z, 0.022 * z, 0.004, sx * z, 0.04 * z - 0.01, -0.041 * z, 'dark');
             return k.done();
         }
         if (p.kind === 'ruin') {

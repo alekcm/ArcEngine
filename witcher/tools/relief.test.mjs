@@ -103,3 +103,22 @@ test('рельеф: закраска переносит нарисованную
     assert.ok(Math.abs(mean - (110 + 33 + 15)) < 15, `and the colour of the surroundings: ${mean.toFixed(0)}`);
     assert.equal(red, 0, 'nothing copied from the token');
 });
+
+test('рельеф: две соседние области с полем на запас у общей стороны сходятся по шву без обрыва', () => {
+    // the painting split at x = 120 as in relief.js: each half computed with a 96 px margin over
+    // the seam and no falloff there; along the seam both fields must (almost) agree
+    const full = painting(), P = 96, S = 120;
+    const crop = (x0, w) => {
+        const out = new Uint8ClampedArray(w * H * 4);
+        for (let y = 0; y < H; y++) out.set(full.subarray((y * W + x0) * 4, (y * W + x0 + w) * 4), y * w * 4);
+        return out;
+    };
+    const lw = S + 1 + P, rx0 = S - P, rw = W - rx0;
+    const L = heightField(crop(0, lw), lw, H, { maxH: 0.3, edge: 30, none: { right: true } });
+    const R = heightField(crop(rx0, rw), rw, H, { maxH: 0.3, edge: 30, none: { left: true } });
+    let worst = 0;
+    for (let y = 40; y < H - 40; y++) worst = Math.max(worst, Math.abs(L[y * lw + S] - R[y * rw + S - rx0]));
+    assert.ok(worst < 0.02, `seam mismatch ${worst}`);
+    // and no falloff toward the shared side: the massif edge of the left half stays up near x = 110
+    assert.ok(sample(L, lw, H, S, 30) > 0.03, `no drop at the shared side: ${sample(L, lw, H, S, 30)}`);
+});
