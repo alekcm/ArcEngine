@@ -4,6 +4,7 @@
 import { SCHOOLS } from '/shared/data/rules-data.mjs';
 import { MONSTER, LOC } from '/shared/engine/util.mjs';
 import { toonMaterial, inkMini } from './toon.js';
+import { Relief } from './relief.js';
 
 // Board pins: pixel coordinates of the location number badges on Игровой стол.jpg.
 const PINS = {
@@ -18,6 +19,8 @@ const PINS = {
 const DAGON_TRACK = [[2178, 1300], [2178, 1100], [2178, 905], [2178, 715]];
 const pxWorld = ([x, y]) => new BABYLON.Vector3(((x - 2050) / 3375 - 0.5) * MAP_W, 0, (0.5 - (y - 270) / 2725) * MAP_H);
 const MAP_W = 16, MAP_H = 16 * 2725 / 3375;
+/** Board pins are in the pixels of the original scan; continent.jpg is its crop (4096 × 3307). */
+const pxImage = ([x, y]) => [(x - 2050) * 4096 / 3375, (y - 270) * 3307 / 2725];
 const LOC_NAMES = new Proxy({}, { get: (_, n) => LOC[n] && LOC[n].name });
 export const TERRAIN_HEX = { forest: '#3f9a3a', mountain: '#9aa0a8', water: '#2f86cf', joker: '#c49a3a' };
 
@@ -84,6 +87,11 @@ export class Board {
         this.pins = {};
         this.rings = {};
         for (const n of Object.keys(PINS)) this.buildPin(Number(n));
+        // Relief (relief.js): mountains, forests and Kaer Morhen in 3D over the painted board.
+        // Everything placed on the board takes its height from it (ground()); until the painting is
+        // read the board is flat, then resnap() lifts what already stands on it.
+        this.relief = new Relief(scene, this.shadows, { mapW: MAP_W, mapH: MAP_H, url: 'assets/continent.jpg', pins: Object.values(PINS).map(pxImage) });
+        this.relief.ready.then(() => this.resnap());
         this.witchers = {};   // seat -> { root, school }
         this.monsters = {};   // slot -> { root, mon, loc }
         this.markers = {};    // track/hunt markers
@@ -144,6 +152,23 @@ export class Board {
         this.shadows.getShadowMap().refreshRate = 1;
     }
 
+    /** A point of the board lifted onto the relief (y is added to its own height above the table). */
+    ground(v) {
+        const out = v.clone();
+        out.y += this.relief ? this.relief.heightAt(v.x, v.z) : 0;
+        return out;
+    }
+    /** The relief has been built: everything already on the board goes up onto it. */
+    resnap() {
+        const lift = (node, dy = 0) => { if (node) node.position.y = this.relief.heightAt(node.position.x, node.position.z) + dy; };
+        for (const n of Object.keys(this.rings)) { lift(this.rings[n], 0.03); lift(this.pins[n], 0.01); }
+        for (const w of Object.values(this.witchers)) if (w.root) lift(w.root);
+        for (const m of Object.values(this.monsters)) if (m.root) lift(m.root);
+        if (this.legend && this.legend.root) lift(this.legend.root);
+        for (const c of Object.values(this.markers)) lift(c, c.metadata ? c.metadata.dy : 0.03);
+        if (this.activeRing) lift(this.activeRing, 0.03);
+    }
+
     buildPin(n) {
         const scene = this.scene;
         const p = pinWorld(n);
@@ -184,15 +209,15 @@ export class Board {
             m.emissiveColor = new BABYLON.Color3(1, 0.78, 0.3); m.disableLighting = true; r.material = m; r.isPickable = false;
         }
         if (activeLoc == null) this.activeRing.setEnabled(false);
-        else { this.activeRing.setEnabled(true); this.activeRing.position = pinWorld(activeLoc).add(new BABYLON.Vector3(0, 0.03, 0.45)); }
+        else { this.activeRing.setEnabled(true); this.activeRing.position = this.ground(pinWorld(activeLoc).add(new BABYLON.Vector3(0, 0.03, 0.45))); }
     }
 
     /** Spots around a location: witchers on a small arc north of the badge, the monster to the east. */
     spot(loc, idx, count) {
         const base = pinWorld(loc).add(new BABYLON.Vector3(0, 0, 0.45));
-        if (count <= 1) return base;
+        if (count <= 1) return this.ground(base);
         const a = (idx - (count - 1) / 2) * 0.55;
-        return base.add(new BABYLON.Vector3(a, 0, Math.abs(a) * -0.25));
+        return this.ground(base.add(new BABYLON.Vector3(a, 0, Math.abs(a) * -0.25)));
     }
 
     async makeModel(key, color, height, name) {
@@ -255,7 +280,7 @@ export class Board {
             t += this.engine.getDeltaTime() / 1000 / dur;
             const k = Math.min(1, t), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
             node.position = BABYLON.Vector3.Lerp(from, to, e);
-            node.position.y = Math.sin(k * Math.PI) * 0.8;
+            node.position.y += Math.sin(k * Math.PI) * 0.8;
             if (k >= 1) { node.position = to.clone(); this.scene.onBeforeRenderObservable.remove(obs); }
         });
     }
@@ -284,8 +309,7 @@ export class Board {
                 Object.assign(m, made, { loading: false, baseRot: Math.PI * 0.85 });
                 made.base.material.diffuseColor = BABYLON.Color3.FromHexString(TERRAIN_HEX[s.terrain]);
                 if (made.model) made.model.material.diffuseColor = new BABYLON.Color3(0.36, 0.3, 0.27);
-                const p = pinWorld(loc).add(new BABYLON.Vector3(0.75, 0, 0.3));
-                made.root.position = p;
+                made.root.position = this.ground(pinWorld(loc).add(new BABYLON.Vector3(0.75, 0, 0.3)));
                 this.appear(made.root);
             }
         }
@@ -294,7 +318,7 @@ export class Board {
     async syncLegend(L) {
         const cur = this.legend;
         if (!L) { if (cur && cur.root) this.vanish(cur.root); this.legend = null; return; }
-        const at = () => pinWorld(L.loc).add(new BABYLON.Vector3(-0.55, 0, 0.3));
+        const at = () => this.ground(pinWorld(L.loc).add(new BABYLON.Vector3(-0.55, 0, 0.3)));
         if (cur && cur.mon === L.mon) {
             if (cur.loc !== L.loc && cur.root) { cur.loc = L.loc; this.slide(cur.root, at()); }
             cur.loc = L.loc;
@@ -307,7 +331,7 @@ export class Board {
         Object.assign(m, made, { loading: false, baseRot: Math.PI * 0.85 });
         made.base.material.diffuseColor = BABYLON.Color3.FromHexString('#8c6a2a');
         if (made.model) made.model.material.diffuseColor = new BABYLON.Color3(0.62, 0.5, 0.38);
-        made.root.position = pinWorld(m.loc).add(new BABYLON.Vector3(-0.55, 0, 0.3));
+        made.root.position = at();
         this.appear(made.root);
     }
     appear(node) {
@@ -420,7 +444,8 @@ export class Board {
             const m = new BABYLON.StandardMaterial('mkm' + key, this.scene);
             m.diffuseColor = BABYLON.Color3.FromHexString(mk.color); m.emissiveColor = BABYLON.Color3.FromHexString(mk.color).scale(0.25);
             c.material = m; c.isPickable = false;
-            c.position = pinWorld(mk.loc).add(mk.ruin ? new BABYLON.Vector3(0.05, 0.045, 0.45) : mk.vuln ? new BABYLON.Vector3(0.42, 0.04, -0.05) : new BABYLON.Vector3(-0.42 + (mk.i || 0) * 0.14, 0.03 + (mk.i || 0) * 0.05, -0.05));
+            c.metadata = { dy: mk.ruin ? 0.045 : mk.vuln ? 0.04 : 0.03 + (mk.i || 0) * 0.05 };
+            c.position = this.ground(pinWorld(mk.loc).add(mk.ruin ? new BABYLON.Vector3(0.05, 0.045, 0.45) : mk.vuln ? new BABYLON.Vector3(0.42, 0.04, -0.05) : new BABYLON.Vector3(-0.42 + (mk.i || 0) * 0.14, 0.03 + (mk.i || 0) * 0.05, -0.05)));
             this.shadows.addShadowCaster(c);
             this.markers[key] = c;
         }
@@ -458,7 +483,7 @@ export class Board {
         // Own tween: assigning cam.target would recompute alpha/beta/radius from the position.
         const cam = this.cam;
         const to = {
-            target: loc == null ? this.camHome.target.clone() : pinWorld(loc).add(new BABYLON.Vector3(0, 0, 0.3)),
+            target: loc == null ? this.camHome.target.clone() : this.ground(pinWorld(loc).add(new BABYLON.Vector3(0, 0, 0.3))),
             radius: loc == null ? this.camHome.radius : radius,
             alpha: loc == null ? this.camHome.alpha : cam.alpha,
             beta: loc == null ? this.camHome.beta : Math.min(cam.beta, 0.95),
@@ -478,7 +503,7 @@ export class Board {
     }
 
     toScreen(loc) {
-        const p = pinWorld(loc);
+        const p = this.ground(pinWorld(loc));
         const v = BABYLON.Vector3.Project(p, BABYLON.Matrix.Identity(), this.scene.getTransformMatrix(), this.cam.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight()));
         const k = this.engine.getHardwareScalingLevel();
         return { x: v.x * k, y: v.y * k };
