@@ -274,13 +274,36 @@ export function isForest(r, g, b) {
     return l < 0.27 && l > 0.06 && g > r + 6 && g >= b - 4;
 }
 
-/** Fill a masked hole of an image by diffusion from its border (the painted castle under the 3D
- *  one): every masked pixel becomes the average of its neighbours, many times over. */
-export function inpaint(rgba, w, h, mask, iters = 120) {
-    const idx = [];
-    for (let i = 0; i < w * h; i++) if (mask[i]) idx.push(i);
-    const buf = new Float32Array(w * h * 3);
-    for (let i = 0; i < w * h; i++) for (let c = 0; c < 3; c++) buf[i * 3 + c] = rgba[i * 4 + c];
+/** Marks the inside of ellipses {x, y, rx, ry, angle?} (pixels) in a w×h map with `v`. */
+export function markEllipses(map, w, h, list, v = 1) {
+    for (const e of list) {
+        const ca = Math.cos(e.angle || 0), sa = Math.sin(e.angle || 0), R = Math.max(e.rx, e.ry) + 1;
+        for (let y = Math.max(0, Math.floor(e.y - R)); y < Math.min(h, e.y + R); y++) for (let x = Math.max(0, Math.floor(e.x - R)); x < Math.min(w, e.x + R); x++) {
+            const dx = x - e.x, dy = y - e.y, a = dx * ca + dy * sa, b = -dx * sa + dy * ca;
+            if ((a / e.rx) ** 2 + (b / e.ry) ** 2 < 1) map[y * w + x] = v;
+        }
+    }
+    return map;
+}
+
+/**
+ * Fill the masked holes of an image (the painted castle under the 3D one, bridges, huts) so that
+ * the patch looks painted, not smeared:
+ *   1. diffusion from the border gives the colour the patch must have (smooth: alone, it was
+ *      "soap" — the user saw it between and around the walls);
+ *   2. texture is transplanted: for every hole (connected component) the offset is chosen from
+ *      which the most of it can be copied from unmasked, non-parchment painting; the copied pixels
+ *      keep their own brushwork but their local average colour is replaced by the diffused one
+ *      (out = src − blur(src) + base), so the patch matches its surroundings.
+ * opt.avoid — a 0..1 map of pixels never to copy from (parchment plates); opt.texture = false
+ * leaves only the diffusion.
+ */
+export function inpaint(rgba, w, h, mask, iters = 120, opt = {}) {
+    const n = w * h, idx = [];
+    for (let i = 0; i < n; i++) if (mask[i]) idx.push(i);
+    if (!idx.length) return;
+    const buf = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) buf[i * 3 + c] = rgba[i * 4 + c];
     // Start from the interpolation between the nearest known pixels of the row and of the column,
     // so the diffusion only has to smooth the cross, not travel across the whole hole.
     for (const i of idx) {
@@ -288,31 +311,92 @@ export function inpaint(rgba, w, h, mask, iters = 120) {
         const near = (dx, dy) => { let k = 1; for (;;) { const xx = x + dx * k, yy = y + dy * k; if (xx < 0 || yy < 0 || xx >= w || yy >= h) return null; if (!mask[yy * w + xx]) return { j: yy * w + xx, k }; k++; } };
         const pairs = [[near(-1, 0), near(1, 0)], [near(0, -1), near(0, 1)]];
         for (let c = 0; c < 3; c++) {
-            let s = 0, n = 0;
+            let s = 0, m = 0;
             for (const [a, b] of pairs) {
-                if (a && b) { s += (buf[a.j * 3 + c] * b.k + buf[b.j * 3 + c] * a.k) / (a.k + b.k); n++; }
-                else if (a || b) { s += buf[(a || b).j * 3 + c]; n++; }
+                if (a && b) { s += (buf[a.j * 3 + c] * b.k + buf[b.j * 3 + c] * a.k) / (a.k + b.k); m++; }
+                else if (a || b) { s += buf[(a || b).j * 3 + c]; m++; }
             }
-            if (n) buf[i * 3 + c] = s / n;
+            if (m) buf[i * 3 + c] = s / m;
         }
     }
     for (let it = 0; it < iters; it++) {
         for (const i of idx) {
             const x = i % w, y = (i - x) / w;
             for (let c = 0; c < 3; c++) {
-                let s = 0, n = 0;
-                if (x > 0) { s += buf[(i - 1) * 3 + c]; n++; }
-                if (x < w - 1) { s += buf[(i + 1) * 3 + c]; n++; }
-                if (y > 0) { s += buf[(i - w) * 3 + c]; n++; }
-                if (y < h - 1) { s += buf[(i + w) * 3 + c]; n++; }
-                buf[i * 3 + c] = s / n;
+                let s = 0, m = 0;
+                if (x > 0) { s += buf[(i - 1) * 3 + c]; m++; }
+                if (x < w - 1) { s += buf[(i + 1) * 3 + c]; m++; }
+                if (y > 0) { s += buf[(i - w) * 3 + c]; m++; }
+                if (y < h - 1) { s += buf[(i + w) * 3 + c]; m++; }
+                buf[i * 3 + c] = s / m;
+            }
+        }
+    }
+    const done = new Uint8Array(n);
+    if (opt.texture !== false) {
+        // where texture may come from: unmasked (with a margin: the painted castle's own outline
+        // stays out), not parchment
+        const bad = blur(Float32Array.from(mask), w, h, 3);
+        const ok = new Uint8Array(n);
+        for (let i = 0; i < n; i++) ok[i] = bad[i] === 0 && !(opt.avoid && opt.avoid[i] > 0.3) ? 1 : 0;
+        // the local average of the source (over valid pixels only) — what is replaced by the base
+        const R = 6, wt = blur2(Float32Array.from(ok), w, h, R), low = [0, 1, 2].map(c => {
+            const a = new Float32Array(n);
+            for (let i = 0; i < n; i++) a[i] = ok[i] ? rgba[i * 4 + c] : 0;
+            return blur2(a, w, h, R);
+        });
+        // connected holes
+        const comp = new Int32Array(n).fill(-1), comps = [];
+        for (const i0 of idx) {
+            if (comp[i0] >= 0) continue;
+            const list = [i0]; comp[i0] = comps.length;
+            for (let q = 0; q < list.length; q++) {
+                const i = list[q], x = i % w;
+                for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < n && mask[j] && comp[j] < 0) { comp[j] = comps.length; list.push(j); }
+            }
+            comps.push(list);
+        }
+        for (const list of comps) {
+            let x0 = w, x1 = 0, y0 = h, y1 = 0;
+            for (const i of list) { const x = i % w, y = (i - x) / w; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+            const rad = Math.max(x1 - x0, y1 - y0) / 2 + 1;
+            const step = Math.max(1, Math.floor(list.length / 400));
+            const cands = [];
+            for (const k of [1.15, 1.6, 2.2]) for (let a = 0; a < 24; a++) {
+                const dx = Math.round(Math.cos(a / 24 * Math.PI * 2) * (rad * k + 6)), dy = Math.round(Math.sin(a / 24 * Math.PI * 2) * (rad * k + 6));
+                let good = 0, tot = 0, diff = 0;
+                for (let q = 0; q < list.length; q += step) {
+                    const i = list[q], x = i % w + dx, y = (i - (i % w)) / w + dy;
+                    tot++;
+                    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                    const j = y * w + x;
+                    if (!ok[j]) continue;
+                    good++;
+                    for (let c = 0; c < 3; c++) diff += Math.abs(low[c][j] / Math.max(1e-3, wt[j]) - buf[i * 3 + c]);
+                }
+                // mostly valid, and from ground of a similar colour (rock for rock), not too far
+                cands.push({ dx, dy, score: good / tot - (good ? diff / good / 3 / 255 : 1) * 1.5 - k * 0.04 });
+            }
+            cands.sort((a, b) => b.score - a.score);
+            for (const i of list) {
+                const x = i % w, y = (i - x) / w;
+                for (const cd of cands.slice(0, 6)) {
+                    const sx = x + cd.dx, sy = y + cd.dy;
+                    if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+                    const j = sy * w + sx;
+                    if (!ok[j] || wt[j] < 0.2) continue;
+                    for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.max(0, Math.min(255, rgba[j * 4 + c] - low[c][j] / wt[j] + buf[i * 3 + c]));
+                    done[i] = 1;
+                    break;
+                }
             }
         }
     }
     let seed = 7;
     const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
     for (const i of idx) {
-        const n = (rnd() - 0.5) * 18;   // a little grain, so the patch is not a smear
-        for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.max(0, Math.min(255, buf[i * 3 + c] + n));
+        if (done[i]) continue;
+        const g = (rnd() - 0.5) * 18;   // a little grain, so a patch without a source is not a smear
+        for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.max(0, Math.min(255, buf[i * 3 + c] + g));
     }
 }

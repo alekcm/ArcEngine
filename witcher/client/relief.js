@@ -13,7 +13,7 @@
 // The first region is Kaer Morhen (location 3) with Ban Ard (4) and the valley between them;
 // more regions are entries of REGIONS. Pure presentation: no rule reads anything from here.
 /* global BABYLON */
-import { heightField, sample, isForest, inpaint, rockDetail } from './relief-height.mjs';
+import { heightField, sample, isForest, inpaint, rockDetail, classify, markEllipses } from './relief-height.mjs';
 import { toonMaterial } from './toon.js';
 
 /** Lighting of everything painted on the board (soft bands, no hard glint, a faint rim). */
@@ -27,11 +27,12 @@ export const REGIONS = [{
     step: 3,                               // pixels per grid cell of the terrain mesh
     maxH: 0.3,                             // the highest peak, world units (a miniature is 0.95)
     open: { top: true, right: true },      // sides that are the edge of the board
+    noCopy: [{ x: 3762, y: 141, rx: 66, ry: 66 }],   // the Wolf school medallion: not a texture source
     buildings: [
         // foot — the radius of the building's plinth in its own units: the terrace is levelled under
         // all of it (r = foot · scale in pixels), on a spur falling by `mound` per pixel. Kaer
         // Morhen keeps clear of its name banner (y ≥ 296) and of the school medallion to the east.
-        { kind: 'kaerMorhen', x: 3606, y: 196, foot: 0.45, h: 0.13, mound: 0.005, scale: 0.72, rot: 0.12, hole: { x: 3610, y: 203, rx: 100, ry: 90 } },
+        { kind: 'kaerMorhen', x: 3606, y: 196, foot: 0.45, h: 0.1, mound: 0.004, scale: 0.72, rot: 0.12, hole: { x: 3610, y: 203, rx: 100, ry: 90 } },
         { kind: 'banArd', x: 3742, y: 590, foot: 0.24, h: 0.12, scale: 1, rot: 0, hole: { x: 3740, y: 560, rx: 70, ry: 84 } },
     ],
     props: [
@@ -212,7 +213,7 @@ export class Relief {
             cloth: mk('cloth', '#8f2a22', false), road: mk('road', '#a39274'),
             white: mk('white', '#d6d3cb'), ruin: mk('ruin', '#9a988f'), roofBrown: mk('roofBrown', '#5a4136'),
             plaster: mk('plaster', '#cdbb94'), timber: mk('timber', '#7a5a3c'), thatch: mk('thatch', '#9a7442'),
-            plank: mk('plank', '#8a6644'),
+            plank: mk('plank', '#8a6644'), yard: mk('yard', '#b3a68c'),
             rock: (() => { const m = mk('rock', '#a4adbf'); m.diffuseTexture = rt; rt.uScale = 3; rt.level = 1.65; return m; })(),
         };
     }
@@ -252,16 +253,13 @@ export class Relief {
         const holes = [];
         for (const b of reg.buildings) holes.push(b.hole);
         for (const p of reg.props) holes.push(p.hole || this.holeOf(p));
-        const mask = new Uint8Array(w * h);
-        for (const ho of holes) {
-            const ca = Math.cos(ho.angle || 0), sa = Math.sin(ho.angle || 0), R = Math.max(ho.rx, ho.ry) + 1;
-            const hx = ho.x - x0, hy = ho.y - y0;
-            for (let y = Math.max(0, Math.floor(hy - R)); y < Math.min(h, hy + R); y++) for (let x = Math.max(0, Math.floor(hx - R)); x < Math.min(w, hx + R); x++) {
-                const dx = x - hx, dy = y - hy, a = dx * ca + dy * sa, b = -dx * sa + dy * ca;
-                if ((a / ho.rx) ** 2 + (b / ho.ry) ** 2 < 1) mask[y * w + x] = 1;
-            }
-        }
-        inpaint(px, w, h, mask);
+        const mask = markEllipses(new Uint8Array(w * h), w, h, holes.map(loc));
+        // texture is never copied from parchment, from a location's badges and banner, or from a
+        // token painted on the map (noCopy)
+        const avoid = classify(rgba, w, h).plate;
+        markEllipses(avoid, w, h, flat);
+        markEllipses(avoid, w, h, (reg.noCopy || []).map(loc));
+        inpaint(px, w, h, mask, 120, { avoid });
         g.putImageData(id, 0, 0);
         this.holes = holes;
 
@@ -390,6 +388,17 @@ export class Relief {
                 r.rotation.set(0, ry, Math.PI / 2); r.scaling.set(hh * 1.33, 1, span * 1.16);
                 r.position.set(x, y + hh * 0.333, z); return add(r, mat);   // the eaves on y
             },
+            /** A flat floor over a star-shaped outline [[x, z]…] (a courtyard inside the walls). */
+            floor: (pts, y, mat) => {
+                const pos = [0, y, 0], uv = [0.5, 0.5], ind = [];
+                for (const [x, z] of pts) { pos.push(x, y, z); uv.push(0.5 + x * 2, 0.5 + z * 2); }
+                for (let i = 0; i < pts.length; i++) ind.push(0, 1 + i, 1 + ((i + 1) % pts.length));   // facing up (Babylon: clockwise from the viewer)
+                const nrm = []; for (let i = 0; i <= pts.length; i++) nrm.push(0, 1, 0);
+                const m = new BABYLON.Mesh('p', S), vd = new BABYLON.VertexData();
+                vd.positions = pos; vd.indices = ind; vd.normals = nrm; vd.uvs = uv;
+                vd.applyToMesh(m);
+                return add(m, mat);
+            },
             poly: (size, x, y, z, mat) => { const p = BABYLON.MeshBuilder.CreatePolyhedron('p', { type: 2, size }, S); p.position.set(x, y, z); p.rotation.set(x * 40, z * 40, 0); return add(p, mat); },
             /** Merlons along a straight wall top. */
             crenels: (ax, az, bx, bz, y, t, mat) => {
@@ -448,6 +457,8 @@ export class Relief {
             crenels(ax, az, bx, bz, Y + WH + 0.006, WT, 'wall');
         }
         ring.forEach(([x, z], i) => tower(x, z, i === 4 ? 0.1 : 0.085, i === 4 ? 0.24 : 0.17 + rnd() * 0.03, i === 3));
+        // the courtyard: flagstones inside the walls (the ground under them is painted-over rock)
+        k.floor(ring, Y + 0.004, 'yard');
 
         // gatehouse between the two south-west towers, the gate, the road down to the valley
         const gx = (ring[0][0] + ring[1][0]) / 2, gz = (ring[0][1] + ring[1][1]) / 2;
@@ -516,6 +527,7 @@ export class Relief {
             k.crenels(ax, az, bx, bz, 0.07, 0.026, 'wall');
         }
         ring.forEach(([x, z], i) => spire(x, z, 0.05, 0.1 + (i % 3) * 0.025, 0.07));
+        k.floor(ring, 0.004, 'yard');
         // the halls around the tower and the great tower itself
         box(0.16, 0.1, 0.09, -0.04, 0.05, 0.05, 'wall', 0.4);
         k.roof(0.17, 0.1, 0.06, -0.04, 0.1, 0.05, 'roofBrown', 0.4);

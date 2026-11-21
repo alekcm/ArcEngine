@@ -83,3 +83,23 @@ test('рельеф: текстура скалы бесшовная, средня
     for (let y = 0; y < S; y++) { edge += Math.abs(r[y * S] - r[y * S + S - 1]); inner += Math.abs(r[y * S + 31] - r[y * S + 32]); }
     assert.ok(edge < inner * 1.8 + S * 4, `seam ${edge} vs ${inner}`);
 });
+
+test('рельеф: закраска переносит нарисованную фактуру (не «мыло») и не берёт её из запретных мест', () => {
+    const w = 120, h = 120, px = new Uint8ClampedArray(w * h * 4), mask = new Uint8Array(w * h), avoid = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const v = 110 + ((x * 7 + y * 3) % 23) * 3;   // a painted grain
+        px.set([v - 20, v - 5, v + 15, 255], (y * w + x) * 4);
+        if (x > 95) { px.set([220, 40, 40, 255], (y * w + x) * 4); avoid[y * w + x] = 1; }   // a red token
+    }
+    for (let y = 45; y < 75; y++) for (let x = 45; x < 75; x++) mask[y * w + x] = 1;
+    inpaint(px, w, h, mask, 60, { avoid });
+    let sd = 0, mean = 0, red = 0;
+    const vals = [];
+    for (let y = 48; y < 72; y++) for (let x = 48; x < 72; x++) { const i = (y * w + x) * 4; vals.push(px[i + 2]); if (px[i] > px[i + 2] + 40) red++; }
+    mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    for (const v of vals) sd += (v - mean) ** 2;
+    sd = Math.sqrt(sd / vals.length);
+    assert.ok(sd > 8, `the patch keeps the grain: sd ${sd.toFixed(1)}`);
+    assert.ok(Math.abs(mean - (110 + 33 + 15)) < 15, `and the colour of the surroundings: ${mean.toFixed(0)}`);
+    assert.equal(red, 0, 'nothing copied from the token');
+});
