@@ -9,7 +9,7 @@ import { movePaymentError } from './engine/turn.mjs';
 import { findChain } from './engine/vuln.mjs';
 import { trainCost, hasWitcherTrophy } from './engine/effects.mjs';
 import { ARMOR } from './data/legend-data.mjs';
-import { seaEdges } from './engine/skellige.mjs';
+import { seaEdges, dagonUp, dagonLocOpen } from './engine/skellige.mjs';
 
 export const cardValue = (id) => {
     const c = CARDS[id];
@@ -186,6 +186,8 @@ function phase2(view, p, o, fightOpt, here) {
     const leg = o.phase2.find(x => x.id === 'legend' && !x.err);
     if (leg && legendChance(view, p) >= legendNeed(view)) return { t: 'legend' };
     if (canFight && wc >= 0.7) return { t: 'fight' };
+    const sea = o.phase2.find(x => x.id === 'skFight' && !x.err);
+    if (sea && seaFoe(view) && winChance(view, p, { mon: seaFoe(view), terrain: 'joker' }) >= 0.5) return { t: 'skFight' };
     if (med && !med.err) return { t: 'meditate', trophy: med.trophies[0] };
     if (canFight && wc >= 0.3) return { t: 'fight' };
     const ex = o.phase2.filter(x => x.id.startsWith('explore-') && !x.err);
@@ -227,7 +229,7 @@ const FIGHT_NOW = 0.6;
 export function winChance(view, p, slot, handLoss = 0) {
     const mon = MONSTER[slot.mon];
     let hp = Math.max(0, p.hand.length - handLoss) + (p.deckCount || 0);
-    if (p.trackTokens[slot.terrain]) hp += 3;
+    if (p.trackTokens[slot.terrain] || (slot.mon === 'DAGON' && p.skToken)) hp += 3;
     // «Чародеи»: the mage's «щит» is energy — it pays for damage and extras, it does not absorb
     // hits; the barrier is gained in the fight, so Мудрость (max energy) stands for both.
     if (isMage(p)) hp += p.shield * 0.75 + (p.skills.defense - 1) * 0.75 + (p.skills.combat - 1) * 0.5 + (p.level - mon.level) * 0.75;
@@ -319,7 +321,9 @@ function actionValue(view, p, n) {
 // ---------------------------------------------------------------------------------------------
 // Route planning
 // ---------------------------------------------------------------------------------------------
-const enterable = (view, n) => !!LOC[n] && (!LOC[n].island || !!view.skellige) && !LOC[n].dagon;
+const enterable = (view, n) => !!LOC[n] && (!LOC[n].island || !!view.skellige) && (!LOC[n].dagon || dagonLocOpen(view));
+/** «Скеллиге»: who waits in the Dagon location — Dagon himself or the siren (Набор монстров). */
+const seaFoe = (view) => (dagonUp(view) ? 'DAGON' : view.sk && view.sk.siren ? 'MON-31' : null);
 /** Shortest path lengths from `from` over the land and sea routes (BFS); `rev` — towards `from`
  *  («Скеллиге»: the ship routes are one-way at a given moment). */
 export function distances(view, from, rev = false) {
@@ -341,6 +345,13 @@ function goalValue(view, p, n, d, reach) {
         // Cards spent on the way are cards missing in the fight; a far monster is a plan for later turns.
         const wc = reach ? winChance(view, p, slot, d) : winChance(view, p, slot, 0) * 0.7;
         v += 16 * wc * (wc >= 0.45 ? 1 : 0.5);
+    }
+    // «Скеллиге»: the siren (trophy and 2 gold, no exhaustion) or Dagon (gold, a card and a gift).
+    // Sailing there starts the fight at once, so only a good chance makes it a goal.
+    if (LOC[n] && LOC[n].dagon && seaFoe(view)) {
+        const foe = seaFoe(view);
+        const wc = winChance(view, p, { mon: foe, terrain: 'joker' }, reach ? d : 0) * (reach ? 1 : 0.7);
+        v += (foe === 'DAGON' ? 12 : 13) * wc * (wc >= 0.55 ? 1 : 0.2);
     }
     if (p.hunts.some(h => h.loc === n)) v += 6;
     // A weaker witcher there: a witcher trophy within reach (no fights in school locations, p. 20).

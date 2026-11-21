@@ -86,11 +86,14 @@ export function seaEdges(view, n, rev = false) {
     const sk = view.sk;
     if (!sk) return [];
     const isl = [...ISLANDS, ...sk.islands];
+    // The Dagon location: from a port with a ship while Dagon or the siren is there.
+    const dagon = dagonLocOpen(view) ? [DAGON_LOC] : [];
     if (!rev) {
-        if (isPort(n)) return sk.ships.includes(n) ? isl.filter(i => !sk.ships.includes(i)) : [];
+        if (isPort(n)) return sk.ships.includes(n) ? [...isl.filter(i => !sk.ships.includes(i)), ...dagon] : [];
         if (onSea(n)) return PORTS.filter(x => !sk.ships.includes(x));
         return [];
     }
+    if (n === DAGON_LOC) return dagon.length ? PORTS.filter(x => sk.ships.includes(x)) : [];
     if (LOC[n] && LOC[n].island) return sk.ships.includes(n) ? [] : PORTS.filter(x => sk.ships.includes(x));
     if (isPort(n)) return sk.ships.includes(n) ? [] : isl;
     return [];

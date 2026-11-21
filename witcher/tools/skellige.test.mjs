@@ -11,6 +11,7 @@ import { EVENTS, EXP_DECKS } from '../shared/data/events-data.mjs';
 import { BIG } from '../shared/data/vuln-data.mjs';
 import { sailMoves, seaEdges } from '../shared/engine/skellige.mjs';
 import { playGame } from './sim.mjs';
+import { botCommand } from '../shared/bots.mjs';
 
 const ok = (r) => assert.ok(r.ok, r.err);
 const step = (st, ...s) => { push(st, ...s); run(st); };
@@ -260,4 +261,26 @@ test('ход в локации Дагона: битва командой фаз�
     assert.equal(q.loc, 1);
     assert.equal(q.hand.length, 1);
     assert.ok(options(s2, 0).gift02.err, 'один раз за ход');
+});
+
+test('боты: локация Дагона — цель маршрута, пока там сирена или Дагон; сильный бот плывёт к сирене', () => {
+    const st = game();
+    st.sk.ships = [1, 12, 21];
+    const v = viewFor(st, 1);
+    assert.ok(seaEdges(v, 1).includes(DAGON_LOC));
+    assert.deepEqual(seaEdges(v, DAGON_LOC, true).sort((a, b) => a - b), [1, 12]);
+    st.sk.siren = false;
+    assert.ok(!seaEdges(viewFor(st, 1), 1).includes(DAGON_LOC));
+    st.sk.siren = true;
+    // Bot (seat 1) in a port with a ship, a big hand and deck, no monster worth more nearby.
+    const b = st.players[1];
+    for (const s of st.slots) s.mon = null;
+    b.loc = 1; st.turn.seat = 1; st.turn.phase = 1; st.turn.moved = false;
+    b.hand.push(...b.deck.splice(0, 4));
+    b.skills.combat = 3; b.shield = 3;
+    for (let i = 0; i < 12; i++) b.deck.push(b.discard.pop() || cardOf('forest', [...b.hand, ...b.deck]));
+    const cmd = botCommand(viewFor(st, 1), { options: options(st, 1) });
+    assert.equal(cmd.t, 'move'); assert.equal(cmd.to, DAGON_LOC);
+    assert.ok(apply(st, 1, cmd).ok);
+    assert.equal(st.fight && st.fight.mon, 'MON-31');
 });
