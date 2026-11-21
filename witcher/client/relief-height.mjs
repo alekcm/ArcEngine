@@ -177,6 +177,8 @@ export function limitSlope(f, w, h, s, keep = null) {
  *                 over the whole footprint r (cut into a slope, filled over a valley), standing on a
  *                 spur that falls by `mound` per pixel (default 0.0035) — no edge of a building hangs
  *                 in the air,
+ *        sea: [[[x, y]…]] — outlines of the painted sea: level water a little under the land, never
+ *             rock (the sea is wide and blue-grey: the colour tests alone took its waves for mountains),
  *        carve: [{x, y, len, width, angle}] — river beds under painted bridges (angle — of the RIVER, radians),
  *        edge: falloff in px at the region border, open: {top, right, bottom, left} board-edge sides,
  *        none: sides with no falloff at all (another region continues there) }
@@ -210,6 +212,25 @@ export function heightField(rgba, w, h, opt = {}) {
         let v = base + hillsH * swell * (1 - m) + maxH * m * deep * ridge;
         v *= 1 - smooth(0.06, 0.22, plates[i]) * (1 - base / Math.max(base, v));   // plates: down to the base
         out[i] = v;
+    }
+    // the sea: level, a little under the land, the coast softened over a few pixels
+    if (opt.sea && opt.sea.length) {
+        const sea = new Float32Array(n);
+        for (const poly of opt.sea) {
+            const ys = poly.map(p => p[1]), ya = Math.max(0, Math.floor(Math.min(...ys))), yb = Math.min(h - 1, Math.ceil(Math.max(...ys)));
+            for (let y = ya; y <= yb; y++) {
+                // scanline: the crossings of this row with the outline, filled pairwise
+                const xs = [];
+                for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+                    if ((yi > y) !== (yj > y)) xs.push(xi + (y - yi) * (xj - xi) / (yj - yi));
+                }
+                xs.sort((a, b) => a - b);
+                for (let q = 0; q + 1 < xs.length; q += 2) for (let x = Math.max(0, Math.ceil(xs[q])); x <= Math.min(w - 1, Math.floor(xs[q + 1])); x++) sea[y * w + x] = 1;
+            }
+        }
+        const soft = blur2(sea, w, h, 6), level = base - 0.012;
+        for (let i = 0; i < n; i++) if (soft[i] > 0) out[i] = out[i] + (level - out[i]) * smooth(0, 0.6, soft[i]);
     }
     // river beds: the painted rivers, and the stretch hidden under a painted bridge
     const bed = river.slice();

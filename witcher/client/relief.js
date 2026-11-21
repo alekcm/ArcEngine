@@ -70,11 +70,14 @@ export const REGIONS = [{
     step: 3, maxH: 0.3,
     open: { top: true },
     noCopy: [{ x: 2533, y: 1747, rx: 64, ry: 64 }],   // the Bear school medallion
+    holes: [{ x: 1966, y: 868, rx: 24, ry: 72 }],      // the east edge of Novigrad (built with the west)
     buildings: [
-        { kind: 'hengfors', x: 2490, y: 375, foot: 0.5, footY: 0.44, h: 0.065, scale: 0.75, rot: 0, hole: { x: 2496, y: 362, rx: 110, ry: 86 } },
+        // the painted road from the south stays visible: it runs under the bridge between the two holes
+        { kind: 'hengfors', x: 2490, y: 375, foot: 0.5, footY: 0.44, h: 0.065, scale: 0.75, rot: 0,
+            hole: [{ x: 2442, y: 365, rx: 58, ry: 86 }, { x: 2566, y: 375, rx: 46, ry: 62 }, { x: 2512, y: 334, rx: 30, ry: 26 }] },
         // Vizima spreads along its river: an elliptical terrace barely above the plain
         { kind: 'vizima', x: 2338, y: 906, foot: 0.64, footY: 0.39, h: 0.05, scale: 0.8, rot: 0, hole: { x: 2338, y: 904, rx: 136, ry: 78 } },
-        { kind: 'haernCaduch', x: 2392, y: 1795, foot: 0.42, h: 0.07, mound: 0.003, scale: 0.78, rot: -0.1, hole: { x: 2397, y: 1793, rx: 85, ry: 101 } },
+        { kind: 'haernCaduch', x: 2395, y: 1798, foot: 0.43, footY: 0.4, h: 0.07, mound: 0.003, scale: 0.78, rot: 0, hole: { x: 2397, y: 1793, rx: 85, ry: 101 } },
     ],
     props: [
         { kind: 'bridge', x: 2075, y: 680, angle: 1.04, len: 24, width: 14 },
@@ -100,7 +103,7 @@ export const REGIONS = [{
     buildings: [
         { kind: 'vengerberg', x: 3497, y: 1022, foot: 0.44, h: 0.07, scale: 0.75, rot: 0, hole: { x: 3503, y: 1022, rx: 102, ry: 98 } },
         { kind: 'becheltNar', x: 3890, y: 1548, foot: 0.4, h: 0.09, scale: 0.8, rot: 0, hole: { x: 3888, y: 1548, rx: 95, ry: 100 } },
-        { kind: 'beauclair', x: 3378, y: 1818, foot: 0.48, h: 0.12, scale: 0.8, rot: 0, hole: { x: 3385, y: 1815, rx: 100, ry: 118 } },
+        { kind: 'beauclair', x: 3378, y: 1820, foot: 0.48, footY: 0.5, h: 0.12, scale: 0.8, rot: 0, hole: { x: 3385, y: 1815, rx: 100, ry: 118 } },
     ],
     props: [
         { kind: 'bridge', x: 3399, y: 1502, angle: 0.56, len: 30, width: 14 },
@@ -110,6 +113,24 @@ export const REGIONS = [{
         { kind: 'hall', x: 3789, y: 1649, rot: 0.1 }, { kind: 'hall', x: 3925, y: 1668, rot: -0.15, size: 0.85 },
         { kind: 'watchtower', x: 3000, y: 1592, roof: 'lilac', hole: { x: 3000, y: 1560, rx: 16, ry: 46 } },
     ],
+}, {
+    // ---- the west: Kaer Seren (1), Novigrad (6), Cidaris (5), Cintra (9) ---------------------
+    id: 'west',
+    px: [1251, 0, 699, 2200],
+    step: 3, maxH: 0.3,
+    open: { top: true },
+    noCopy: [{ x: 1447, y: 345, rx: 62, ry: 62 }],   // the Griffin school medallion
+    // the sea west of the coast (Kaer Seren's bay, Novigrad's and Cidaris's harbours, Cintra's bay)
+    sea: [[[1251, 480], [1330, 505], [1400, 515], [1480, 520], [1560, 530], [1650, 545], [1700, 560], [1760, 600], [1760, 690], [1732, 720], [1728, 800], [1730, 880],
+        [1740, 960], [1720, 1020], [1640, 1040], [1560, 1042], [1480, 1045], [1400, 1050], [1330, 1075], [1300, 1110], [1290, 1160], [1300, 1180], [1310, 1290],
+        [1400, 1345], [1440, 1420], [1440, 1480], [1436, 1560], [1426, 1640], [1405, 1720], [1430, 1800], [1465, 1900], [1480, 2000], [1450, 2100], [1440, 2200], [1251, 2200]]],
+    buildings: [
+        { kind: 'kaerSeren', x: 1580, y: 442, foot: 0.4, footY: 0.3, h: 0.07, scale: 0.8, rot: 0, hole: [{ x: 1592, y: 432, rx: 96, ry: 76 }, { x: 1512, y: 470, rx: 34, ry: 38 }] },
+        { kind: 'novigrad', x: 1838, y: 820, foot: 0.58, footY: 0.5, h: 0.055, scale: 0.8, rot: 0, hole: [{ x: 1846, y: 800, rx: 118, ry: 116 }, { x: 1872, y: 914, rx: 92, ry: 24 }] },
+        { kind: 'cidaris', x: 1430, y: 1095, foot: 0.52, footY: 0.32, h: 0.05, scale: 0.8, rot: 0, hole: [{ x: 1442, y: 1092, rx: 128, ry: 70 }, { x: 1316, y: 1056, rx: 32, ry: 28 }] },
+        { kind: 'cintra', x: 1555, y: 1585, foot: 0.62, footY: 0.34, h: 0.05, scale: 0.8, rot: 0, hole: [{ x: 1556, y: 1588, rx: 134, ry: 74 }, { x: 1612, y: 1666, rx: 56, ry: 18 }] },
+    ],
+    props: [],
 }];
 
 /**
@@ -173,6 +194,16 @@ float reliefRockAt(vec3 p, vec3 bw) {
 `,
         };
     }
+}
+
+/** Is (x, y) inside the polygon [[x, y]…] (any units)? */
+function inPoly(pts, x, y) {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i], [xj, yj] = pts[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
 }
 
 /** Image-pixel size → world size (the map plane is 16 wide over 4096 pixels). */
@@ -294,12 +325,16 @@ export class Relief {
             grass: mk('grass', '#6f8a4a'), pale: mk('pale', '#d9d6cc'), leaf: mk('leaf', '#2f4f2c', false),
             // each city in its own colours, sampled from its painting (lit side, brightened the way
             // the approved Kaer Morhen stone is: painted #8e8fa1 -> #b9bccb)
-            hengStone: mk('hengStone', '#b4c4cb'), hengWall: mk('hengWall', '#9eadb6'), hengGrass: mk('hengGrass', '#94a265'), hengRoad: mk('hengRoad', '#c9b47e', false),
+            hengStone: mk('hengStone', '#b4c4cb'), hengWall: mk('hengWall', '#9eadb6'), hengGrass: mk('hengGrass', '#94a265'),
             vizTower: mk('vizTower', '#b3a9b2'), vizKeep: mk('vizKeep', '#d2cac8'), vizRoof: mk('vizRoof', '#4d6a7e'), vizPlaster: mk('vizPlaster', '#d8d0c8'),
             hcStone: mk('hcStone', '#dcdeee'),
             vengWall: mk('vengWall', '#d2cfcc'), vengGrass: mk('vengGrass', '#4f6e3c'),
             bnStone: mk('bnStone', '#ad866b'), bnDark: mk('bnDark', '#7a5641'),
             beauWhite: mk('beauWhite', '#e6e6e3'),
+            // the west: Kaer Seren's grim grey, Novigrad's and Cidaris's red roofs, Cintra's white wall and dark spires
+            ksStone: mk('ksStone', '#a2a5b0'), novWall: mk('novWall', '#ddd0c2'), novRoof: mk('novRoof', '#9c4a52'),
+            cidWall: mk('cidWall', '#e3d9c6'), cidRoof: mk('cidRoof', '#94433d'), cinWall: mk('cinWall', '#dad6cc'), cinRoof: mk('cinRoof', '#a64e56'),
+            spire: mk('spire', '#4e4352'), sail: mk('sail', '#ece6d4', false),
             // fields round the farms: ripe and green, furrowed (fieldTex)
             fieldWheat: (() => { const m = mk('fieldWheat', '#c2b062', false); m.diffuseTexture = fieldTex; return m; })(),
             fieldGreen: (() => { const m = mk('fieldGreen', '#8fa452', false); m.diffuseTexture = fieldTex; return m; })(),
@@ -390,6 +425,7 @@ export class Relief {
             none: Object.fromEntries(Object.entries(sides).map(([k, v]) => [k, v === 'shared'])),
             // terraces and bridge beds of every region: a spur or a bed reaching over a seam is the same on both sides
             plateau: all.map(b => at({ x: b.x, y: b.y, r: footPx(b), ry: b.footY ? b.footY * b.scale / PX : undefined, h: b.h, mound: b.mound })),
+            sea: REGIONS.flatMap(r => r.sea || []).map(poly => poly.map(([x, y]) => [x - px0, y - py0])),
             carve: bridges.map(p => at({ x: p.x, y: p.y, len: p.width + 10, width: p.len * 0.62, angle: p.angle + Math.PI / 2 })),
         };
         const fieldJob = this.job('field', { rgba: prgba.slice(), w: pw, h: ph, opt }, [], lane);
@@ -402,7 +438,7 @@ export class Relief {
         // plates, badges and banners or from tokens painted on the map).
         const loc = (o) => ({ ...o, x: o.x - x0, y: o.y - y0 });
         const holes = [];
-        for (const b of reg.buildings) holes.push(b.hole);
+        for (const b of reg.buildings) holes.push(...[].concat(b.hole));   // one ellipse or several
         for (const p of reg.props) holes.push(p.hole || this.holeOf(p));
         for (const hz of reg.holes || []) holes.push(hz);   // painted things removed without a 3D twin
         for (let i = holes.length - 1; i >= 0; i--) if (!holes[i]) holes.splice(i, 1);
@@ -737,7 +773,7 @@ export class Relief {
      * west; farms with fields lie round it (props).
      */
     buildBanArd(at, scale = 1, rot = 0, b) {
-        const k = this.kit('banArd', at, rot, scale), { L, S } = this.mapper(b);
+        const k = this.kit('banArd', at, rot, scale), { L, S, G } = this.mapper(b);
         k.cyl(0.46, 0.56, 0.26, 0, -0.135, 0, 'rock', 10);   // the plinth (see Kaer Morhen)
         // the round curtain with dark buttresses
         const [cx, cz] = L(3738, 600), R = S(52), N = 18, ring = [];
@@ -774,10 +810,15 @@ export class Relief {
         // the causeway down to the west: a gatehouse in the wall, walled spans stepping down
         const [g0x, g0z] = L(3690, 604), [g1x, g1z] = L(3646, 628), ry = Math.atan2(g1x - g0x, g1z - g0z), len = Math.hypot(g1x - g0x, g1z - g0z);
         this.squareTower(k, g0x, g0z, 0.06, 0.12, 'white', ry);
-        for (let i = 0; i < 4; i++) {
-            const f = (i + 0.5) / 4, x = g0x + (g1x - g0x) * f, z = g0z + (g1z - g0z) * f, y = 0.06 * (1 - f) + 0.012;
-            k.box(0.044, y, len / 4 + 0.004, x, y / 2, z, 'white', ry);
-            for (const sd of [-1, 1]) k.box(0.008, 0.014, len / 4 + 0.004, x + Math.cos(ry) * sd * 0.02, y + 0.007, z - Math.sin(ry) * sd * 0.02, 'white', ry);
+        // each span stands on the ground under it (the hill falls away west of the terrace): its deck
+        // steps down from the gate to the ground at the far end, its masonry reaches into the slope
+        const NS = 6, gEnd = G(3646, 628);
+        for (let i = 0; i < NS; i++) {
+            const f = (i + 0.5) / NS, x = g0x + (g1x - g0x) * f, z = g0z + (g1z - g0z) * f;
+            const ground = G(3690 + (3646 - 3690) * f, 604 + (628 - 604) * f);
+            const top = Math.max(ground + 0.014, 0.06 * (1 - f) + (gEnd + 0.014) * f), bot = Math.min(ground, gEnd) - 0.05;
+            k.box(0.044, top - bot, len / NS + 0.004, x, (top + bot) / 2, z, 'white', ry);
+            for (const sd of [-1, 1]) k.box(0.008, 0.014, len / NS + 0.004, x + Math.cos(ry) * sd * 0.02, top + 0.007, z - Math.sin(ry) * sd * 0.02, 'white', ry);
         }
         return k.done();
     }
@@ -789,7 +830,8 @@ export class Relief {
      *  the board art with rot 0): L(px, py) -> [x, z], S(pixels) -> length. */
     mapper(b) {
         const s = PX / b.scale;
-        return { L: (px, py) => [(px - b.x) * s, -(py - b.y) * s], S: (n) => n * s };
+        // G: the terrain under a painting pixel in the building's units (for parts standing off the terrace)
+        return { L: (px, py) => [(px - b.x) * s, -(py - b.y) * s], S: (n) => n * s, G: (px, py) => (this.heightPx(px, py) - b.h) / b.scale };
     }
 
     /** The plinth of rock under a building (see Kaer Morhen): its top just under the terrace. */
@@ -848,7 +890,8 @@ export class Relief {
 
     /** A house: walls, a gabled roof (`pitch` of the depth), windows; `timber` adds the dark
      *  beams of a half-timbered upper storey (Vizima). */
-    townHouse(k, x, z, w, d, hh, wall, roof, ry = 0, timber = null, pitch = 0.62) {
+    townHouse(k, x, z, w, d, hh, wall, roof, ry = 0, timber = null, pitch = 0.62, y0 = 0) {
+        if (y0) { k.box(w, hh + 0.04, d, x, y0 + (hh - 0.04) / 2, z, wall, ry); return this.houseTop(k, x, z, w, d, hh, roof, ry, pitch, y0); }
         k.box(w, hh, d, x, hh / 2, z, wall, ry);
         k.roof(w * 1.06, d * 1.12, d * pitch, x, hh, z, roof, ry);
         const c = Math.cos(ry), s = Math.sin(ry);
@@ -859,6 +902,35 @@ export class Relief {
             for (const u of [-w / 2, 0, w / 2]) { const [px, pz] = at(u, -d / 2 - 0.002); k.box(0.006, hh * 0.5, 0.004, px, hh * 0.75, pz, timber, ry); }
         }
         for (const u of [-w * 0.22, w * 0.22]) { const [px, pz] = at(u, -d / 2 - 0.003); k.box(0.01, 0.016, 0.004, px, hh * (timber ? 0.3 : 0.6), pz, 'dark', ry); }
+    }
+
+    /** The roof and windows of a house standing on ground at y0 (off the terrace: on a hill, by the water). */
+    houseTop(k, x, z, w, d, hh, roof, ry, pitch, y0) {
+        k.roof(w * 1.06, d * 1.12, d * pitch, x, y0 + hh, z, roof, ry);
+        const c = Math.cos(ry), s = Math.sin(ry);
+        for (const u of [-w * 0.22, w * 0.22]) k.box(0.01, 0.016, 0.004, x + u * c + (-d / 2 - 0.003) * s, y0 + hh * 0.6, z - u * s + (-d / 2 - 0.003) * c, 'dark', ry);
+    }
+
+    /** A slender turret from y0: a shaft, a ring, a needle cone (Beauclair, Cintra, Novigrad). */
+    turret(k, x, z, y0, d, hh, roof, ch, mat, tess = 10) {
+        k.cyl(d, d * 1.06, hh, x, y0 + hh / 2, z, mat, tess);
+        k.cyl(d + 0.012, d + 0.012, 0.01, x, y0 + hh, z, mat, tess);
+        k.cyl(0, d + 0.02, ch, x, y0 + hh + ch / 2 + 0.005, z, roof, tess);
+        if (hh > 0.08) k.box(0.009, 0.02, 0.006, x, y0 + hh * 0.7, z - d / 2 - 0.002, 'dark');
+    }
+
+    /** Points of a painted outline (pixels) on a jittered grid, clear of the circles in `avoid`
+     *  ([px, py, r]): where the houses of a town stand. */
+    scatterPx(poly, step, seed, avoid = []) {
+        let sd = seed;
+        const rnd = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
+        const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), out = [];
+        for (let y = Math.min(...ys); y <= Math.max(...ys); y += step) for (let x = Math.min(...xs); x <= Math.max(...xs); x += step) {
+            const px = x + (rnd() - 0.5) * step * 0.5, py = y + (rnd() - 0.5) * step * 0.5;
+            if (!inPoly(poly, px, py) || avoid.some(([ax, ay, r]) => Math.hypot(px - ax, py - ay) < r)) continue;
+            out.push([px, py, rnd(), rnd(), rnd()]);
+        }
+        return out;
     }
 
     /** A pennant on a pole. */
@@ -918,8 +990,6 @@ export class Relief {
         for (const sd of [-1, 1]) k.crenels(b0x - 0.02, bz0 + sd * 0.032, b1x + 0.02, bz0 + sd * 0.032, 0.23, 0.014, W);
         k.box(blen * 0.55, 0.03, 0.074, (b0x + b1x) / 2, 0.155, bz0, W);   // the arch's crown
         for (const x of [b0x, b1x]) k.box(0.05, 0.2, 0.08, x, 0.1, bz0, W);
-        const [r0x, r0z] = L(2509, 428), [r1x, r1z] = L(2520, 340);
-        k.box(S(10), 0.004, Math.hypot(r1x - r0x, r1z - r0z), (r0x + r1x) / 2, 0.003, (r0z + r1z) / 2, 'hengRoad', Math.atan2(r1x - r0x, r1z - r0z));
         // the east castle: the stepped gatehouse
         const [ex, ez] = L(2556, 402);
         k.box(S(56), 0.13, S(44), ex, 0.065, ez, W);
@@ -974,28 +1044,75 @@ export class Relief {
         return k.done();
     }
 
-    /** Haern Caduch, the School of the Bear: a fortress of pale lavender-white stone on a ledge —
-     *  two ribbed round towers guard the gate in front, tall octagonal towers stand behind, joined
-     *  by crenellated walls and a gallery. */
-    buildHaernCaduch(at, scale = 1, rot = 0) {
-        const k = this.kit('haernCaduch', at, rot, scale), M = 'hcStone';
+    /**
+     * Haern Caduch, the School of the Bear, as painted: a fortress of very pale lilac-white stone
+     * on a rock ledge, all verticals. In front two massive round towers flaring at the foot and
+     * fluted with heavy ribs, tall narrow arched windows between the ribs, a corbelled crown;
+     * between them the gate wall with its tall arch and a gatehouse behind. At the back two tall
+     * octagonal towers with flat crenellated tops (the right one the tallest) joined by a gallery;
+     * a buttressed wall down the left side, a lower one to the right. No roofs, no ring wall.
+     */
+    buildHaernCaduch(at, scale = 1, rot = 0, b) {
+        const k = this.kit('haernCaduch', at, rot, scale), { L, S } = this.mapper(b), M = 'hcStone';
         this.plinth(k, 0.42);
-        const ring = [[-0.3, -0.2], [0.24, -0.2], [0.32, 0.1], [0.14, 0.3], [-0.2, 0.3], [-0.34, 0.06]];
-        this.curtain(k, ring, 0.13, 0.034, M);
-        k.floor(ring, 0.012, 'yard');
-        // the gate: two ribbed round towers and the arch between
-        this.ribbedTower(k, -0.14, -0.22, 0.16, 0.3, M, 9);
-        this.ribbedTower(k, 0.16, -0.21, 0.14, 0.27, M, 8);
-        k.box(0.18, 0.18, 0.06, 0.01, 0.09, -0.22, M);
-        k.crenels(-0.08, -0.25, 0.1, -0.25, 0.186, 0.02, M);
-        k.box(0.06, 0.09, 0.006, 0.01, 0.045, -0.252, 'dark');
-        // the octagonal towers behind, the tallest last, and the gallery between them
-        this.roundTower(k, -0.22, 0.16, 0.15, 0.42, M, null, null, 8);
-        this.roundTower(k, 0.08, 0.2, 0.15, 0.56, M, null, null, 8);
-        this.roundTower(k, 0.28, 0.06, 0.1, 0.3, M, null, null, 8);
-        k.box(0.16, 0.26, 0.09, -0.07, 0.13, 0.18, M, 0.2);
-        k.crenels(-0.14, 0.12, 0.01, 0.15, 0.266, 0.02, M);
-        for (let i = 0; i < 4; i++) k.box(0.014, 0.05, 0.006, -0.12 + i * 0.035, 0.18, 0.13 - i * 0.007, 'dark', 0.2);
+        const fluted = (px, py, d, hh, ribs) => {
+            const [x, z] = L(px, py), D = S(d);
+            k.cyl(D, D * 1.04, hh + 0.05, x, (hh - 0.05) / 2, z, M, 18);
+            k.cyl(D * 1.04, D * 1.22, 0.12, x, 0.01, z, M, 18);   // the flared foot
+            for (let i = 0; i < ribs; i++) {
+                const a = (i + 0.5) / ribs * Math.PI * 2, r = D / 2 + 0.008;
+                k.box(0.026, hh * 0.84, 0.022, x + Math.cos(a) * r, hh * 0.42, z + Math.sin(a) * r, M, -a + Math.PI / 2);
+                // tall arched windows between the ribs on the side seen from the valley
+                const w = a + Math.PI / ribs;
+                if (Math.sin(w) < -0.3) for (const y of [hh * 0.42, hh * 0.68]) {
+                    k.box(0.016, 0.07, 0.006, x + Math.cos(w) * (D / 2 + 0.002), y, z + Math.sin(w) * (D / 2 + 0.002), 'dark', -w + Math.PI / 2);
+                    k.cyl(0.016, 0.016, 0.006, x + Math.cos(w) * (D / 2 + 0.002), y + 0.035, z + Math.sin(w) * (D / 2 + 0.002), 'dark', 6).rotation.set(Math.PI / 2, 0, -w + Math.PI / 2);
+                }
+            }
+            k.cyl(D + 0.06, D + 0.01, 0.05, x, hh + 0.01, z, M, 18);   // the corbelled crown
+            k.crown(x, z, D + 0.05, hh + 0.03, M);
+        };
+        const octagon = (px, py, d, hh) => {
+            const [x, z] = L(px, py), D = S(d);
+            k.cyl(D, D, hh + 0.05, x, (hh - 0.05) / 2, z, M, 8).rotation.y = Math.PI / 8;
+            k.cyl(D + 0.03, D + 0.005, 0.035, x, hh + 0.005, z, M, 8).rotation.y = Math.PI / 8;
+            for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2, r = D / 2 + 0.01; k.box(0.03, 0.03, 0.014, x + Math.cos(a) * r, hh + 0.038, z + Math.sin(a) * r, M, -a + Math.PI / 2); }
+            for (let i = 0; i < Math.floor(hh / 0.12); i++) k.box(0.014, 0.04, 0.006, x, 0.1 + i * 0.11, z - D / 2 - 0.004, 'dark');
+        };
+        const wall = (ax, ay, bx, by, hh, t, buttress = false) => {
+            const [x0, z0] = L(ax, ay), [x1, z1] = L(bx, by), len = Math.hypot(x1 - x0, z1 - z0), ry = Math.atan2(x1 - x0, z1 - z0);
+            k.box(S(t), hh + 0.04, len, (x0 + x1) / 2, (hh - 0.04) / 2, (z0 + z1) / 2, M, ry);
+            k.crenels(x0, z0, x1, z1, hh + 0.004, S(t) + 0.006, M, 0.04, 0.022, 0.026);
+            if (buttress) for (let f = 0.1; f < 1; f += 0.2) k.box(S(t) + 0.03, hh * 0.9, 0.024, x0 + (x1 - x0) * f, hh * 0.45, z0 + (z1 - z0) * f, M, ry);
+        };
+        // the solid mass of the ward on its ledge
+        k.prism([[2330, 1790], [2445, 1795], [2478, 1842], [2440, 1852], [2380, 1848], [2340, 1840]].map(([x, y]) => L(x, y)), -0.03, 0.2, M, 'yard');
+        // the back: two octagons and the gallery between them, a wall to the right
+        octagon(2342, 1772, 40, 0.6);
+        octagon(2410, 1774, 44, 0.8);
+        const [gx, gz] = L(2377, 1778);
+        k.box(S(36), 0.44, S(22), gx, 0.2, gz, M);
+        k.crenels(gx - S(18), gz - S(11), gx + S(18), gz - S(11), 0.424, 0.02, M, 0.04, 0.022, 0.026);
+        for (let i = 0; i < 4; i++) k.box(0.014, 0.04, 0.006, gx - S(13) + i * S(8.6), 0.33, gz - S(11) - 0.003, 'dark');
+        wall(2428, 1782, 2470, 1802, 0.24, 14);
+        // the sides: a tall buttressed wall down the left, a lower one to the right of the gate
+        wall(2324, 1786, 2350, 1848, 0.32, 16, true);
+        wall(2470, 1858, 2500, 1838, 0.17, 12);
+        // the gatehouse behind the gate wall
+        const [hx, hz] = L(2410, 1842), hw = S(56), hd = S(30);
+        k.box(hw, 0.38, hd, hx, 0.17, hz, M);
+        k.crenels(hx - hw / 2, hz - hd / 2, hx + hw / 2, hz - hd / 2, 0.364, 0.02, M, 0.04, 0.022, 0.026);
+        for (let i = 0; i < 4; i++) { const x = hx - hw * 0.33 + i * hw * 0.22; k.box(0.016, 0.05, 0.006, x, 0.27, hz - hd / 2 - 0.003, 'dark'); k.cyl(0.016, 0.016, 0.006, x, 0.295, hz - hd / 2 - 0.003, 'dark', 6).rotation.x = Math.PI / 2; }
+        // the gate wall between the front towers: the tall arch
+        const [fx, fz] = L(2410, 1866), fw = S(56), fd = S(18);
+        k.box(fw, 0.31, fd, fx, 0.135, fz, M);
+        k.crenels(fx - fw / 2, fz - fd / 2, fx + fw / 2, fz - fd / 2, 0.294, 0.02, M, 0.04, 0.022, 0.026);
+        k.box(0.07, 0.13, 0.006, fx, 0.065, fz - fd / 2 - 0.003, 'dark');
+        k.cyl(0.07, 0.07, 0.006, fx, 0.13, fz - fd / 2 - 0.003, 'dark', 10).rotation.x = Math.PI / 2;
+        for (const dx of [-0.07, 0.07]) k.box(0.014, 0.04, 0.006, fx + dx, 0.22, fz - fd / 2 - 0.003, 'dark');
+        // the two fluted towers, the left one the bigger
+        fluted(2368, 1856, 46, 0.5, 11);
+        fluted(2452, 1864, 40, 0.37, 10);
         return k.done();
     }
 
@@ -1050,43 +1167,277 @@ export class Relief {
         return k.done();
     }
 
-    /** Beauclair: the white palace of the duchy — round tiers ringed with arcades, the main
-     *  block under salmon roofs, slender turrets with needle cones, the tall tower with its
-     *  lantern and spire; before it a little walled town with red roofs among trees. */
-    buildBeauclair(at, scale = 1, rot = 0) {
-        const k = this.kit('beauclair', at, rot, scale), M = 'beauWhite', R = 'terracotta';
-        let seed = 29;
-        const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    /**
+     * Beauclair, as painted: a fairy-tale white palace on the mountainside, asymmetric. Round
+     * tiers ringed with dark arcades carry it; on them the hall with a great arched window under a
+     * salmon roof, the slender tall tower at the left with a balcony, an arcaded lantern and a
+     * needle spire, a round arcaded drum-tower at the far left; needle turrets everywhere. Below
+     * in front the little town: white houses under salmon roofs, the gate with its turrets, trees.
+     * No ring wall round it.
+     */
+    buildBeauclair(at, scale = 1, rot = 0, b) {
+        const k = this.kit('beauclair', at, rot, scale), { L, S, G } = this.mapper(b), M = 'beauWhite', R = 'terracotta';
         this.plinth(k, 0.48);
-        // the lower town in front with its wall and turrets
-        const ring = [[-0.42, -0.08], [-0.24, -0.4], [0.22, -0.4], [0.42, -0.08], [0.36, 0.3], [-0.36, 0.3]];
-        this.curtain(k, ring, 0.055, 0.022, M, { d: 0.045, h: 0.09, mat: M, roof: R, coneH: 0.1 });
-        k.floor(ring, 0.012, 'yard');
-        for (let i = 0; i < 12; i++) {
-            const x = -0.3 + rnd() * 0.6, z = -0.34 + rnd() * 0.12;
-            if (Math.abs(x) < 0.05) continue;   // the street up to the palace
-            this.townHouse(k, x, z, 0.05 + rnd() * 0.025, 0.04, 0.04 + rnd() * 0.02, M, R, (rnd() - 0.5) * 0.6, null, 0.8);
+        // the two round arcaded tiers
+        const [ax, az] = L(3365, 1848), A = S(124);
+        k.cyl(A, A * 1.02, 0.17, ax, 0.045, az, M, 30);
+        k.cyl(A + 0.016, A + 0.016, 0.014, ax, 0.13, az, M, 30);
+        this.arcade(k, ax, az, A, 0.07, 16, 0.026, 0.06, Math.PI * 1.04, Math.PI * 1.96);
+        const [bx, bz] = L(3360, 1828), B = S(88);
+        k.cyl(B, B, 0.1, bx, 0.18, bz, M, 26);
+        k.cyl(B + 0.014, B + 0.014, 0.012, bx, 0.232, bz, M, 26);
+        this.arcade(k, bx, bz, B, 0.18, 12, 0.022, 0.05, Math.PI * 1.06, Math.PI * 1.94);
+        // the drum-tower at the far left: two rings of arches, a turret on top
+        const [dx, dz] = L(3303, 1815), D = S(40);
+        k.cyl(D, D * 1.03, 0.36, dx, 0.16, dz, M, 18);
+        k.cyl(D + 0.016, D + 0.016, 0.014, dx, 0.34, dz, M, 18);
+        this.arcade(k, dx, dz, D, 0.22, 7, 0.02, 0.05, Math.PI, Math.PI * 2);
+        this.arcade(k, dx, dz, D, 0.29, 7, 0.018, 0.035, Math.PI, Math.PI * 2);
+        this.turret(k, dx + 0.02, dz + 0.02, 0.34, 0.06, 0.09, R, 0.13, M);
+        // the hall: a great arched window, a salmon roof; its annex to the right
+        const [hx, hz] = L(3372, 1786), hw = S(58), hd = S(34);
+        k.box(hw, 0.44, hd, hx, 0.22, hz, M);
+        k.roof(hw * 1.04, hd * 1.14, 0.11, hx, 0.44, hz, R);
+        k.box(0.075, 0.13, 0.006, hx + hw * 0.08, 0.31, hz - hd / 2 - 0.003, 'dark');
+        k.cyl(0.075, 0.075, 0.006, hx + hw * 0.08, 0.375, hz - hd / 2 - 0.003, 'dark', 12).rotation.x = Math.PI / 2;
+        for (const u of [-0.32, 0.4]) k.box(0.018, 0.05, 0.006, hx + u * hw, 0.33, hz - hd / 2 - 0.003, 'dark');
+        const [nx, nz] = L(3406, 1774), nw = S(30);
+        k.box(nw, 0.37, nw, nx, 0.185, nz, M);
+        k.roof(nw * 1.06, nw * 1.12, 0.1, nx, 0.37, nz, R, Math.PI / 2);
+        k.box(0.02, 0.05, 0.006, nx, 0.29, nz - nw / 2 - 0.003, 'dark');
+        // the tall tower: a balcony, windows, the arcaded lantern, the needle spire
+        const [tx, tz] = L(3333, 1782), T = S(30);
+        k.cyl(T, T * 1.05, 0.64, tx, 0.3, tz, M, 14);
+        k.cyl(T + 0.04, T + 0.02, 0.018, tx, 0.47, tz, M, 14);
+        k.cyl(T + 0.02, T + 0.02, 0.016, tx, 0.62, tz, M, 14);
+        k.cyl(T * 0.78, T * 0.78, 0.08, tx, 0.66, tz, M, 10);
+        this.arcade(k, tx, tz, T * 0.78, 0.66, 6, 0.016, 0.04);
+        k.cyl(T * 0.8 + 0.012, T * 0.8 + 0.012, 0.01, tx, 0.705, tz, M, 10);
+        k.cyl(0, T * 0.84, 0.24, tx, 0.83, tz, R, 12);
+        for (let i = 0; i < 3; i++) k.box(0.014, 0.04, 0.006, tx, 0.3 + i * 0.07, tz - T / 2 - 0.003, 'dark');
+        // needle turrets on the tiers and the hall
+        for (const [px, py, d, hh, ch] of [[3404, 1756, 0.05, 0.47, 0.14], [3368, 1810, 0.05, 0.33, 0.12], [3428, 1812, 0.05, 0.3, 0.12],
+            [3398, 1800, 0.044, 0.29, 0.11], [3344, 1810, 0.044, 0.28, 0.1], [3286, 1850, 0.04, 0.19, 0.09]]) {
+            const [x, z] = L(px, py); this.turret(k, x, z, 0, d, hh, R, ch, M);
         }
-        for (const [x, z] of [[-0.34, 0.12], [0.33, 0.14], [-0.3, -0.12], [0.3, -0.14], [0.36, 0.0]]) this.tree(k, x, z, 1.2);
-        // the palace: two round tiers with arcades
-        k.cyl(0.52, 0.54, 0.1, 0, 0.05, 0.1, M, 24);
-        this.arcade(k, 0, 0.1, 0.52, 0.05, 11, 0.022, 0.05, Math.PI * 1.08, Math.PI * 1.92);
-        k.cyl(0.54, 0.54, 0.012, 0, 0.104, 0.1, M, 24);
-        k.cyl(0.36, 0.37, 0.09, 0, 0.145, 0.12, M, 20);
-        this.arcade(k, 0, 0.12, 0.36, 0.145, 8, 0.02, 0.042, Math.PI * 1.1, Math.PI * 1.9);
-        // the main block, the tall tower with its lantern and spire, the turrets
-        k.box(0.26, 0.12, 0.14, 0, 0.25, 0.14, M);
-        k.roof(0.27, 0.15, 0.08, 0, 0.31, 0.14, R);
-        for (let i = 0; i < 5; i++) k.box(0.018, 0.04, 0.006, -0.09 + i * 0.045, 0.25, 0.067, 'dark');
-        const tz = 0.2;
-        k.cyl(0.1, 0.11, 0.5, 0, 0.25, tz, M, 14);
-        k.cyl(0.12, 0.12, 0.014, 0, 0.5, tz, M, 14);
-        k.cyl(0.07, 0.07, 0.07, 0, 0.54, tz, M, 10);
-        this.arcade(k, 0, tz, 0.07, 0.54, 5, 0.016, 0.03);
-        k.cyl(0, 0.09, 0.2, 0, 0.675, tz, R, 12);
-        for (let i = 0; i < 3; i++) k.box(0.014, 0.03, 0.006, 0, 0.32 + i * 0.05, tz - 0.053, 'dark');
-        for (const [x, z, hh, ch] of [[-0.15, 0.08, 0.32, 0.16], [0.15, 0.08, 0.32, 0.16], [-0.17, 0.22, 0.28, 0.14], [0.17, 0.22, 0.28, 0.14], [-0.24, -0.02, 0.2, 0.12], [0.24, -0.02, 0.2, 0.12]])
-            this.roundTower(k, x, z, 0.055, hh, M, R, ch);
+        // the town below: white houses under salmon roofs, the gate and its turrets, trees
+        for (const [px, py, w, d, hh, ry] of [[3352, 1905, 40, 22, 0.08, 0.1], [3402, 1894, 36, 22, 0.08, -0.05], [3448, 1866, 26, 20, 0.07, 0.5],
+            [3458, 1894, 24, 18, 0.07, 0.3], [3312, 1898, 24, 18, 0.08, 0], [3430, 1846, 20, 16, 0.06, 0.6]]) {
+            const [x, z] = L(px, py); this.townHouse(k, x, z, S(w), S(d), hh, M, R, ry, null, 0.75, Math.min(0, G(px, py)));
+        }
+        const [gx, gz] = L(3312, 1898);
+        k.box(0.04, 0.06, 0.006, gx, Math.min(0, G(3312, 1898)) + 0.03, gz - S(9) - 0.003, 'dark');
+        for (const [px, py, hh] of [[3292, 1880, 0.16], [3332, 1884, 0.14], [3402, 1924, 0.12]]) { const [x, z] = L(px, py), g = Math.min(0, G(px, py)); this.turret(k, x, z, g - 0.03, 0.045, hh + 0.03, R, 0.1, M); }
+        for (const [px, py] of [[3290, 1838], [3442, 1838], [3326, 1872], [3424, 1878], [3462, 1846], [3378, 1880], [3470, 1872]]) { const [x, z] = L(px, py); this.tree(k, x, z, 1.25); }
+        return k.done();
+    }
+
+    /**
+     * Kaer Seren, the School of the Griffin, as painted: a grim, squat grey fortress on the snowy
+     * shore, not one roof. At the back right the huge round drum-tower with a broad machicolated
+     * crown, the tallest and fattest of all; against it a square block with rows of windows; in
+     * front three smaller round towers with crenellated crowns, crenellated curtains between;
+     * an arcaded bridge leaves it to the east.
+     */
+    buildKaerSeren(at, scale = 1, rot = 0, b) {
+        const k = this.kit('kaerSeren', at, rot, scale), { L, S, G } = this.mapper(b), M = 'ksStone';
+        this.plinth(k, 0.4);
+        // the heavy lower ward: a solid mass, crenellated all round
+        const ward = [[1500, 470], [1522, 418], [1560, 400], [1610, 398], [1652, 425], [1650, 478], [1555, 492]].map(([x, y]) => L(x, y));
+        k.prism(ward, -0.03, 0.12, M, M);
+        for (let i = 0; i < ward.length; i++) { const [ax, az] = ward[i], [bx, bz] = ward[(i + 1) % ward.length]; k.crenels(ax, az, bx, bz, 0.124, 0.026, M, 0.04, 0.022, 0.026); }
+        // the square block with its rows of windows
+        const [qx, qz] = L(1576, 426), qw = S(54), qd = S(40);
+        k.box(qw, 0.36, qd, qx, 0.17, qz, M);
+        k.box(qw + 0.014, 0.014, qd + 0.014, qx, 0.35, qz, M);
+        for (const [ax, az, cx, cz] of [[-1, -1, 1, -1], [-1, 1, 1, 1], [-1, -1, -1, 1], [1, -1, 1, 1]]) k.crenels(qx + ax * qw / 2, qz + az * qd / 2, qx + cx * qw / 2, qz + cz * qd / 2, 0.358, 0.022, M, 0.04, 0.022, 0.026);
+        for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) k.box(0.014, 0.03, 0.006, qx - qw * 0.36 + i * qw * 0.24, 0.2 + r * 0.08, qz - qd / 2 - 0.003, 'dark');
+        // the drum: the tallest, a broad machicolated crown, dark inside
+        const [dx, dz] = L(1622, 428), D = S(58), H = 0.6;
+        k.cyl(D, D * 1.05, H + 0.03, dx, (H - 0.03) / 2, dz, M, 20);
+        k.cyl(D + 0.07, D, 0.06, dx, H - 0.01, dz, M, 20);
+        for (let i = 0; i < 20; i++) { const a = (i + 0.5) / 20 * Math.PI * 2, r = D / 2 + 0.018; k.box(0.012, 0.03, 0.03, dx + Math.cos(a) * r, H - 0.05, dz + Math.sin(a) * r, M, -a); }
+        k.crown(dx, dz, D + 0.05, H + 0.02, M);
+        k.cyl(D, D, 0.004, dx, H + 0.035, dz, 'dark', 20);
+        for (let i = 0; i < 4; i++) k.box(0.014, 0.034, 0.006, dx, 0.16 + i * 0.1, dz - D / 2 - 0.004, 'dark');
+        k.box(0.04, 0.07, 0.006, dx - D * 0.36, 0.155, dz - D * 0.36, 'dark', Math.PI / 4);   // the arched door
+        // the three front towers and the one behind them
+        for (const [px, py, d, hh] of [[1527, 420, 30, 0.38], [1504, 468, 34, 0.28], [1550, 482, 38, 0.32], [1586, 458, 30, 0.36]]) { const [x, z] = L(px, py); this.roundTower(k, x, z, S(d), hh, M); }
+        // the arcaded bridge to the east
+        const [e0x, e0z] = L(1652, 414), [e1x, e1z] = L(1702, 404), ry = Math.atan2(e1x - e0x, e1z - e0z), len = Math.hypot(e1x - e0x, e1z - e0z);
+        const ge = Math.min(0, G(1702, 404));
+        k.box(0.06, 0.03, len, (e0x + e1x) / 2, 0.12, (e0z + e1z) / 2, M, ry);
+        for (const sd of [-1, 1]) k.box(0.01, 0.02, len, (e0x + e1x) / 2 + Math.cos(ry) * sd * 0.028, 0.145, (e0z + e1z) / 2 - Math.sin(ry) * sd * 0.028, M, ry);
+        for (let i = 1; i <= 3; i++) {
+            const f = i / 3, x = e0x + (e1x - e0x) * f, z = e0z + (e1z - e0z) * f, g = ge * f - 0.04;
+            k.box(0.06, 0.12 - g, 0.03, x, (0.12 + g) / 2, z, M, ry);
+        }
+        for (let i = 0; i < 3; i++) { const f = (i + 0.5) / 3; k.box(0.034, 0.05, 0.062, e0x + (e1x - e0x) * f, 0.08, e0z + (e1z - e0z) * f, 'dark', ry + Math.PI / 2); }
+        return k.done();
+    }
+
+    /**
+     * Novigrad, as painted: the biggest, busiest city of the board, all crimson roofs. A rocky hill
+     * at the left carries the temple-castle with its tall tower under a red pyramid roof and houses
+     * round it; a bridge of arches curves from the hill across the town; the east quarter is a mass
+     * of white timbered houses under steep red roofs with a second spire; a low wall with red-coned
+     * turrets runs along the water at the front and round the east side.
+     */
+    buildNovigrad(at, scale = 1, rot = 0, b) {
+        const k = this.kit('novigrad', at, rot, scale), { L, S } = this.mapper(b), W = 'novWall', R = 'novRoof';
+        // the town stands on the plain by the sea: a low bank, no rock plinth
+        const ek = k.cyl(S(236), S(244), 0.06, 0, -0.018, 0, 'yard', 28); ek.scaling.z = 102 / 118;
+        // the hill and the temple-castle on it
+        const [hx, hz] = L(1788, 764), HT = 0.17;
+        const hill = k.cyl(S(66), S(118), HT + 0.04, hx, HT / 2 - 0.02, hz, 'rock', 7); hill.scaling.z = 0.85;
+        k.cyl(S(30), S(56), 0.08, hx + S(22), 0.03, hz - S(20), 'rock', 6);
+        const [tx, tz] = L(1796, 744), tw = S(20);
+        k.box(tw, 0.42, tw, tx, HT + 0.12, tz, W);
+        k.box(tw + 0.012, 0.012, tw + 0.012, tx, HT + 0.33, tz, W);
+        k.cyl(0, tw * 1.45, tw * 1.6, tx, HT + 0.336 + tw * 0.8, tz, R, 4).rotation.y = Math.PI / 4;
+        for (let i = 0; i < 3; i++) k.box(0.012, 0.026, 0.006, tx, HT + 0.08 + i * 0.07, tz - tw / 2 - 0.003, 'dark');
+        for (const [px, py, w, d, hh, ry] of [[1768, 750, 22, 16, 0.07, 0.3], [1816, 756, 20, 16, 0.08, -0.2], [1774, 780, 22, 16, 0.06, 0.1], [1806, 782, 18, 14, 0.06, -0.1], [1790, 798, 20, 14, 0.05, 0]]) {
+            const [x, z] = L(px, py); this.townHouse(k, x, z, S(w), S(d), hh, W, R, ry, 'timber', 0.9, HT - 0.04);
+        }
+        // the bridge of arches from the hill across the town
+        const span = (ax, ay, bx, by, y, n) => {
+            const [x0, z0] = L(ax, ay), [x1, z1] = L(bx, by), ry = Math.atan2(x1 - x0, z1 - z0), len = Math.hypot(x1 - x0, z1 - z0);
+            k.box(0.05, 0.022, len, (x0 + x1) / 2, y, (z0 + z1) / 2, 'pale', ry);
+            for (const sd of [-1, 1]) k.box(0.008, 0.016, len, (x0 + x1) / 2 + Math.cos(ry) * sd * 0.022, y + 0.018, (z0 + z1) / 2 - Math.sin(ry) * sd * 0.022, 'pale', ry);
+            for (let i = 0; i <= n; i++) { const f = i / n; k.box(0.05, y, 0.02, x0 + (x1 - x0) * f, y / 2, z0 + (z1 - z0) * f, 'pale', ry); }
+            for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; k.box(0.052, y * 0.55, 0.03, x0 + (x1 - x0) * f, y * 0.3, z0 + (z1 - z0) * f, 'dark', ry + Math.PI / 2); }
+        };
+        span(1808, 800, 1852, 812, 0.12, 4);
+        span(1852, 812, 1858, 856, 0.09, 2);
+        // the houses: the east quarter, the quarter under the hill
+        const avoid = [[1788, 768, 44], [1830, 806, 12], [1854, 834, 11], [1880, 768, 12], [1910, 886, 12]];
+        const quarters = [
+            [[1838, 772], [1900, 760], [1944, 786], [1952, 850], [1942, 900], [1880, 906], [1846, 882], [1830, 830]],
+            [[1738, 818], [1792, 826], [1830, 842], [1846, 900], [1782, 906], [1736, 882]],
+        ];
+        quarters.forEach((poly, qi) => {
+            for (const [px, py, r1, r2, r3] of this.scatterPx(poly, 16, 41 + qi * 7, avoid)) {
+                const [x, z] = L(px, py);
+                this.townHouse(k, x, z, S(13 + 8 * r1), S(10 + 5 * r2), 0.055 + 0.05 * r3, W, R, (r1 - 0.5) * 0.5 + (r2 > 0.7 ? Math.PI / 2 : 0), r3 > 0.4 ? 'timber' : null, 0.95);
+            }
+        });
+        // the spires: a white tower with a tall red spire, a lower one with a pyramid roof
+        const [sx, sz] = L(1880, 768), sw = S(16);
+        k.box(sw, 0.34, sw, sx, 0.17, sz, W);
+        k.cyl(0, sw * 1.3, 0.2, sx, 0.34 + 0.1, sz, R, 8);
+        for (let i = 0; i < 3; i++) k.box(0.01, 0.022, 0.006, sx, 0.1 + i * 0.07, sz - sw / 2 - 0.003, 'dark');
+        const [ux, uz] = L(1910, 886);
+        this.squareTower(k, ux, uz, S(18), 0.24, W, 0, R);
+        // the wall along the water and round the east side, turrets with red cones
+        const wall = [[1762, 904], [1800, 918], [1870, 922], [1950, 914], [1962, 862], [1956, 802], [1936, 772]].map(([x, y]) => L(x, y));
+        for (let i = 0; i < wall.length - 1; i++) {
+            const [ax, az] = wall[i], [bx, bz] = wall[i + 1], len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
+            k.box(0.024, 0.07, len, (ax + bx) / 2, 0.035, (az + bz) / 2, W, ry);
+            k.crenels(ax, az, bx, bz, 0.074, 0.024, W);
+        }
+        for (const [px, py] of [[1800, 918], [1950, 914], [1962, 862], [1762, 904]]) { const [x, z] = L(px, py); this.roundTower(k, x, z, S(14), 0.13, W, R, 0.1); }
+        return k.done();
+    }
+
+    /**
+     * Cidaris, as painted: a small sea port. A two-masted ship lies at the wooden pier; white
+     * timbered houses under dark red roofs crowd the water, their ground floors arched warehouses;
+     * behind them a white square watchtower; a crenellated yard at the right and a piece of wall
+     * at the front right.
+     */
+    buildCidaris(at, scale = 1, rot = 0, b) {
+        const k = this.kit('cidaris', at, rot, scale), { L, S, G } = this.mapper(b), W = 'cidWall', R = 'cidRoof';
+        // the long warehouse on the quay: a row of dark arches
+        const [qx, qz] = L(1340, 1106), qw = S(80), qd = S(18);
+        k.box(qw, 0.07, qd, qx, 0.035, qz, W);
+        k.roof(qw * 1.03, qd * 1.12, 0.035, qx, 0.07, qz, R);
+        for (let i = 0; i < 7; i++) k.box(0.022, 0.04, 0.006, qx - qw * 0.42 + i * qw * 0.14, 0.022, qz - qd / 2 - 0.003, 'dark');
+        // the houses on the water
+        for (let [px, py, w, d, hh, ry] of [[1388, 1075, 36, 26, 0.13, 0.05], [1430, 1068, 28, 22, 0.12, -0.1], [1478, 1078, 30, 22, 0.12, 0.1], [1512, 1088, 26, 20, 0.1, 0.4],
+            [1414, 1104, 30, 22, 0.11, 0], [1452, 1110, 26, 20, 0.1, 0.2], [1492, 1112, 28, 22, 0.1, -0.1], [1530, 1116, 30, 22, 0.11, 0.1], [1556, 1098, 22, 18, 0.09, 0.3],
+            [1450, 1088, 20, 16, 0.13, 0], [1372, 1098, 22, 18, 0.08, 0], [1546, 1132, 26, 18, 0.08, 0], [1404, 1128, 22, 16, 0.07, 0.1], [1470, 1134, 22, 16, 0.07, -0.1],
+            [1408, 1086, 18, 14, 0.09, 0.2], [1496, 1094, 18, 14, 0.1, -0.2], [1520, 1136, 18, 14, 0.07, 0.3], [1434, 1124, 18, 14, 0.08, -0.3]]) {
+            const [x, z] = L(px, py);
+            w *= 0.8; d *= 0.8; hh *= 0.8;
+            this.townHouse(k, x, z, S(w), S(d), hh, W, R, ry, 'timber', 0.85, Math.min(0, G(px, py)));
+            const c = Math.cos(ry), s = Math.sin(ry);   // arched ground floor
+            for (const u of [-0.25, 0.25]) k.box(0.02, 0.032, 0.005, x + u * S(w) * c + (-S(d) / 2 - 0.003) * s, Math.min(0, G(px, py)) + 0.016, z - u * S(w) * s + (-S(d) / 2 - 0.003) * c, 'dark', ry);
+        }
+        // the white watchtower
+        const [tx, tz] = L(1462, 1052);
+        this.squareTower(k, tx, tz, S(22), 0.34, W);
+        // the crenellated yard at the right, the wall at the front right
+        const yard = [[1502, 1046], [1544, 1046], [1544, 1068], [1502, 1068]].map(([x, y]) => L(x, y));
+        this.curtain(k, yard, 0.06, 0.02, W);
+        const fw = [[1478, 1152], [1522, 1148], [1566, 1140]].map(([x, y]) => L(x, y));
+        for (let i = 0; i < 2; i++) {
+            const [ax, az] = fw[i], [bx, bz] = fw[i + 1], len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az), g = Math.min(0, G(1500 + i * 44, 1150));
+            k.box(0.022, 0.07 - g, len, (ax + bx) / 2, (0.07 + g) / 2, (az + bz) / 2, W, ry);
+            k.crenels(ax, az, bx, bz, 0.074, 0.022, W);
+        }
+        for (const [px, py] of [[1478, 1152], [1566, 1140]]) { const [x, z] = L(px, py); this.roundTower(k, x, z, S(14), 0.1, W); }
+        // the wooden pier into the harbour
+        const [p0x, p0z] = L(1336, 1082), [p1x, p1z] = L(1372, 1062), pr = Math.atan2(p1x - p0x, p1z - p0z), pl = Math.hypot(p1x - p0x, p1z - p0z), pg = G(1350, 1072) + 0.016;
+        k.box(0.04, 0.008, pl, (p0x + p1x) / 2, pg, (p0z + p1z) / 2, 'plank', pr);
+        for (let i = 0; i <= 3; i++) { const f = i / 3; for (const sd of [-1, 1]) k.box(0.008, 0.05, 0.008, p0x + (p1x - p0x) * f + Math.cos(pr) * sd * 0.02, pg - 0.02, p0z + (p1z - p0z) * f - Math.sin(pr) * sd * 0.02, 'wood'); }
+        // the ship: a hull with a raised stern, two masts, sails
+        const [sx, sz] = L(1312, 1064), sg = G(1312, 1064) + 0.004, sr = -0.35, c = Math.cos(sr), s = Math.sin(sr);
+        const P = (u, v) => [sx + u * c + v * s, sz - u * s + v * c];
+        k.box(S(46), 0.034, S(11), sx, sg + 0.012, sz, 'wood', sr);
+        { const [x, z] = P(-S(25), 0); k.box(S(10), 0.026, S(7), x, sg + 0.016, z, 'wood', sr); }
+        { const [x, z] = P(S(20), 0); k.box(S(12), 0.03, S(10), x, sg + 0.042, z, 'wood', sr); }
+        for (const [u, hh] of [[-S(8), 0.19], [S(8), 0.16]]) {
+            const [x, z] = P(u, 0);
+            k.cyl(0.006, 0.008, hh, x, sg + 0.03 + hh / 2, z, 'wood', 5);
+            k.box(0.004, hh * 0.38, S(15), x, sg + 0.03 + hh * 0.42, z, 'sail', sr + Math.PI / 2);
+            k.box(0.004, hh * 0.3, S(12), x, sg + 0.03 + hh * 0.8, z, 'sail', sr + Math.PI / 2);
+        }
+        return k.done();
+    }
+
+    /**
+     * Cintra, as painted: a perfectly round high wall, white with dark buttresses, and the town
+     * packed inside it — crimson roofs, white walls, dark slender spires of the temples, a big
+     * gabled hall; at the front left grey rock breaks through the wall; gate towers at the east;
+     * a few houses outside the wall.
+     */
+    buildCintra(at, scale = 1, rot = 0, b) {
+        const k = this.kit('cintra', at, rot, scale), { L, S, G } = this.mapper(b), W = 'cinWall', R = 'cinRoof';
+        const CX = 1555, CY = 1584, RX = 122, RY = 64, N = 32, ring = [];
+        for (let i = 0; i < N; i++) { const a = i / N * Math.PI * 2; ring.push([CX + Math.cos(a) * RX, CY + Math.sin(a) * RY]); }
+        const rockAt = (px, py) => px < 1505 && py > 1598;
+        const pts = ring.map(([x, y]) => L(x, y));
+        for (let i = 0; i < N; i++) {
+            const [a0, a1] = [ring[i], ring[(i + 1) % N]];
+            if (rockAt((a0[0] + a1[0]) / 2, (a0[1] + a1[1]) / 2)) continue;
+            const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % N], len = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az);
+            k.box(0.03, 0.15, len + 0.004, (ax + bx) / 2, 0.055, (az + bz) / 2, W, ry);
+            k.box(0.042, 0.012, len + 0.004, (ax + bx) / 2, 0.13, (az + bz) / 2, W, ry);
+            if (i % 2 === 0) k.box(0.044, 0.12, 0.016, ax, 0.04, az, 'ruin', ry);
+        }
+        k.floor(pts, 0.012, 'yard');
+        // the rock breaking through the wall
+        for (const [px, py, d, hh] of [[1470, 1612, 30, 0.14], [1490, 1632, 26, 0.17], [1454, 1630, 22, 0.1], [1506, 1648, 20, 0.08], [1482, 1600, 18, 0.11]]) {
+            const [x, z] = L(px, py); k.cyl(S(d) * 0.55, S(d) * 1.1, hh + 0.04, x, hh / 2 - 0.02, z, 'rock', 6).rotation.y = px;
+        }
+        // the gate towers at the east
+        for (const [px, py] of [[1676, 1572], [1672, 1600]]) { const [x, z] = L(px, py); this.roundTower(k, x, z, S(20), 0.17, W); }
+        // the temples: dark slender spires, the big gabled hall
+        const spires = [[1505, 1540, 0.2, 0.15], [1580, 1527, 0.27, 0.18], [1622, 1537, 0.2, 0.14], [1545, 1562, 0.16, 0.12], [1640, 1560, 0.14, 0.1]];
+        for (const [px, py, hh, ch] of spires) { const [x, z] = L(px, py); this.turret(k, x, z, 0, S(10), hh, 'spire', ch, 'spire', 8); }
+        const [hx, hz] = L(1578, 1556);
+        this.townHouse(k, hx, hz, S(34), S(20), 0.13, W, R, 0.1, null, 1.1);
+        // the houses packed inside the wall
+        const inner = []; for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2; inner.push([CX + Math.cos(a) * (RX - 12), CY + Math.sin(a) * (RY - 9)]); }
+        const avoid = [[1478, 1622, 34], [1578, 1556, 22], ...spires.map(([x, y]) => [x, y, 8])];
+        for (const [px, py, r1, r2, r3] of this.scatterPx(inner, 15, 77, avoid)) {
+            const [x, z] = L(px, py);
+            this.townHouse(k, x, z, S(12 + 7 * r1), S(10 + 4 * r2), 0.05 + 0.05 * r3, 'pale', R, (r1 - 0.5) * 0.7 + (r2 > 0.6 ? Math.PI / 2 : 0), null, 0.95);
+        }
+        // and a few outside it
+        for (const [px, py, ry] of [[1572, 1664, 0.1], [1602, 1670, -0.2], [1632, 1662, 0.3], [1656, 1670, 0], [1466, 1554, 0.4], [1450, 1570, -0.2]]) {
+            const [x, z] = L(px, py); this.townHouse(k, x, z, S(16), S(12), 0.06, 'pale', R, ry, null, 0.95, Math.min(0, G(px, py)));
+        }
         return k.done();
     }
 
