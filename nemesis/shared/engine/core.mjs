@@ -139,10 +139,11 @@ export function log(state, text, kind = 'info') {
 // ---------------------------------------------------------------------------------------------
 // Lookups
 // ---------------------------------------------------------------------------------------------
+// The alternative noise die: twelve faces, two of them Encounters.
 export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounter', 'encounter'];
-// Alternative noise die: a plain d10 with no Encounter faces — one Danger (claw marks) and one
-// Silence (✕). Selected with state.noiseVariant; the interactive roll in `dice.rolled` below
-// must draw from it too, or the table keeps rolling the standard die (the old variant bug).
+// The noise die the table plays by default: a plain d10 with no Encounter faces — one Danger (claw
+// marks) and one Silence (✕). Selected with state.noiseVariant (lobby default); the interactive roll
+// in `dice.rolled` below must draw from it too, or the table keeps rolling the other die (the old bug).
 export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'danger', 'silence'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
 /** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,

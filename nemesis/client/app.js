@@ -1283,14 +1283,22 @@ function act(answer) { const pr = app.view && app.view.prompt; if (!pr) return; 
 /** Hover popups on the deck piles: my discard pile lists its cards, my deck shows the count. */
 function renderPilePopups(v) {
     const me = v.players.find(p => p.id === app.me); if (!me) return;
-    const disc = document.querySelector('.pile[data-pile="owndisc"]');
-    if (disc && me.discard) {
-        const pop = document.createElement('div'); pop.className = 'ppop';
-        pop.innerHTML = '<h5>Мой сброс · ' + me.discard.length + '</h5>' + (me.discard.length ? me.discard.map(c => { const d = describeCard(c); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('') : '<div>пусто</div>');
-        disc.appendChild(pop);
-    }
+    // One pile for deck + discard: the popup spells the three counts out and lists the discard.
     const own = document.querySelector('.pile[data-pile="own"]');
-    if (own) { const pop = document.createElement('div'); pop.className = 'ppop'; pop.innerHTML = '<h5>Моя колода</h5><div>Карт: ' + me.deckCount + '</div><div>В руке: ' + (me.hand ? me.hand.length : '?') + '</div>'; own.appendChild(pop); }
+    if (own) {
+        const pop = document.createElement('div'); pop.className = 'ppop';
+        const disc = (me.discard || []).map(c => { const d = describeCard(c); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('');
+        pop.innerHTML = '<h5>Моя колода · ' + me.deckCount + '</h5><div>В руке: ' + (me.hand ? me.hand.length : '?') +
+            '</div><div>В сбросе: ' + (me.discard ? me.discard.length : '?') + '</div>' + disc;
+        own.appendChild(pop);
+    }
+    const feats = document.querySelector('.pile[data-pile="feats"]');
+    if (feats) {
+        const pool = v.feats || [];
+        const pop = document.createElement('div'); pop.className = 'ppop';
+        pop.innerHTML = '<h5>Подвиги · ' + pool.length + '</h5>' + (pool.length ? pool.map(k => '<div>' + esc(FEATS[k] ? FEATS[k].name : k) + '</div>').join('') : '<div>пусто</div>');
+        feats.appendChild(pop);
+    }
 }
 
 /** Top-bar track: round/phase text, 15 time cells (blue from 8 down) and the 6-cell self-destruct track. */
@@ -2252,9 +2260,16 @@ function actionCard(id, state) {
     const d = describeCard(id);
     return { name: d.name, text: d.text, art: cardArt(id), state, tag: DECK_STATE_TAGS[state], contam: !!d.contam };
 }
+/** A computer action card, with the three effects printed under "Выберите одно из трёх." — without
+ *  them the viewer only said that a choice exists, never what the choices are. */
+function computerCardText(c) {
+    const opts = Object.values(c.options || {});
+    if (!opts.length) return c.text || '';
+    return (c.text ? c.text + '\n' : '') + opts.map((o, i) => '• ' + o).join('\n');
+}
 function computerCard(id, state) {
     const c = COMPUTER_CARDS[id]; if (!c) return null;
-    return { name: c.name, text: c.text || Object.values(c.options || {}).join(' / '), art: computerArt(id), state, tag: DECK_STATE_TAGS[state] };
+    return { name: c.name, text: computerCardText(c), art: computerArt(id), state, tag: DECK_STATE_TAGS[state] };
 }
 function queenCard(idx, state) {
     const q = QUEEN_CARDS[idx]; if (!q) return null;

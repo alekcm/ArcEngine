@@ -11,6 +11,7 @@ import { createGame } from '../shared/engine/setup.mjs';
 import { viewFor } from '../shared/view.mjs';
 import { OPS, next, run } from '../shared/engine/core.mjs';
 import { buildMenu } from '../shared/engine/turn.mjs';
+import { COMPUTER_CARDS } from '../shared/data/cards.mjs';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.join(HERE, '..');
@@ -116,11 +117,64 @@ test('DECKS-03 my cards, the computer and the Queen show deck/hand/active/spent 
     assert.match(APP, /art: queenArt\(\), state/);
 });
 
-test('DECKS-04 the bottom-right corner is two rows of five piles, without the bag and item decks', () => {
-    assert.match(FX, /const piles = \[\];\n        if \(mine\) \{ piles\.push\(\['own', 'Моя колода', mine\.deckCount\]\); piles\.push\(\['owndisc', 'Мой сброс', mine\.discardCount\]\); \}\n        for \(const k of \['event', 'attack', view\.enemySet === 'voidseeders' \? 'panic' : 'queen'\]\)/);
-    assert.ok(!/piles\.push\(\['bag'/.test(FX), 'no bag pile in the corner');
+test('DECKS-04 the bottom-right corner is one row of three piles: my cards, the feats, the Queen', () => {
+    // deck + discard became one «Моя колода», the Feat pool joined the corner, events/attacks left it
+    assert.match(FX, /if \(mine\) piles\.push\(\['own', 'Моя колода', mine\.deckCount\]\);/);
+    assert.match(FX, /piles\.push\(\['feats', 'Подвиги', \(view\.feats \|\| \[\]\)\.length\]\);/);
+    assert.match(FX, /const shared = view\.enemySet === 'voidseeders' \? 'panic' : 'queen';\n        piles\.push\(\[shared, DECK_LABELS\[shared\], \(view\.decks \|\| \{\}\)\[shared\]\]\);/);
+    assert.ok(!/owndisc/.test(FX), 'the separate discard pile is gone — and so are its animation targets');
+    for (const gone of ['bag', 'event', 'attack']) assert.ok(!new RegExp("piles\\.push\\(\\['" + gone).test(FX), 'no ' + gone + ' pile in the corner');
     assert.ok(!/'green', 'red', 'yellow', 'support'\]\) piles/.test(FX), 'no item decks in the corner');
-    assert.match(CSS, /#table \{[^}]*display: grid; grid-template-columns: repeat\(3, 46px\);/);
+    // one row of three: the grid has exactly three columns and never wraps
+    assert.match(CSS, /#table \{[^}]*display: grid; grid-template-columns: repeat\(3, 58px\);/);
+    assert.match(CSS, /#table \.pile \{[^}]*width: 58px;/);
+    // the hover popups follow the merge: one «Моя колода» with the three counts, plus the Feat list
+    assert.match(APP, /const own = document\.querySelector\('\.pile\[data-pile="own"\]'\);/);
+    assert.match(APP, /В сбросе: ' \+ \(me\.discard \? me\.discard\.length : '\?'\)/);
+    assert.match(APP, /const feats = document\.querySelector\('\.pile\[data-pile="feats"\]'\);/);
+});
+
+test('DECKS-05 a computer action prints its three effects, not just «Выберите одно из трёх»', () => {
+    // the shipped helper, run on the real card data
+    const start = APP.indexOf('function computerCardText');
+    const end = APP.indexOf('function computerCard(');
+    const helper = new Function('COMPUTER_CARDS', APP.slice(start, end) + '; return computerCardText;')(COMPUTER_CARDS);
+    for (const id of ['actionA', 'actionB', 'actionC', 'actionD', 'actionE']) {
+        const c = COMPUTER_CARDS[id];
+        const text = helper(c);
+        const lines = text.split('\n');
+        assert.equal(lines[0], c.text, id + ': the printed line stays on top');
+        assert.equal(lines.length, 4, id + ': a line per option');
+        assert.deepEqual(lines.slice(1), Object.values(c.options).map(o => '• ' + o), id + ': the three options verbatim');
+    }
+    // a card without options keeps its plain text
+    assert.equal(helper({ text: 'Просто текст.' }), 'Просто текст.');
+    // the viewer prints it with its line breaks kept (CSS pre-line, not collapsed into one blob)
+    assert.match(CSS, /\.deck-row \.deck-card small \{[^}]*white-space: pre-line;/);
+});
+
+test('DECKS-06 six cards fit in one row: a wider window and a narrower card', () => {
+    assert.match(CSS, /#deckOverlay \.help-box \{ width: min\(1320px, 97vw\);/);
+    assert.match(CSS, /\.deck-row \.deck-card \{ flex: 1 1 196px; min-width: 178px; max-width: 260px;/);
+    // 6 × 196 + 5 × 12 gaps = 1236 — inside the 1320 window, so the sixth card is never cut off
+    assert.ok(6 * 196 + 5 * 12 <= 1320, 'six bases and their gaps fit the window');
+});
+
+test('LOBBY-02 the d10 noise die and the intruder Weaknesses are the standard, not the alternative', () => {
+    const alien = HTML.slice(HTML.indexOf('id="alienModeSelect"'), HTML.indexOf('id="adaptSelect"'));
+    assert.match(alien, /<option value="weaknesses" selected>Стандарт — Слабости/);
+    assert.match(alien, /<option value="evolutions">Альтернатива — Адаптации/);
+    const die = HTML.slice(HTML.indexOf('id="noiseDieSelect"'));
+    assert.match(die, /<option value="safe" selected>Стандарт — d10/);
+    assert.match(die, /<option value="standard">Альтернатива — 12 граней/);
+    // a fresh lobby starts on them, and the game log no longer calls the d10 an alternative
+    assert.match(SERVER, /noiseVariant: true, alienMode: 'weaknesses'/);
+    const SETUP = read('shared', 'engine', 'setup.mjs');
+    assert.match(SETUP, /if \(state\.noiseVariant\) log\(state, 'Кубик шума: d10 без граней «Встреча»/);
+    assert.ok(!/альтернативный d10/.test(SETUP), 'the start log does not call the standard die alternative');
+    // the client still speaks the engine's settings: 'safe' ⇄ noiseVariant, weaknesses ⇄ weaknessMode
+    assert.match(APP, /noiseVariant: \$\('noiseDieSelect'\) \? \$\('noiseDieSelect'\)\.value === 'safe' : false,/);
+    assert.match(APP, /\$\('noiseDieSelect'\)\.value = L\.settings\.noiseVariant \? 'safe' : 'standard';/);
 });
 
 test('HUD-01 fire and malfunctions read out of nine, the top bar opens the bag and the coordinates', () => {

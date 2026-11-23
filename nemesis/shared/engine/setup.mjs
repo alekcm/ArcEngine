@@ -111,7 +111,7 @@ export function createGame(config) {
         state.adaptations = shuffle(state, Object.keys(ADAPTATIONS)).slice(0, nAdapt);
     }
 
-    // Weakness variant (alternative to Adaptations): no adaptations; instead 3 Weakness cards
+    // Weakness mode (the lobby's standard; Adaptations are the alternative): no adaptations; instead 3 Weakness cards
     // lie face down, one bound to each Laboratory research object. Analyzing the object in the
     // Lab reveals its Weakness (rooms.mjs). The hidden assignment lives in `secret`, so clients
     // only ever see `state.weaknesses` — the ones already revealed.
@@ -234,7 +234,7 @@ OPS['setup.finish'] = (state) => {
     else if (state.enemySet === 'chytrids') log(state, '🔬 Уязвимости хитридов закрыты до исследования соответствующих объектов.', 'event');
     else if (state.weaknessMode) log(state, '🔬 Слабости чужих: 3 скрытые карты — человеческий труп, туша чужого и яйцо чужого хранят по одной. Анализируйте объекты в Лаборатории, чтобы открыть их.', 'event');
     else log(state, 'Активные адаптации чужих: ' + (state.adaptations.length ? state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') : 'отключены') + '.', 'event');
-    if (state.noiseVariant) log(state, 'Кубик шума: альтернативный d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).', 'event');
+    if (state.noiseVariant) log(state, 'Кубик шума: d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).', 'event');
     log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');
     next(state, { op: 'phase.player' });
 };
