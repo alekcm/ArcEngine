@@ -710,7 +710,7 @@ function renderGame() {
     if ($('sheetBtn')) $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName, diceTitleMask(pr));
     tableFx.resume();          // the die is not on the table: whatever the queue holds may play
-    renderPilePopups(v); syncPanes();
+    renderPilePopups(v); renderComputerAction(v); syncPanes();
     if (v.result) renderEnd();
 }
 
@@ -728,18 +728,40 @@ function renderTopbar() {
         (bagRows.length ? bagRows.map(([k, n]) => '<span class="tbrow">' + esc(bagTokenLabel(k)) + ' ×' + n + '</span>').join('') : '<span class="tbrow">пусто</span>') + '</span>';
     $('tbBag').classList.toggle('itag', bagRows.length > 0);
     // A pilot who has looked at the coordinates can see them again at any moment: the top bar's
-    // destination cell carries the same card text, but only for that character.
+    // destination cell carries the same card text, but only for that character. Everybody also sees what
+    // the table has been TOLD — the announcements are never checked, so a claim may be a plain lie.
     const mine = v.players.find(p => p.id === app.me);
     const coord = mine && mine.knownCoords ? COORDINATE_CARDS.find(c => c.id === mine.knownCoords) : null;
-    $('tbDest').innerHTML = esc(v.destination) + (coord
-        ? '<span class="ipop"><b>Координаты · пункт ' + esc(v.destination) + '</b>' +
-          ['A', 'B', 'C', 'D'].map(k => '<span class="tbrow">' + k + ': ' + esc(DESTINATION_NAMES[coord[k]] || coord[k]) + '</span>').join('') + '</span>'
-        : '');
-    $('tbDest').classList.toggle('itag', !!coord);
-    $('tbDest').title = coord ? 'Вы уже смотрели координаты — наведите, чтобы увидеть их снова' : 'Пункт назначения';
-    // Printed on the board there are nine cells for fire and nine for malfunctions; the engine keeps
-    // the old counters, so only the reading changes: a ship is not lost on the eighth marker.
-    $('tbMarkers').textContent = (9 - v.fireLeft) + '/9 · ' + (9 - v.malfLeft) + '/9';
+    const claim = v.claims && v.claims.destination ? v.claims.destination : null;
+    const told = (coord ? '<span class="tbrow">Нажмите, чтобы отметить пункт для остальных</span>' : '') +
+        (claim ? '<span class="tbrow">Объявлено: летим в ' + esc(claim.value) + ' · ' + esc(playerName(claim.by) || 'игрок') + '</span>' : '');
+    $('tbDest').innerHTML = esc(v.destination) + '<span class="ipop">' + (coord
+        ? '<b>Координаты · пункт ' + esc(v.destination) + '</b>' +
+          ['A', 'B', 'C', 'D'].map(k => '<span class="tbrow">' + k + ': ' + esc(DESTINATION_NAMES[coord[k]] || coord[k]) + '</span>').join('')
+        : '<b>Пункт ' + esc(v.destination) + '</b><span class="tbrow">Вы ещё не проверили эту информацию</span>') + told + '</span>';
+    $('tbDest').classList.add('itag');
+    $('tbDest').title = coord ? 'Вы уже смотрели координаты — наведите, чтобы увидеть их снова' : 'Вы ещё не проверили эту информацию';
+
+    // Engines: per engine, what I have seen myself and what the table was told. Nothing announced is
+    // ever verified, so the two lines may contradict each other — and that is the point.
+    const engineNos = [1, 2, 3, 4];
+    const known = (mine && mine.knownEngines) || {};
+    const announced = (v.claims && v.claims.engines) || {};
+    const knownCount = engineNos.filter(n => known[n] !== undefined).length;
+    const knownWorking = engineNos.filter(n => known[n] === true).length;
+    const engineRows = engineNos.map(n => {
+        const seen = known[n] === undefined ? '???' : (known[n] ? 'исправен' : 'повреждён');
+        const said = announced[n] ? ' · объявлено: ' + (announced[n].working ? 'исправен' : 'повреждён') + ' (' + (playerName(announced[n].by) || 'игрок') + ')' : '';
+        return '<span class="tbrow">№' + n + ': ' + esc(seen) + esc(said) + '</span>';
+    }).join('');
+    $('tbEngines').innerHTML = (knownCount ? knownWorking + '/4' : '?/4') + '<span class="ipop"><b>Двигатели · исправных ' + knownWorking + ' из 4</b>' +
+        engineRows + '<span class="tbrow">??? — вы ещё не проверяли</span></span>';
+    $('tbEngines').classList.add('itag');
+    $('tbEngines').title = 'Двигатели: что вы видели сами и что было объявлено остальным';
+    // Printed on the board there are nine cells for fire and nine for malfunctions, and the NINTH marker
+    // burns the ship down. The engine therefore starts with 8 left and drops the counter on every marker,
+    // so the number of markers already placed is 8 − left — not 9 − left (that read 1/9 on a clean ship).
+    $('tbMarkers').textContent = (8 - v.fireLeft) + '/9 · ' + (8 - v.malfLeft) + '/9';
     const cc = v.computerCard ? COMPUTER_CARDS[v.computerCard] : null;
     const ccText = cc ? (cc.options ? Object.values(cc.options).map(t => '• ' + t).join('\n') : cc.text) : '';
     $('tbComputer').innerHTML = cc ? esc(cc.name) + '<span class="ipop"><span class="ipart" style="background-image:url(' + computerArt(v.computerCard) + ')"></span><b>' + esc(cc.name) + '</b><span class="pre">' + esc(ccText) + '</span></span>' : '—';
@@ -1704,7 +1726,9 @@ $('helpBtn').onclick = () => { $('helpBody').innerHTML = HELP; $('helpOverlay').
 function closeOverlay() {
     const warn = $('sheetWarn');
     if (warn && !warn.classList.contains('hidden')) { warn.classList.add('hidden'); return true; }
-    for (const id of ['sheetOverlay', 'deckOverlay', 'helpOverlay', 'saveOverlay']) {
+    const comp = $('compAct');
+    if (comp && !comp.classList.contains('hidden')) { comp.classList.add('hidden'); return true; }
+    for (const id of ['sheetOverlay', 'deckOverlay', 'destOverlay', 'helpOverlay', 'saveOverlay']) {
         const el = $(id); if (el && !el.classList.contains('hidden')) { el.classList.add('hidden'); return true; }
     }
     return false;
@@ -1905,6 +1929,10 @@ $('sheetClose').onclick = () => $('sheetOverlay').classList.add('hidden');
 $('swOk').onclick = () => hideWarn();
 $('sheetWarn').onclick = e => { if (e.target === $('sheetWarn')) hideWarn(); };
 $('deckClose').onclick = () => $('deckOverlay').classList.add('hidden');
+$('destClose').onclick = () => $('destOverlay').classList.add('hidden');
+$('destOverlay').onclick = e => { if (e.target === $('destOverlay')) $('destOverlay').classList.add('hidden'); };
+$('tbDest').onclick = () => openDestPanel();
+$('compAct').onclick = () => $('compAct').classList.add('hidden');
 $('sheetOverlay').onclick = e => { if (e.target === $('sheetOverlay')) $('sheetOverlay').classList.add('hidden'); };
 $('ipMin').onclick = () => minimizeItemPicker();
 $('ipRestore').onclick = () => { if (!app.itemPick) return; app.itemPickMin = false; $('ipRestore').classList.add('hidden'); $('itemPick').classList.remove('hidden'); };
@@ -2327,6 +2355,53 @@ function deckList(kind, v, me) {
     if (kind === 'wound') for (const w of (piles.wound || [])) list.push({ name: WOUNDS[w] ? WOUNDS[w].name : w, text: WOUNDS[w] ? WOUNDS[w].text : '', tag: 'травма', state: 'spent' });
     return { note: '', cards: list };
 }
+/**
+ * «Пункт» in the top bar: what I have seen, what the table has been told, and — for a player who has
+ * looked at the coordinates — four buttons that announce «летим в пункт A/B/C/D» to everybody. The
+ * announcement is never compared with the real coordinates: the table may be lied to.
+ */
+function openDestPanel() {
+    const v = app.view; if (!v) return;
+    const mine = v.players.find(p => p.id === app.me);
+    const coord = mine && mine.knownCoords ? COORDINATE_CARDS.find(c => c.id === mine.knownCoords) : null;
+    const claim = v.claims && v.claims.destination;
+    const claimed = claim ? '<p class="hint">Последнее объявление: летим в пункт <b>' + esc(claim.value) + '</b> — ' + esc(playerName(claim.by) || 'игрок') + '.</p>' : '';
+    if (!coord) {
+        $('destBody').innerHTML = '<p class="hint">Вы ещё не проверили эту информацию.</p>' + claimed;
+    } else {
+        $('destBody').innerHTML = '<p class="hint">Вы уже смотрели координаты: летим в пункт <b>' + esc(v.destination) + '</b>.</p>' +
+            '<div class="dest-grid">' + ['A', 'B', 'C', 'D'].map(k => '<div class="dest-row' + (k === v.destination ? ' cur' : '') + '"><b>' + k + '</b>' +
+                esc(DESTINATION_NAMES[coord[k]] || coord[k]) + '</div>').join('') + '</div>' +
+            '<p class="hint">Отметьте для остальных, куда, по вашим словам, летит корабль. Проверить вас никто не сможет.</p>' +
+            '<div class="dest-buttons">' + ['A', 'B', 'C', 'D'].map(k => '<button class="btn" data-claim="' + k + '">Отметить: ' + k + ' — ' +
+                esc(DESTINATION_NAMES[coord[k]] || '') + '</button>').join('') + '</div>' + claimed;
+    }
+    for (const b of $('destBody').querySelectorAll('[data-claim]')) {
+        b.onclick = () => { net.send({ t: 'claim', dest: b.dataset.claim }); $('destOverlay').classList.add('hidden'); Snd.play('click'); };
+    }
+    $('destOverlay').classList.remove('hidden');
+}
+/**
+ * The computer action that was just played: the card itself in the middle of the screen, carrying only
+ * the one action that was chosen on it (the other two are not printed — they were not played).
+ */
+function renderComputerAction(v) {
+    const el = $('compAct'); if (!el) return;
+    const a = v.lastComputerAction;
+    const c = a && a.option ? COMPUTER_CARDS[a.card] : null;
+    // A page that has just connected does not replay the last card played before it arrived.
+    if (!app.compActInit) { app.compActInit = true; app.compActSeq = c ? a.seq : null; if (!c) el.classList.add('hidden'); return; }
+    if (!c) { el.classList.add('hidden'); app.compActSeq = null; return; }
+    if (app.compActSeq === a.seq) return;   // already on screen
+    app.compActSeq = a.seq;
+    $('compActTitle').textContent = 'Компьютер · ' + c.name;
+    $('compActText').textContent = c.options ? c.options[a.option] : (c.text || '');
+    $('compActArt').style.backgroundImage = 'url(' + computerArt(a.card) + ')';
+    el.classList.remove('hidden');
+    clearTimeout(app.compActTimer);
+    app.compActTimer = setTimeout(() => el.classList.add('hidden'), 9000);
+}
+
 function openDeck(kind, quiet) {
     const v = app.view; if (!v) return;
     app.deckKind = kind === 'owndisc' ? 'own' : (kind || 'event');
@@ -2372,6 +2447,8 @@ const HELP = `
 <h4>Выбор предмета</h4><p>Когда движок просит выбрать предмет (что сбросить, каким оружием стрелять, что передать, в какую руку взять объект), ответить можно тремя способами: кнопкой в списке, в центральном окне с картинками — или <b>прямо в планшете персонажа</b> (клавиша C): нужные предметы и слоты рук подсвечиваются и нажимаются. Там же можно играть карты из руки, использовать предметы, стрелять из оружия (движок спросит цель) и включать мутацию — а если правила не разрешают, по центру экрана появится причина отказа.</p>
 <h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на большую кнопку в появившейся внизу полосе (сколько жетонов и каких осталось, видно при наведении на «Мешок» в верхней панели); внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
 <h4>Колоды и сбросы</h4><p>Любая стопка внизу справа открывает просмотр колод — выбор колоды сверху, карты одной строкой слева направо, с картинками. В «Моих картах» видно всю колоду, руку и сброс сразу: карты в руке подсвечены, сброшенные — бледные. Так же показаны колода компьютера (активная карта подсвечена) и карты здоровья Королевы. Вкладка <b>«Подвиги»</b> показывает общий запас одноразовых карт, которые вы получите за выбор цели: что ещё в запасе и что уже выбыло из игры.</p>
+<h4>Пункт и двигатели</h4><p>Координаты видны только тому, кто их смотрел: в верхней строке «Пункт» он может открыть карту ещё раз, а четырьмя кнопками «Отметить: A…D» — объявить остальным, куда, по его словам, летит корабль. «Двигатели» показывают по каждому двигателю, что вы видели сами (<b>???</b> — не проверяли) и что было объявлено; объявить состояние двигателя можно сразу после его проверки или смены. И то и другое — просто слова: соврать разрешено, проверить вас никто не может.</p>
+<h4>Компьютер</h4><p>Когда разыгрывается действие компьютера, в центре экрана появляется сама карта — с тем одним действием, которое было выбрано; остальные два на ней не печатаются.</p>
 <h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление. В настройках лобби есть пункт «Откат хода: любой игрок»: тогда кнопка работает у всех.</p>`;
 
 // ---------------------------------------------------------------------------------------------

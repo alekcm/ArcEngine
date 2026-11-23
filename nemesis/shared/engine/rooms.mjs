@@ -6,7 +6,8 @@ import { revealVoidWeakness, alterMadness, spawnVoid, killVoid, addVoidToken } f
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, inCombat,
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
-    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState, payableCards } from './core.mjs';
+    clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState, payableCards,
+    askEngineKnown, askEngineReading } from './core.mjs';
 import { dealHits, phosphateWound } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
 import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, WEAKNESSES, EVENT_CARDS, canLoadWith } from '../data/cards.mjs';
@@ -166,8 +167,9 @@ OPS['room.action'] = (state, step) => {
             next(state, back); return;
         }
         case 'engineRoom': {
-            for (const e of state.secret.engines) p.knownEngines[e.no] = e.working;
-            ask(state, { kind: 'info', player: p.id, title: 'Состояние двигателей (только вы это видите)', text: state.secret.engines.map(e => 'Двигатель №' + e.no + ': ' + (e.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН')).join('\n') }, { op: 'noop', then: back });
+            // Reading all four engines is the same reveal as one engine at a time, so each one gets the
+            // same optional "tell the table what you say" question (a lie is allowed).
+            askEngineReading(state, p, state.secret.engines.map(e => ({ no: e.no, working: e.working })), back);
             return;
         }
         case 'hatchControl': {
@@ -200,8 +202,7 @@ OPS['room.action'] = (state, step) => {
         case 'engine': {
             const no = state.ship.rooms[roomId].engineNo;
             const e = state.secret.engines.find(x => x.no === no);
-            p.knownEngines[no] = e.working;
-            ask(state, { kind: 'info', player: p.id, title: 'Двигатель №' + no + ' (только вы это видите)', text: 'Состояние: ' + (e.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН') }, { op: 'noop', then: back });
+            askEngineKnown(state, p, e, back);
             return;
         }
     }
@@ -530,6 +531,9 @@ function computerOptionBlocked(state, p, id) {
 OPS['computer.option'] = (state, step) => {
     const p = player(state, step.player);
     const id = step.answer, done = step.then;
+    // The table sees the card that was just played with the one action that was chosen on it (the
+    // client shows it in the middle of the screen). seq lets a client tell one play from the next.
+    state.lastComputerAction = { card: step.card, option: id, by: p.id, seq: ((state.lastComputerAction && state.lastComputerAction.seq) || 0) + 1 };
     const sel = (title, options, op, extra) => ask(state, { kind: 'choice', player: p.id, title, options }, { op, player: p.id, then: done, ...extra });
     log(state, 'Вариант: ' + COMPUTER_CARDS[step.card].options[id], 'minor');
     switch (id) {
@@ -656,8 +660,7 @@ OPS['computer.done'] = (state, step) => {
 OPS['computer.engine'] = (state, step) => {
     const p = player(state, step.player);
     const e = state.secret.engines.find(x => x.no === Number(step.answer));
-    p.knownEngines[e.no] = e.working;
-    ask(state, { kind: 'info', player: p.id, title: 'Двигатель №' + e.no + ' (только вы это видите)', text: 'Состояние: ' + (e.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН') }, { op: 'noop', then: step.then });
+    askEngineKnown(state, p, e, step.then);
 };
 OPS['computer.scan'] = (state, step) => {
     const p = player(state, step.player);

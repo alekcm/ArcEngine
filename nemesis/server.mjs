@@ -18,7 +18,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { createGame } from './shared/engine/setup.mjs';
 import { playableEnemySet } from './shared/dlc.mjs';
-import { answer } from './shared/engine/core.mjs';
+import { answer, claimDestination } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { CHARACTERS } from './shared/data/cards.mjs';
 import { characterPartSlots, characterParts } from './shared/appearance.mjs';
@@ -358,6 +358,17 @@ function onMessage(socket, m) {
             if (pr.flipped) { sendState(socket, true); return; }
             pr.flipped = true;
             broadcastNotice(seat.name + ' переворачивает карту события.', 'event');
+            broadcastState(false);
+            break;
+        }
+        // A public announcement: "we fly to point X". Anyone seated may say it, and it is never compared
+        // with the real coordinates — lying about where the ship is going is part of the game.
+        case 'claim': {
+            const st = game.state; const seat = seatOf(socket); if (!st || !seat) return;
+            const pid = game.seats.indexOf(seat);
+            const value = String(m.dest || '').toUpperCase();
+            if (!['A', 'B', 'C', 'D'].includes(value) || !st.players[pid]) return;
+            claimDestination(st, st.players[pid], value);
             broadcastState(false);
             break;
         }

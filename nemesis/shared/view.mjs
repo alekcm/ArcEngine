@@ -8,7 +8,7 @@ import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
 const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
     'intruders', 'enemySet', 'chyGermSlots', 'chyQueenSlots', 'chyDeadStinkhorns', 'chyQueenDead', 'chySporesLeft', 'chyMyceliumLeft', 'chyWeaknesses', 'chyAnalyzed', 'chyOverrun', 'voidDespoilerDead', 'voidLairsDestroyed', 'voidWeaknesses', 'voidAnalyzed', 'carnomorphButcherDead', 'carnomorphAdaptations', 'carnomorphRemoved', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods', 'noiseVariant',
-    'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'weaknesses', 'weaknessMode', 'seating', 'feats', 'featsUsed', 'result', 'lastEvent'];
+    'claims', 'lastComputerAction', 'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'weaknesses', 'weaknessMode', 'seating', 'feats', 'featsUsed', 'result', 'lastEvent'];
 
 /**
  * @param {object} state full game state

@@ -138,7 +138,8 @@
         <button id="fsBtn" class="btn small" title="Во весь экран">⛶</button>
         <div id="track" title="Трек времени и самоуничтожения"></div>
         <div class="tb-item tb-turn" id="turnBadge"><span class="lbl">Сейчас ход</span><b id="tbTurn">—</b></div>
-        <div class="tb-item"><span class="lbl">Пункт</span><b id="tbDest">B</b></div>
+        <div class="tb-item" title="Пункт назначения: наведите, чтобы увидеть координаты; нажмите, чтобы отметить пункт для остальных"><span class="lbl">Пункт</span><b id="tbDest">B</b></div>
+        <div class="tb-item"><span class="lbl">Двигатели</span><b id="tbEngines">?/4</b></div>
         <div class="tb-item"><span class="lbl">Мешок</span><b id="tbBag">—</b></div>
         <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">0/9</b></div>
         <div class="tb-item"><span class="lbl">Спасательные капсулы</span><b id="tbPods">—</b></div>
@@ -223,6 +224,14 @@
     </div>
 </div>
 
+<div id="destOverlay" class="overlay hidden">
+    <div class="help-box" style="width: min(560px, 95vw); max-width: 560px;">
+        <h2>Пункт назначения</h2>
+        <div id="destBody"></div>
+        <div class="prompt-buttons"><button class="btn" id="destClose">Закрыть (Esc)</button></div>
+    </div>
+</div>
+
 <div id="saveOverlay" class="overlay hidden">
     <div class="help-box" style="width: min(640px, 95vw); max-width: 640px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--line); padding-bottom:8px;">
@@ -255,6 +264,15 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- The computer action that was just played: the card, with only the action that was chosen on it. -->
+<div id="compAct" class="hidden" title="Нажмите, чтобы убрать">
+    <div class="ca-card">
+        <i id="compActArt" class="ca-art"></i>
+        <b id="compActTitle">Компьютер</b>
+        <span id="compActText"></span>
     </div>
 </div>
 

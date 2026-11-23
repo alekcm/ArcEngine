@@ -6,7 +6,8 @@ import { killVoid } from './voidseeders.mjs';
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
-    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME, removeIntruder } from './core.mjs';
+    loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME, removeIntruder,
+    askEngineKnown } from './core.mjs';
 import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith, INTRUDER_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
@@ -571,14 +572,14 @@ OPS['engine.set'] = (state, step) => {
     const p = player(state, step.player);
     const e = state.secret.engines.find(x => x.no === step.no);
     e.working = step.answer === 'work';
-    p.knownEngines[e.no] = e.working;
     log(state, pname(p) + ' что-то делает с двигателем №' + e.no + '.', 'info');
-    next(state, step.then);
+    // The player who touched the engine may announce the (new) state to the table — or nothing at all.
+    askEngineKnown(state, p, e, step.then);
 };
 OPS['item.engineKey'] = (state, step) => {
     const p = player(state, step.player);
     const [kind, v] = step.answer.split(':');
-    if (kind === 'chk') { const e = state.secret.engines.find(x => x.no === Number(v)); p.knownEngines[e.no] = e.working; ask(state, { kind: 'info', player: p.id, title: 'Двигатель №' + e.no, text: e.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН' }, { op: 'noop', then: step.then }); return; }
+    if (kind === 'chk') { const e = state.secret.engines.find(x => x.no === Number(v)); askEngineKnown(state, p, e, step.then); return; }
     p.passed = true;
     next(state, { op: 'move.direct', player: p.id, dest: v, then: { op: 'turn.end' } });
 };

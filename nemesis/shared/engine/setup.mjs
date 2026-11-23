@@ -45,6 +45,8 @@ export function createGame(config) {
         secret: { tiles: {}, tokens: {}, contamInfected: {}, engines: [], coordinates: null },
         roomState: {}, intruders: {}, intruderSeq: 0, contamSeq: 0, itemSeq: 0,
         bag: [], fireLeft: 8, malfLeft: 8,
+        // What the table has been TOLD (not what is true): «летим в пункт X», engine N whole/broken.
+        claims: { destination: null, engines: {} }, lastComputerAction: null,
         time: 15, selfDestruct: 0, destination: 'B', shipDestroyed: false,
         podsUnlocked: false, pods: [],
         attackDeck: [], attackDiscard: [], eventDeck: [], eventDiscard: [],
