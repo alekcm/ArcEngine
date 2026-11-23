@@ -69,6 +69,10 @@ export function emergencyFlickerLevel(time, phase = 0) {
 // Item colours printed on the room tiles (Search icons) — shown above a room while Alt is held.
 const ITEM_COLORS = { green: '#4fcf7a', red: '#e05252', yellow: '#f1c40f' };
 
+/** The single yellow of a noise mark: corridor arch bands, the door number's glow and the noise
+ *  pucks all use it, so a noisy passage reads as one colour instead of two shades of amber. */
+const NOISE_YELLOW = '#f1c40f';
+
 export class Scene3D {
     constructor(canvas, callbacks) {
         this.canvas = canvas; this.cb = callbacks || {};
@@ -4069,7 +4073,7 @@ export class Scene3D {
         const closedDoor = add('dclosed', D.openW, D.postH, 0.08, 0, D.postH / 2, 0, M('#3e4b59'));
         closedDoor.setEnabled(false);
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
-        noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the ribs of the corridor show noise
+        noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M(NOISE_YELLOW, 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the ribs of the corridor show noise
         const noiseLabel = this.makeLabel('nl_' + c.id, 'icon:speaker', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
         // --- the corridor number, stenciled flat on the plate -------------------------------------
@@ -4119,12 +4123,31 @@ export class Scene3D {
             }
         }
         const debris = [];
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 4; i++) {
             const db = B().MeshBuilder.CreateBox('debris', { width: 0.4, height: 0.12, depth: 0.5 }, S);
             db.parent = door; db.position.set((Math.random() - 0.5) * 1.6, 0.08, (Math.random() - 0.5) * 1.4); db.rotation.set(0, Math.random() * 3, (Math.random() - 0.5) * 0.4); db.material = M('#6b7a88'); db.isPickable = false; db.setEnabled(false);
             debris.push(db);
         }
-        this.corridorNodes[c.id] = { root, door, closedDoor, noise, noiseLabel, decal, nums, sideNums, lamps, lampMaterial, lampColor, lampPhase, lampActive: false, debris, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
+        // A wrecked bulkhead, drawn to the table's own sketch: the frame survives, but the panel is
+        // gone — two jambs left standing at the sides, the leaf torn in half and hanging across the
+        // opening at an angle, and a chipped square stuck between them. The number stencil on the
+        // plate above is untouched, so a noise mark still lights it up.
+        const tornSteel = M('#4a5563'), tornDark = M('#333d49');
+        const brokenParts = [];
+        const brokenPart = (name, w, h, dp, x, y, z, rx, ry, rz, material) => {
+            const m = B().MeshBuilder.CreateBox(name, { width: w, height: h, depth: dp }, S);
+            m.parent = door; m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.material = material; m.isPickable = false; m.setEnabled(false);
+            brokenParts.push(m);
+            return m;
+        };
+        const sideX = D.openW / 2 - 0.14;
+        brokenPart('brkJambL', 0.28, D.postH * 0.94, 0.09, -sideX, D.postH * 0.47, 0, 0, 0, 0.07, tornSteel);
+        brokenPart('brkJambR', 0.28, D.postH * 0.82, 0.09, sideX, D.postH * 0.41, 0, 0, 0, -0.05, tornSteel);
+        brokenPart('brkLeaf', D.openW * 0.64, D.postH * 0.76, 0.09, 0.12, D.postH * 0.44, 0.09, 0.12, 0.16, -0.5, tornSteel);
+        brokenPart('brkHalf', D.openW * 0.34, D.postH * 0.5, 0.08, -0.34, D.postH * 0.32, 0.16, -0.2, -0.3, 1.15, tornDark);
+        brokenPart('brkChip', 0.34, 0.3, 0.08, 0.24, D.postH * 0.66, 0.2, 0.3, 0.5, 0.9, tornDark);
+        brokenPart('brkStrip', 0.16, D.postH * 0.62, 0.06, sideX - 0.2, D.postH * 0.36, 0.13, 0, 0.2, 0.24, tornDark);
+        this.corridorNodes[c.id] = { root, door, closedDoor, noise, noiseLabel, decal, nums, sideNums, lamps, lampMaterial, lampColor, lampPhase, lampActive: false, debris, brokenParts, ribsA: mA.concat(lA), ribsB: mB.concat(lB), matA, matB,
             ry: d.ry, a: c.a, b: c.b, state: null };
     }
 
@@ -4170,11 +4193,11 @@ export class Scene3D {
             : TUNE.color(neon ? 'door.neonGlow' : 'door.outline');
         ctx.strokeStyle = strokeColor;
         if (neon || noise) {
-            ctx.shadowColor = noise ? '#f1c40f' : TUNE.color('door.neonGlow');
+            ctx.shadowColor = noise ? NOISE_YELLOW : TUNE.color('door.neonGlow');
             ctx.shadowBlur = neon ? 30 : 15;
         }
         ctx.strokeText(text, W / 2, H / 2 + 6);
-        ctx.fillStyle = noise ? '#f1c40f' : TUNE.color(neon ? 'door.neon' : 'door.paint');
+        ctx.fillStyle = noise ? NOISE_YELLOW : TUNE.color(neon ? 'door.neon' : 'door.paint');
         ctx.fillText(text, W / 2, H / 2 + 6);
         if (neon) { ctx.shadowBlur = 8; ctx.fillStyle = noise ? '#fffbe6' : '#ffffff'; ctx.fillText(text, W / 2, H / 2 + 6); }
         dt.update();
@@ -4714,13 +4737,14 @@ export class Scene3D {
         n.closedDoor.setEnabled(closed);
         n.lampActive = closed;
         for (const d of n.debris) d.setEnabled(destroyed);
+        for (const b of n.brokenParts) b.setEnabled(destroyed);
         // The floating speaker glyph was distracting across the board; noise still affects corridor
         // lighting/state, but no 3D sound icon is shown.
         n.noiseLabel.setEnabled(false);
         for (const l of n.lamps) l.setEnabled(closed);          // emergency light only while sealed
         for (const m of n.ribsA) m.setEnabled(exA); for (const m of n.ribsB) m.setEnabled(exB);
         // arch bands: unlit steel normally, orange glow only while a noise marker sits in the corridor
-        const col = c.noise ? '#ffb347' : '#4a5563';
+        const col = c.noise ? NOISE_YELLOW : '#4a5563';
         for (const mat of [n.matA, n.matB]) { mat.diffuseColor = B().Color3.FromHexString(col); mat.emissiveColor = B().Color3.FromHexString(col).scale(c.noise ? 1 : 0.08); }
         n.hasNoise = !!c.noise;
         if (n.decal) this.setDecal(n.decal, n.nums.join(' / '), this.alt, n.hasNoise);

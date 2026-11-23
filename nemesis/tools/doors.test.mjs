@@ -203,7 +203,7 @@ test('DR-04 one central door panel appears only when closed; no side leaves are 
             assert.equal(allNodes.filter(a => a.name === gone).length, 0, c.id + ': no «' + gone + '» node either');
         }
         // The frame, the one central panel, the fixtures, and the number stencil are the only door parts.
-        const allowed = /^(apost|abrk|alintel|aplate|alamp|apipe|dclosed|lem|lel|debris|noise|cn_|nl_)/;
+        const allowed = /^(apost|abrk|alintel|aplate|alamp|apipe|dclosed|lem|lel|debris|brk|noise|cn_|nl_)/;
         for (const m of meshes) {
             const onDoor = m.parent && (m.parent.name === 'door' || (m.parent.parent && m.parent.parent.name === 'door'));
             assert.ok(!onDoor || allowed.test(m.name), c.id + ': «' + m.name + '» не место на двери');
@@ -223,10 +223,42 @@ test('DR-04 one central door panel appears only when closed; no side leaves are 
         assert.equal(n.lampActive, false, c.id + ': the pulse stops while open');
 
         n.state = null;
+        assert.ok(n.brokenParts.every(b => !b.isEnabled()), c.id + ': no wrecked parts while the door is intact');
         Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'destroyed' }));
         assert.ok(!n.closedDoor.isEnabled(), c.id + ': a destroyed door has no intact panel');
         assert.ok(n.debris.every(d => d.isEnabled()), c.id + ': a wrecked doorway is strewn with debris');
     }
+});
+
+test('DR-06 a destroyed door becomes the torn bulkhead of the table sketch', () => {
+    const c = corridors[0];
+    const n = build(c);
+    const names = n.brokenParts.map(b => b.name);
+    assert.deepEqual(names.sort(), ['brkChip', 'brkHalf', 'brkJambL', 'brkJambR', 'brkLeaf', 'brkStrip'].sort(),
+        'the drawing: two jambs, the hanging leaf, a torn half, a chip and a bent strip');
+    // the leaf really hangs across the opening instead of standing upright
+    const leaf = n.brokenParts.find(b => b.name === 'brkLeaf');
+    assert.ok(Math.abs(leaf.rotation.z) > 0.4, 'the main leaf leans (' + leaf.rotation.z.toFixed(2) + ' rad)');
+    const jambs = n.brokenParts.filter(b => b.name.startsWith('brkJamb'));
+    for (const j of jambs) assert.ok(Math.abs(j.position.x) > 0.5, j.name + ' stands at the side of the opening');
+    for (const b of n.brokenParts) {
+        assert.ok(Math.abs(b.position.x) + b.opts.width / 2 <= doorSpec().openW / 2 + 0.2, b.name + ' stays inside the frame');
+        assert.ok(b.position.y + b.opts.height / 2 <= doorSpec().postH + 0.2, b.name + ' stays under the lintel');
+    }
+    // numbers above still light up on a wrecked door when the corridor carries noise
+    const want = n.nums.join(' / ');
+    n.state = null;
+    Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'destroyed', noise: true }));
+    assert.ok(n.brokenParts.every(b => b.isEnabled()), 'the wreck is shown');
+    const lit = n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill');
+    assert.equal(lit[lit.length - 1].fill, '#f1c40f', 'the stencil above the wreck still turns yellow');
+    // and the arch bands use the very same yellow
+    const hex = d => '#' + [d.r, d.g, d.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+    assert.equal(hex(n.matA.diffuseColor), '#f1c40f', 'arches glow in the number\'s yellow');
+    assert.equal(hex(n.matB.diffuseColor), '#f1c40f', 'both arches');
+    n.state = null;
+    Scene3D.prototype.updateCorridor.call(host, view, Object.assign({}, c, { door: 'destroyed', noise: false }));
+    assert.ok(lit.length >= 1 && n.decal.metadata.dt.rec.filter(r => r.text === want && r.kind === 'fill').pop().fill !== '#f1c40f');
 });
 
 test('DR-05 the closed door lamps flash off and on with the same waveform as malfunction rooms', () => {

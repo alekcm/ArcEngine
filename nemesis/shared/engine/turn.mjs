@@ -428,19 +428,16 @@ OPS['pass.discard'] = (state, step) => {
     if (p.wounds.includes('bleeding')) loseHealth(state, p, 1, 'кровотечение');
     if (p.status === 'active' && p.wounds.includes('guts')) gainContamination(state, p, 1);
     if (p.status !== 'active' || !p.hand.length) { next(state, { op: 'turn.end' }); return; }
-    ask(state, { kind: 'cards', player: p.id, title: 'Пас: можете сбросить любые карты (все заражения сбросятся автоматически)', cards: [...p.hand], min: 0, max: p.hand.length },
+    // Passing lets you discard any number of cards, contamination included — but only the ones you
+    // select. A contamination card left unselected stays in hand (and still has to be scanned later).
+    ask(state, { kind: 'cards', player: p.id, title: 'Пас: можете сбросить любые карты, в том числе заражения', cards: [...p.hand], min: 0, max: p.hand.length },
         { op: 'pass.discard.done', player: p.id });
 };
 OPS['pass.discard.done'] = (state, step) => {
     const p = player(state, step.player);
-    const chosen = Array.isArray(step.answer) ? step.answer : [];
+    const chosen = (Array.isArray(step.answer) ? step.answer : []).filter(c => p.hand.includes(c));
     for (const c of chosen) discardCard(state, p, c);
-    const contams = p.hand.filter(isContam);
-    for (const c of contams) discardCard(state, p, c);
-    const totalCount = chosen.length + contams.length;
-    if (totalCount) {
-        log(state, pname(p) + ' сбрасывает ' + totalCount + ' карт при пасе' + (contams.length ? ' (заражения сброшены автоматически: ' + contams.length + ')' : '') + '.', 'minor');
-    }
+    if (chosen.length) log(state, pname(p) + ' сбрасывает ' + chosen.length + ' карт при пасе.', 'minor');
     // CEO "Just One More Thing": after you have Passed, draw 1 and take an extra Turn,
     // after which you must Pass.
     const card = p.justOneMoreUsed ? null : p.hand.find(c => (cardDef(state, c) || {}).effect === 'justOneMoreThing');

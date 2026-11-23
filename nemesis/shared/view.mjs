@@ -29,8 +29,13 @@ export function viewFor(state, viewer, logFrom = 0) {
         event: state.eventDeck.length, attack: state.attackDeck.length,
         green: state.itemDecks.green.length, red: state.itemDecks.red.length, yellow: state.itemDecks.yellow.length, support: state.itemDecks.support.length,
         queen: state.queenDeck.length,
+        computer: (state.computerDeck || []).length,
         ...(state.enemySet === 'voidseeders' ? { panic: (state.voidPanicDeck || []).length } : {}),
     };
+    // Decks the table may look through: the computer's action deck (its cards are public) and the
+    // Queen's health deck. Both are shown as a set — the draw order stays on the server.
+    v.computerDeck = (state.computerDeck || []).slice();
+    v.queenDeck = (state.queenDeck || []).slice();
     // Face-up piles on the table (discard piles are open information in the physical game).
     v.piles = {
         event: (state.eventDiscard || []).slice(),
@@ -73,7 +78,9 @@ function playerView(state, p, mine) {
         contamInDeck: p.deck.filter(c => c.startsWith('contam#')).length,
     };
     if (mine) {
-        pub.hand = p.hand; pub.discard = p.discard;
+        // Your own action deck: you know your cards, so the viewer can show them with pictures.
+        // The draw order is irrelevant to the client — `deck` is a set of cards, not a sequence.
+        pub.hand = p.hand; pub.discard = p.discard; pub.deck = p.deck.slice();
         pub.objectives = p.objectives; pub.objective = p.objective;
         pub.knownTiles = p.knownTiles || {}; pub.knownEngines = p.knownEngines || {}; pub.knownCoords = p.knownCoords || null;
         pub.analyzedEgg = p.analyzedEgg; pub.analyzed = p.analyzed;

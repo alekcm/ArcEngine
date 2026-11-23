@@ -304,7 +304,7 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 .card.with-art .ctext { font-size: 10px; line-height: 1.2; overflow: hidden; }
 
 /* ---- table piles & flying cards ---- */
-#table { position: fixed; right: 10px; bottom: 10px; width: 262px; transition: transform .3s; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 4px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
+#table { position: fixed; right: 10px; bottom: 10px; width: 262px; transition: transform .3s; display: grid; grid-template-columns: repeat(3, 46px); justify-content: end; gap: 8px 6px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
 #table .pile { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; }
 #table .pile.empty { opacity: 0.4; }
 #table .pback { width: 38px; height: 52px; border-radius: 5px; background: linear-gradient(150deg, var(--pc), #0c1118 140%); border: 1px solid #ffffff33; box-shadow: 2px 2px 0 #0008, 4px 4px 0 #0005; position: relative; display: flex; align-items: flex-end; justify-content: flex-end; }
@@ -568,6 +568,10 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .obj b, .obj span { position: relative; display: block; } .obj b { color: #ffd27f; } .obj span { color: #d8dee6; }
 .obj.corporate { border-color: #7a6a2a; } .obj.personal { border-color: #6a3a3a; }
 #tbComputer.itag { position: relative; cursor: help; } #tbComputer .ipop { top: calc(100% + 6px); bottom: auto; left: 0; }
+/* the bag and the destination lift their content into the same floating layer */
+#tbBag.itag, #tbDest.itag { cursor: help; }
+#tbPop .tbrow { display: flex; justify-content: space-between; gap: 10px; padding: 3px 9px; border-bottom: 1px solid #ffffff10; color: #cfd8e3; }
+#tbPop .tbrow:last-child { border-bottom: 0; }
 #tbAdapt { font-size: 12px; font-weight: 600; color: #e3a5ff; } #tbAdapt .adapt { cursor: help; } #tbAdapt .ipop { top: calc(100% + 6px); bottom: auto; left: 0; width: 240px; padding-top: 2px; }
 #tbAdapt.weak { color: #8fe3a5; }
 .ipop .pre { white-space: pre-line; }
@@ -691,6 +695,21 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .deck-empty { color: var(--dim); font-size: 12px; }
 .deck-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .deck-tabs .btn.active { background: #27384f; border-color: var(--acc); }
+/* ---- deck viewer: one row of cards, left to right, like the item picker ---- */
+#deckOverlay .help-box { width: min(1400px, 96vw); max-width: none; }
+.deck-note { margin: 0 0 8px; }
+.deck-row { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 4px 2px 14px; }
+.deck-row .deck-card { flex: 0 0 196px; display: flex; flex-direction: column; gap: 4px; }
+.deck-row .deck-card small { flex: 1 1 auto; }
+.deck-row .deck-card .dart { height: 104px; }
+/* a card's state, in colour: in the deck — ordinary, in hand — lit up, active — amber, spent — faded */
+.deck-card.st-hand { background: #142232; border-color: var(--acc); box-shadow: 0 0 0 1px #4f9bff55, 0 8px 20px #0008; }
+.deck-card.st-hand .tag { background: #24486e; color: #dcecff; }
+.deck-card.st-active { background: #241f14; border-color: #e2b33f; box-shadow: 0 0 0 1px #e2b33f55, 0 8px 20px #0008; }
+.deck-card.st-active .tag { background: #4a3a15; color: #ffe6a8; }
+.deck-card.st-spent { opacity: .45; filter: grayscale(.55); }
+.deck-card.st-deck .tag { color: #9fb3c8; }
+.deck-card.contam { border-color: #6a5a86; }
 
 /* ---- turn badge, world popups (click a room / an intruder / a heavy object) ---- */
 .tb-turn { border-radius: 8px; padding: 2px 8px; }
@@ -851,6 +870,19 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 #hand .hand-pass:hover { background: linear-gradient(180deg, #1d3350, #122033); transform: translateY(-2px); }
 #hand .hand-pass.off { animation: none; opacity: .55; border-color: var(--line); cursor: default; }
 #hand .hand-pass.off:hover { transform: none; background: linear-gradient(180deg, #16263aee, #0d1622ee); }
+
+/* ---- centred warning (a click the rules cannot answer) ---- */
+#sheetWarn { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#sheetWarn .sw-box { pointer-events: auto; width: min(440px, 90vw); background: #0c131cf5; border: 1px solid #b4523f; border-radius: 12px;
+    padding: 16px 18px 14px; box-shadow: 0 24px 70px #000d, 0 0 0 1px #0007 inset; text-align: center; animation: wp-in .14s ease-out; }
+#sheetWarn .sw-box b { display: block; color: #e2604f; font-size: 15px; margin-bottom: 6px; }
+#sheetWarn .sw-box p { margin: 0 0 12px; color: #dfe6ee; font-size: 13px; line-height: 1.4; }
+#sheetWarn .sw-box .btn { margin: 0 auto; }
+/* a card / item on the sheet that can be answered by a click */
+.sheet-item.usable, .sheet-wound.usable { cursor: pointer; border-color: var(--acc); box-shadow: 0 0 0 1px #4f9bff44 inset; }
+.sheet-item.usable:hover, .sheet-wound.usable:hover { background: #16283c; }
+.sheet-item.usable .si-use { margin-left: auto; align-self: center; flex: none; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .6px; color: #0b1118; background: var(--acc); border-radius: 5px; padding: 3px 7px; }
 
 /* ---- infected / clean halves ---- */
 .inf { color: #e2604f; }
