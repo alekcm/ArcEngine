@@ -693,15 +693,29 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .deck-card.gone { opacity: .5; }               /* a Feat that already left the game */
 .deck-card.gone b { text-decoration: line-through; }
 .deck-empty { color: var(--dim); font-size: 12px; }
-.deck-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.deck-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.deck-tabs .btn { padding: 4px 10px; font-size: 12px; }
 .deck-tabs .btn.active { background: #27384f; border-color: var(--acc); }
 /* ---- deck viewer: one row of cards, left to right, like the item picker ---- */
-#deckOverlay .help-box { width: min(1400px, 96vw); max-width: none; }
+/* Proportions of the item picker: one wide window with the deck choice in a row above the cards. */
+#deckOverlay .help-box { width: min(1240px, 96vw); max-width: none; }
 .deck-note { margin: 0 0 8px; }
-.deck-row { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 4px 2px 14px; }
-.deck-row .deck-card { flex: 0 0 196px; display: flex; flex-direction: column; gap: 4px; }
-.deck-row .deck-card small { flex: 1 1 auto; }
-.deck-row .deck-card .dart { height: 104px; }
+/* One row of cards, opened left to right exactly like the item picker: the deck choice above the
+   row, the cards themselves big enough to read the picture and the rules text. A big deck scrolls
+   sideways instead of pushing the window's height. */
+.deck-row { display: flex; align-items: stretch; gap: 12px; overflow-x: auto; overflow-y: hidden; padding: 4px 2px 14px; scrollbar-width: thin; }
+.deck-row::-webkit-scrollbar { height: 10px; }
+.deck-row::-webkit-scrollbar-thumb { background: #2b3a4d; border-radius: 6px; }
+.deck-row .deck-card { flex: 1 1 200px; min-width: 190px; max-width: 260px; display: flex; flex-direction: column; gap: 5px; border-radius: 10px; padding: 8px; transition: transform .1s, border-color .1s, background .1s; }
+.deck-row .deck-card:hover { transform: translateY(-2px); border-color: var(--acc); background: #131d2a; }
+.deck-row .deck-card b { font-size: 13px; }
+.deck-row .deck-card small { flex: 1 1 auto; color: #b9c7d8; line-height: 1.3; }
+.deck-row .deck-card .dart { height: 118px; width: calc(100% + 16px); margin: 0 -8px 4px; border-radius: 9px 9px 0 0; border-bottom: 1px solid #34465d; }
+.deck-row .deck-card.has-art { padding-top: 0; }
+.deck-row .deck-card .tag { align-self: flex-start; margin-bottom: 2px; }
+/* a deck that is exactly this list (hand, active card) keeps its colour cue on top of the hover */
+.deck-row .deck-card.st-hand:hover { background: #17273a; }
+.deck-row .deck-card.st-active:hover { background: #2b2414; }
 /* a card's state, in colour: in the deck — ordinary, in hand — lit up, active — amber, spent — faded */
 .deck-card.st-hand { background: #142232; border-color: var(--acc); box-shadow: 0 0 0 1px #4f9bff55, 0 8px 20px #0008; }
 .deck-card.st-hand .tag { background: #24486e; color: #dcecff; }

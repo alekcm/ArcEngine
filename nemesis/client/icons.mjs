@@ -1,5 +1,10 @@
 // icons.mjs — the game's own icons, drawn in code.
 //
+// **Dormant.** The table tried this set and asked for its emoji back («верни эмоджи, они были лучше»),
+// so the client no longer calls iconizeDom() or watchIcons() — drawIcons() in app.js is a no-op. The
+// drawings and the emoji→glyph map stay here, whole and tested, so switching back on is one line in
+// drawIcons(); nothing else in the codebase has to change.
+//
 // Every symbol on the table (bag tokens, room flags, card badges, HUD chips, journal lines) used to
 // ride on an emoji: the operating system picked the font, so the same card looked different on
 // Windows, macOS and Linux, and several glyphs came out in colour next to the flat HUD. This module

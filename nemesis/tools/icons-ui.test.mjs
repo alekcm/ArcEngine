@@ -1,14 +1,14 @@
 // icons-ui.test.mjs — the presentation layer the table actually looks at:
-//   * every emoji still stored in the rules data has a hand-drawn replacement,
-//   * the client swaps them on render (and keeps chat/tooltips out of it),
+//   * emoji are shown as typed: the hand-drawn swap was rolled back at the table's request,
 //   * an empty hand offers «Спасовать» in the hand's place,
 //   * a mutation card is chosen by its picture, in the centred card window,
-//   * the infected / clean halves are coloured.
+//   * the infected / clean halves are coloured,
+//   * the 3D labels and the die faces draw their marks instead of typing a symbol.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ICONS, EM_ALIASES, iconize, ic, watchIcons } from '../client/icons.mjs';
+import { ICONS, EM_ALIASES, iconize, ic } from '../client/icons.mjs';
 import { CARNOMORPH_MUTATIONS } from '../shared/data/carnomorphs.mjs';
 import { mutationOptions } from '../shared/engine/carnomorphs.mjs';
 
@@ -21,48 +21,16 @@ const DICE = fs.readFileSync(path.join(ROOT, 'client', 'dice.js'), 'utf8');
 
 const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/gu;
 
-function sources() {
-    const files = [];
-    const walk = dir => {
-        for (const name of fs.readdirSync(dir)) {
-            const p = path.join(dir, name);
-            const st = fs.statSync(p);
-            if (st.isDirectory()) walk(p);
-            else if (/\.(mjs|js|css|html)$/.test(name)) files.push(p);
-        }
-    };
-    walk(path.join(ROOT, 'client'));
-    walk(path.join(ROOT, 'shared'));
-    return files;
-}
-
-test('every emoji in the rules and the client has a drawn replacement', () => {
-    const missing = new Set();
-    for (const file of sources()) {
-        if (file.endsWith('icons.mjs')) continue;   // the legacy map itself
-        const text = fs.readFileSync(file, 'utf8');
-        for (const m of text.match(EMOJI) || []) if (!EM_ALIASES[m]) missing.add(m);
-    }
-    assert.deepEqual([...missing], [], 'unmapped emoji: ' + [...missing].join(' '));
-});
-
-test('every alias points at a real drawing and iconize replaces the glyph', () => {
-    for (const [emoji, name] of Object.entries(EM_ALIASES)) {
-        assert.ok(ICONS[name], emoji + ' → ' + name + ' is missing');
-    }
-    const markup = iconize('Огонь 🔥 и спора 🟢');
-    assert.match(markup, /<svg class="gi"/);
-    assert.equal(EMOJI.test(markup.replace(/<svg[\s\S]*?<\/svg>/g, '')), false, 'no emoji survives');
-    assert.equal(ic('flame'), ICONS.flame);
-    assert.equal(ic('no-such-icon'), '');
-});
-
-test('the client paints icons after every render, but never inside chat or tooltips', () => {
-    assert.match(APP, /import \{ iconizeDom, ic \} from '\.\/icons\.mjs';/);
-    assert.match(APP, /function drawIcons\(root\) \{ iconizeDom\(root \|\| document\.body\); \}/);
-    assert.ok((APP.match(/drawIcons\(/g) || []).length >= 5, 'called from the render paths');
-    assert.match(APP, /renderTopbar\(\); renderPlayers\(\); renderLog\(\); renderHistory\(\); renderHand\(\); renderHint\(\); refreshOverlays\(\); drawIcons\(\);/);
-    assert.match(CSS, /\.gi \{ width: 1em; height: 1em;/);
+test('the client shows the emoji as typed: nothing swaps them on render', () => {
+    // The drawn icon set lived in icons.mjs and rewrote every text node of the table. It is off: the
+    // table asked for its emoji back, so drawIcons() is a no-op and the safety-net observer is gone.
+    assert.ok(!/watchIcons/.test(APP), 'the observer is not wired into the client');
+    assert.ok(!/iconizeDom/.test(APP), 'no text node is rewritten');
+    assert.match(APP, /function drawIcons\(\) \{ \/\* no-op: system emoji are shown as authored \*\/ \}/);
+    assert.ok((APP.match(/drawIcons\(/g) || []).length >= 3, 'the call sites stay: one entry point, not five');
+    // rules text and the client may hold emoji freely again — no map has to cover them
+    assert.match(APP, /🎒 Рюкзак/);
+    assert.match(APP, /🧬 Мутация/);
 });
 
 test('an empty hand shows the pass button in the hand s place', () => {
@@ -87,8 +55,8 @@ test('mutation cards are chosen by their picture with both halves coloured', () 
 });
 
 test('the canvas layers draw their marks instead of typing a device glyph', () => {
-    // A DOM text node can be swapped for an SVG; a 3D label or a die face cannot, so those two
-    // files must not carry a single symbol from the emoji ranges at all.
+    // A DOM text node can carry an emoji; a 3D label or a die face cannot, so those two files must
+    // not carry a single symbol from the emoji ranges at all.
     for (const [name, src] of [['scene3d.js', SCENE], ['dice.js', DICE]]) {
         assert.deepEqual([...new Set(src.match(EMOJI) || [])], [], name + ' still types a glyph');
     }
@@ -97,12 +65,9 @@ test('the canvas layers draw their marks instead of typing a device glyph', () =
     assert.match(DICE, /paintCross\(ctx, 64, 66, 34, '#f7f2ea'\)/);
 });
 
-test('a safety-net observer iconizes panels that render without calling drawIcons', () => {
-    assert.equal(typeof watchIcons, 'function');
-    assert.match(APP, /import \{ watchIcons \} from '\.\/icons\.mjs';/);
-    assert.match(APP, /watchIcons\(document\);/);
-    // and it stays out of the same places iconizeDom does
-    const src = fs.readFileSync(path.join(ROOT, 'client', 'icons.mjs'), 'utf8');
-    assert.match(src, /const SKIP = 'script,style,textarea,\.chat,#chatLog,#log \.chat,\[data-noicons\]';/);
-    assert.match(src, /if \(host && host\.isConnected\) iconizeDom\(host\)/);
+test('the dormant icon set is intact, so it can be switched back on with one line', () => {
+    assert.ok(Object.keys(ICONS).length > 50, 'the drawings are still there');
+    for (const [emoji, name] of Object.entries(EM_ALIASES)) assert.ok(ICONS[name], emoji + ' → ' + name);
+    assert.match(iconize('Огонь 🔥'), /<svg class="gi"/);
+    assert.equal(ic('flame'), ICONS.flame);
 });

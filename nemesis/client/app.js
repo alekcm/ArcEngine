@@ -12,8 +12,6 @@ import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
-import { iconizeDom, ic } from './icons.mjs';
-import { watchIcons } from './icons.mjs';
 import * as Snd from './sound.js';
 import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
@@ -232,9 +230,10 @@ document.addEventListener('pointerover', e => {
     app.hoverCard = itemEl ? { kind: 'item', uid: itemEl.dataset.item } : null;
 });
 
-/** Hand-drawn icons replace the system emoji everywhere the table can see them. Text nodes only:
- *  tooltips stay plain text and user chat is skipped (see icons.mjs). */
-function drawIcons(root) { iconizeDom(root || document.body); }
+/** Emoji stay as typed: the hand-drawn set that used to replace them was rolled back at the table's
+ *  request («верни эмоджи, они были лучше»). The call sites are kept so every panel still goes
+ *  through one entry point — the day the drawn set is wanted again, only this body changes. */
+function drawIcons() { /* no-op: system emoji are shown as authored */ }
 
 function notice(text, kind) {
     const el = document.createElement('div'); el.className = 'notice ' + (kind || ''); el.textContent = text;
@@ -2377,9 +2376,5 @@ function lanOnlyNotice() {
         'нет игрового сокета. Других подключений к игре нет.';
     box.classList.remove('hidden');
 }
-// The static page (help, table chrome) and every panel that writes markup without calling
-// drawIcons() still get the drawn icons; chat and tooltips stay as typed.
-drawIcons();
-watchIcons(document);
 if (window.__BUILD) net.connect();   // the LAN server — the only way into the game
 else lanOnlyNotice();

@@ -84,9 +84,14 @@ test('DECKS-02 the viewer is one row of cards with the deck choice above it', ()
     // the tabs are printed above the row, never below it
     assert.match(APP, /'<div class="deck-tabs">' \+ tabs\.map/);
     assert.match(APP, /'<div class="deck-row">' \+ cards\.map/);
-    assert.match(CSS, /\.deck-row \{ display: flex; align-items: stretch; gap: 10px; overflow-x: auto;/);
+    assert.match(CSS, /\.deck-row \{ display: flex; align-items: stretch; gap: 12px; overflow-x: auto;/);
+    // the body is a plain column — a leftover CSS grid made the deck choice a column on the left and
+    // squeezed the row into one card (the bug the table reported with a screenshot)
+    assert.match(HTML, /<div id="deckBody"><\/div>/);
+    assert.ok(!/id="deckBody" class=/.test(HTML), 'no grid on the deck body');
+    assert.ok(!/\.deck-grid \{[^}]*repeat\(auto-fill/.test(CSS) || !/deck-grid/.test(HTML), 'the old grid is not used');
     // one card = picture, name, text — the same idea as the item picker
-    assert.match(CSS, /\.deck-row \.deck-card \.dart \{ height: 104px; \}/);
+    assert.match(CSS, /\.deck-row \.deck-card \.dart \{ height: 118px;/);
     // states in colour: in hand lit, active amber, spent faded
     assert.match(CSS, /\.deck-card\.st-hand \{[^}]*border-color: var\(--acc\)/);
     assert.match(CSS, /\.deck-card\.st-active \{[^}]*border-color: #e2b33f/);
