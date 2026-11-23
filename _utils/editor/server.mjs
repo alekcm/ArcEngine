@@ -30,6 +30,7 @@ import url from 'node:url';
 import { execFile } from 'node:child_process';
 import { BOARD_REL, failure, isModelPath, isSoundPath, loadBoard, saveBoard, saveConstants, saveObjects, saveTuning, saveUI, TUNING_REL } from './save.mjs';
 import { sanitizeAll } from '../../nemesis/client/tuning.js';
+import { isNemesisGamePage, nemesisLanOnlyPage } from '../../tools/game-entry.mjs';
 
 // Server contract version. Bump on EVERY change of the endpoints or the
 // response format — the client checks it against EDITOR_API_VERSION in schema.js.
@@ -295,6 +296,13 @@ const server = http.createServer(async (req, res) => {
   }
   if (pathname === EDITOR_URL_PATH || pathname === EDITOR_URL_PATH.slice(0, -1)) {
     pathname = EDITOR_URL_PATH + 'index.html';
+  }
+
+  // The game page is served only by nemesis/server.mjs (nemesis.bat): there is no /ws here, so the
+  // page would sit in "connection lost". The client's modules and art stay reachable — this editor's
+  // Nemesis tab imports scene3d.js and tuning.js from the same folder.
+  if (isNemesisGamePage(pathname)) {
+    return send(res, 403, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, nemesisLanOnlyPage());
   }
 
   const filePath = path.join(ROOT, pathname);

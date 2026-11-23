@@ -4,6 +4,9 @@ rem  Nemesis - LAN server. Needs Node.js only (zero dependencies).
 rem    nemesis.bat          -> port 8090 (or the next free one)
 rem    nemesis.bat 9000     -> port 9000
 rem  Friends connect to http://<your LAN IP>:<port> (printed at startup).
+rem  This server is the ONLY entrance to the game: the kit's dev server
+rem  (run.bat), the editor (editor.bat) and a file opened from disk show a
+rem  note instead of the table - they have no /ws.
 rem ==========================================================================
 setlocal
 cd /d "%~dp0"

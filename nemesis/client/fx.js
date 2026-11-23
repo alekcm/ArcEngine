@@ -30,10 +30,12 @@ export class TableFX {
     /** Redraw the deck piles (counts) and replay new fx entries. */
     update(view, me) {
         const mine = view.players.find(p => p.id === me);
+        // Five piles in two rows: my deck and discard, the shared event/attack decks and the Queen's
+        // health deck (panic, for the nightmares). The bag and the three item decks left this corner:
+        // the bag is drawn from its own strip, item decks are opened by the Search prompt.
         const piles = [];
         if (mine) { piles.push(['own', 'Моя колода', mine.deckCount]); piles.push(['owndisc', 'Мой сброс', mine.discardCount]); }
-        for (const k of ['event', 'attack', view.enemySet === 'voidseeders' ? 'panic' : 'queen', 'bag']) piles.push([k, DECK_LABELS[k], k === 'bag' ? view.bagCount : view.decks[k]]);
-        for (const k of ['green', 'red', 'yellow', 'support']) piles.push([k, DECK_LABELS[k], view.decks[k]]);
+        for (const k of ['event', 'attack', view.enemySet === 'voidseeders' ? 'panic' : 'queen']) piles.push([k, DECK_LABELS[k], view.decks[k]]);
         this.table.innerHTML = piles.map(([k, label, n]) =>
             '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k === 'owndisc' ? 'own' : k] || '#345') + '">' +
             (k === 'owndisc' ? '<span class="pdisc">⤵</span>' : k === 'bag' ? '<span class="pdisc">🎒</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');

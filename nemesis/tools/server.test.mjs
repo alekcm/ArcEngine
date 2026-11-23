@@ -558,6 +558,7 @@ test('isolated server: each enabled DLC starts, hides private state, saves, load
     }
 });
 
+<<<<<<< HEAD
 test('P2P-tunnel URL is published as a copyable lobby address and clears when tunnel stops', async (t) => {
     const { child, port } = await startServer(pickPort());
     t.after(() => { try { child.kill(); } catch { /* gone */ } });
@@ -589,4 +590,17 @@ test('P2P signaling stores SDP behind a short-lived random room code', async (t)
     const saved = await post({ part: 'answer', room, sdp: 'answer sdp' }); assert.equal(saved.status, 204);
     const answer = await fetch(`http://127.0.0.1:${port}/api/p2p?room=${room}&part=answer`);
     assert.equal((await answer.json()).sdp, 'answer sdp');
+=======
+test('ENTRY-01: игра подключается только со страницы своего LAN-сервера', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const html = await (await fetch('http://127.0.0.1:' + port + '/client/')).text();
+    // The build stamp is the marker the client uses: it exists only on the page this server injects.
+    assert.match(html, /window\.__BUILD = '[a-f0-9]+'/, 'страница сервера несёт штамп сборки');
+    assert.match(CLIENT_SRC, /if \(window\.__BUILD\) net\.connect\(\);/, 'сокет открывается только со страницы сервера');
+    assert.match(CLIENT_SRC, /else lanOnlyNotice\(\);/, 'любая другая страница получает инструкцию, а не пустое лобби');
+    assert.match(CLIENT_HTML, /id="lanOnly"/, 'инструкция лежит в самой странице (видна и без модуля)');
+    assert.match(CLIENT_HTML, /Запустите <b>nemesis\.bat<\/b>/, 'инструкция называет nemesis.bat');
+    assert.doesNotMatch(CLIENT_SRC, /^\s*net\.connect\(\);\s*$/m, 'безусловного подключения нет');
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
 });

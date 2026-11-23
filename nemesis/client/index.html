@@ -55,6 +55,11 @@
                             <option value="2">2 адаптации</option>
                             <option value="all">Кошмар: все 8 адаптаций (сложнее)</option>
                         </select></div>
+                    <div class="row"><label>Откат хода</label>
+                        <select id="undoAnyoneSelect">
+                            <option value="host" selected>Только ведущий</option>
+                            <option value="all">Любой игрок</option>
+                        </select></div>
                     <div class="row"><label>Кубик шума</label>
                         <select id="noiseDieSelect">
                             <option value="standard">Альтернативный d12: 2 встречи, 1 шум, 1 тишина</option>
@@ -159,7 +164,7 @@
         <div class="tb-item tb-turn" id="turnBadge"><span class="lbl">Сейчас ход</span><b id="tbTurn">—</b></div>
         <div class="tb-item"><span class="lbl">Пункт</span><b id="tbDest">B</b></div>
         <div class="tb-item"><span class="lbl">Мешок</span><b id="tbBag">—</b></div>
-        <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">8/8</b></div>
+        <div class="tb-item"><span class="lbl">Огонь/поломки</span><b id="tbMarkers">0/9</b></div>
         <div class="tb-item"><span class="lbl">Спасательные капсулы</span><b id="tbPods">—</b></div>
         <div class="tb-item"><span class="lbl">Компьютер</span><b id="tbComputer">—</b></div>
         <div class="tb-item"><span class="lbl" id="tbAdaptLbl">Адаптации чужих</span><b id="tbAdapt">—</b></div>
@@ -167,9 +172,6 @@
         <button id="undoBtn" class="btn small" title="Откатить последнее действие (только ведущий)">⟲ Откатить ход</button>
         <button id="saveBtn" class="btn small" title="Сохранить игру">💾 Сохранить</button>
         <button id="loadBtn" class="btn small" title="Загрузить игру">📂 Загрузить</button>
-        <button id="sheetBtn" class="btn small" title="Мой персонаж: рюкзак, травмы, костюм, цель (C)">🧍 Персонаж</button>
-        <button id="decksBtn" class="btn small" title="Просмотр колод и сбросов (нажмите на любую колоду внизу справа)">🃏 Колоды</button>
-        <button id="focusBtn" class="btn small" title="Показать мою комнату (F)">🎯 Я</button>
         <button id="muteBtn" class="btn small" title="Звук вкл/выкл">🔊</button>
         <button id="helpBtn" class="btn small">?</button>
     </div>
@@ -183,8 +185,6 @@
     <div id="selfHud" class="hidden"></div>
     <div id="hudPop" class="hidden"></div>
 
-    <div id="players"></div>
-    <button id="playersToggle" class="pane-handle" title="Скрыть/показать персонажей и цели">◀</button>
     <button id="rightToggle" class="pane-handle" title="Скрыть/показать журнал">▶</button>
     <button id="tableToggle" class="pane-handle" title="Скрыть/показать колоды">▼</button>
 
@@ -225,6 +225,12 @@
     </div>
 </div>
 <button id="ipRestore" class="btn hidden">🃏 Выбор предмета</button>
+
+<!-- Centred warning for a click that cannot be answered (a card played out of turn, an item that
+     needs a card in hand …). It never asks anything: it only repeats the printed reason. -->
+<div id="sheetWarn" class="hidden">
+    <div class="sw-box"><b id="swTitle">Недоступно</b><p id="swText"></p><button class="btn" id="swOk">Понятно</button></div>
+</div>
 
 <div id="sheetOverlay" class="overlay hidden">
     <div class="help-box sheet-box">
@@ -278,6 +284,30 @@
 
 <div id="endOverlay" class="overlay hidden"><div class="help-box"><h2>Конец игры</h2><div id="endBody"></div><div class="end-buttons"><button id="restartBtn" class="btn primary">🔄 Новая игра</button></div><p class="hint" id="restartHint"></p></div></div>
 
+<!-- The game has exactly one entrance: its LAN server (nemesis.bat -> server.mjs, WebSocket /ws).
+     The kit's dev server and the editor answer this page with 403; a page opened from disk can
+     still render this note, because it sits OUTSIDE the module (the module's absolute /shared/
+     imports cannot resolve without a server). app.js reveals the same block if it is ever served
+     by something that has no game socket. -->
+<div id="lanOnly" class="hidden">
+    <div class="lo-box">
+        <h1>NEMESIS <span>Redux</span></h1>
+        <p><b>Игра подключается только по локальной сети.</b> Запустите <b>nemesis.bat</b> в корне
+            проекта и откройте адрес, который он напечатает:</p>
+        <p class="lo-addr">на этом компьютере — <code>http://localhost:8090</code><br>
+            для друзей — <code>http://&lt;ваш IP в локальной сети&gt;:8090</code></p>
+        <p class="lo-src"></p>
+    </div>
+</div>
+<script>
+    // Shown unless the game's own LAN server served this page: only it injects the build stamp
+    // (nemesis/server.mjs). app.js reveals the same block when it does load; this covers a page
+    // opened from disk or from a static host, where the module's absolute /shared/ imports fail
+    // before app.js can say anything.
+    addEventListener('DOMContentLoaded', () => {
+        if (!window.__BUILD) document.getElementById('lanOnly').classList.remove('hidden');
+    });
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

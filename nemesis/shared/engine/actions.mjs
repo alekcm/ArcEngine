@@ -348,8 +348,8 @@ OPS['card.techCorridors.go'] = (state, step) => {
 OPS['card.techCorridors.dest'] = (state, step) => {
     const p = player(state, step.player);
     p.passed = true;
-    const contams = p.hand.filter(isContam);
-    for (const c of contams) discardCard(state, p, c);
-    next(state, { op: 'move.direct', player: p.id, dest: step.answer, then: { op: 'turn.end' } });
+    // Walking the technical corridors ends the turn, i.e. it is a Pass: the optional discard window
+    // comes with it, so contamination is kept unless the player ticks it.
+    next(state, { op: 'move.direct', player: p.id, dest: step.answer, then: { op: 'pass.offer', player: p.id } });
 };
 

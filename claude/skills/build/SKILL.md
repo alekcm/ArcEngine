@@ -30,6 +30,11 @@ byte for byte, no line-ending conversion.
 - `Cache-Control: no-store` on everything: there is no build step, otherwise the browser
   keeps running the old `.js` (`no-cache` will not do — it allows 304).
 - On start — an asset check with the same scanner the builder uses; Range requests; MIME.
+- The Nemesis game page (`/nemesis/client/index.html`, `/nemesis/client/`) is `403` here: the
+  game connects only through its own LAN server (`nemesis/nemesis.bat` → `nemesis/server.mjs`,
+  WebSocket `/ws`). The client's modules and art stay served — the editor's Nemesis tab imports
+  them. The guard is `tools/game-entry.mjs`, shared with the editor server; the client refuses to
+  connect without the build stamp that only `nemesis/server.mjs` injects (`tests/nemesis-lan-only.test.mjs`).
 
 ## Builder (`tools/build.mjs`)
 

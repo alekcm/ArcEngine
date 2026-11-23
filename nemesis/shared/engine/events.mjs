@@ -7,9 +7,10 @@ import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom,
 import { shuffle } from '../rng.mjs';
 import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
-import { CARNOMORPH_EVENT_BY_ID, carnomorphEventText } from '../data/carnomorph-events.mjs';
-import { CHYTRID_EVENT_BY_ID, chytridEventText } from '../data/chytrids.mjs';
+import { CARNOMORPH_EVENT_BY_ID } from '../data/carnomorph-events.mjs';
+import { CHYTRID_EVENT_BY_ID } from '../data/chytrids.mjs';
 import { VOID_EVENT_BY_ID } from '../data/voidseeders.mjs';
+import { eventTextFor } from '../data/event-text.mjs';
 import { moveIntrudersByCorridor, moveIntrudersToClosest, bagDevelopment, checkNest } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { infectionProcedure, eclosionProcedure } from './actions.mjs';
@@ -43,15 +44,23 @@ function rollLine(ev) {
 function rollLabel(ev) {
     return ev.noise === 'all' ? 'Бросок кубика: ' : ev.noise === 'none' ? '' : 'Встреча: ';
 }
+/** Name of the pack in the plural, for the one-direction movement line. */
+function packName(ev) {
+    return String(ev.id || '').startsWith('voidEvent') ? 'кошмары' : 'карноморфы';
+}
 /** The journal entry for an event: three separate lines inside one card — the intruders' movement,
  *  the effect of the card and the dice it demands. The table reads them one at a time instead of
  *  picking the requirement out of a single wall of printed text. */
 export function eventLogLines(ev) {
     if (ev.move && ev.move.types) return [
         '📜 Событие: «' + ev.name + '».',
-        'Движение: ' + ev.move.types.map(t => INTRUDER_NAMES[t]).join(', ') + ' — коридор ' + ev.move.num + '.',
+        'Движение: все ' + packName(ev) + ' — коридор ' + ev.move.num + '.',
         'Эффект: ' + ev.text,
+<<<<<<< HEAD
         'Игроки также бросают кубик шума по правилам события.',
+=======
+        'Бросок кубика: каждый персонаж делает бросок шума.',
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     ];
     const sentences = String(ev.text || '').split(/(?<=\.)\s+/).map(x => x.trim()).filter(Boolean);
     const isRoll = x => /бросок|встреч/i.test(x);
@@ -90,8 +99,12 @@ OPS['event.reveal'] = (state, step) => {
     const id = step.id, ev = eventById(state, id);
     state.lastEvent = id;
     state.lastEventN = (state.lastEventN || 0) + 1;
+<<<<<<< HEAD
     const baseText = state.enemySet === 'chytrids' ? chytridEventText(ev) : ev.move && ev.move.types ? carnomorphEventText(ev) : ev.text;
     const text = ['carnomorphs', 'voidseeders', 'chytrids'].includes(state.enemySet) ? baseText + '\n\nИгроки также бросают кубик шума по правилам события.' : baseText;
+=======
+    const text = eventTextFor(ev);
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     fx(state, { type: 'event', card: id, name: ev.name, text });
     log(state, state.enemySet === 'chytrids' ? '📜 Событие: «' + ev.name + '». ' + text + '\nИгроки также бросают кубик шума по правилам события.' : eventLogLines(ev).join('\n'), 'event');
     if (state.ui && state.ui.eventAck) {
@@ -106,15 +119,19 @@ OPS['event.reveal'] = (state, step) => {
 OPS['event.movement'] = (state, step) => {
     const id = step.id, ev = eventById(state, id);
     let attacks = [];
-    if (state.enemySet === 'chytrids') { next(state, { op: 'chy.eventMovement', id }, { op: 'chy.eventEffect', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' }); return; }
-    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num, ev.move.types || null);
+    if (state.enemySet === 'chytrids') { next(state, { op: 'chy.eventMovement', id }, { op: 'chy.eventEffect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' }); return; }
+    // Redux wording: «Все чужие движутся по коридору N». The DLC icon strips used to name only
+    // some of the miniatures; the table now moves the whole pack the same way, which is what a
+    // single direction on the card means. Movements printed inside the effect (a queen going to
+    // her nest, a figure stepping into a vent) stay exactly as that effect says.
+    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num);
     else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
     if (state.enemySet === 'voidseeders') {
-        next(state, ...attacks, { op: 'void.eventEffect', id }, { op: 'event.finish', id }, { op: 'void.dissipate' }, { op: 'phase.cleanup' });
+        next(state, ...attacks, { op: 'void.eventEffect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'void.dissipate' }, { op: 'phase.cleanup' });
         return;
     }
     if (state.enemySet === 'carnomorphs') {
-        next(state, ...attacks, { op: 'carnomorph.eventEffect', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
+        next(state, ...attacks, { op: 'carnomorph.eventEffect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
         return;
     }
     next(state, ...attacks, { op: 'event.effect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'phase.cleanup' });
@@ -266,7 +283,9 @@ export function stopSelfDestruct(state) {
 }
 
 OPS['event.noise'] = (state, step) => {
-    const ev = EVENT_BY_ID[step.id];
+    // The noise band is read from the card of the pack in play; DLC cards carry `noise: 'all'` too.
+    const ev = eventById(state, step.id);
+    if (!ev) return;
     // Two kinds of event end in an Encounter instead of a die — the printed card says «resolves
     // [Encounter] in turn order», not «makes a Noise roll»:
     //  * no Action cards in hand (Bulkheads Open, Damaging Fire, On the Hunt, System Failure);

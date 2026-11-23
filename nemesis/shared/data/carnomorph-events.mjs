@@ -1,11 +1,12 @@
 // Twenty physical Carnomorph event cards. IDs are stable; the sheet order differs for cards 5–13.
 // Icon order: metagorger, shambler, breeder, butcher. IDs are unique even for duplicates.
-import { INTRUDER_NAMES } from './cards.mjs';
 
-/** Printed movement icons, translated into text for the adapted card face. */
+/** Printed movement icons, translated into text for the adapted card face. Redux reads a single
+ *  direction for the whole pack ("all intruders move through corridor N"), so the adapted face no
+ *  longer splits the movement between the types printed on the original icon strip. */
 export function carnomorphEventText(card) {
-    return 'Движение: ' + card.move.types.map(t => INTRUDER_NAMES[t]).join(', ') +
-        ' — коридор ' + card.move.num + '. ' + card.text;
+    return 'Движение: все карноморфы — коридор ' + card.move.num + '. ' + card.text +
+        ' Бросок кубика: каждый персонаж делает бросок шума.';
 }
 const M = 'metagorger', S = 'shambler', B = 'breeder', K = 'butcher';
 const rows = [
@@ -23,7 +24,7 @@ const rows = [
     ['awakening', 'Пробуждение', 1, [M,K], 'Замените лежащие в отсеках останки пришельца на падальщиков; каждый размещённый в отсеке с персонажем атакует.'],
     ['pursuit', 'Преследование', 4, [M,K], 'Передвиньте каждого карноморфа вне боя, кроме глодателей, в соседний отсек с персонажем; при равенстве — в отсек с меньшим номером.'],
     ['awakening', 'Пробуждение', 3, [S,K], 'Замените лежащие в отсеках останки пришельца на падальщиков; каждый размещённый в отсеке с персонажем атакует.'],
-    ['detonation', 'Детонация амуниции', 1, [S,B], 'Эффект, зависящий от цвета отсека и счётчика предметов, пропускается. Уберите эту карту и замешайте сброс в колоду.', 'remove'],
+    ['detonation', 'Детонация амуниции', 1, [S,B], 'Поместите фишку огня в отсек с тремя красными символами с наименьшим номером и в каждый соседний отсек. Огонь не распространяется через закрытые двери и технические коридоры. Уберите эту карту и замешайте сброс в колоду.', 'remove'],
     ['roar', 'Рычание', 3, [S,B,K], 'Положите шум в каждый коридор, ведущий в отсек с карноморфом.'],
     ['decompression', 'Аварийная разгерметизация', 2, [M,S,B,K], 'Эффект, зависящий от цвета отсека, пропускается.'],
     ['structuralWeakness', 'Структурная уязвимость', 4, [S,B], 'Эффект, зависящий от цвета отсека, пропускается. Уберите эту карту и замешайте сброс в колоду.', 'remove'],
@@ -31,6 +32,6 @@ const rows = [
     ['threateningMutation', 'Угрожающая мутация', 2, [M,S], 'Каждый персонаж берёт и сканирует 4 карты; при хотя бы одном заражении получает фишку мутации. Взятые карты сбрасываются.'],
 ];
 export const CARNOMORPH_EVENT_CARDS = rows.map(([effect, name, num, types, text, finish], i) => Object.freeze({
-    id: 'carnoEvent' + (i + 1), effect, name, text, move: { type: 'corridor', num, types }, noise: 'none', finish: finish || 'discard',
+    id: 'carnoEvent' + (i + 1), effect, name, text, move: { type: 'corridor', num, types }, noise: 'all', finish: finish || 'discard',
 }));
 export const CARNOMORPH_EVENT_BY_ID = Object.fromEntries(CARNOMORPH_EVENT_CARDS.map(c => [c.id, c]));

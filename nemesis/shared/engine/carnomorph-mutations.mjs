@@ -4,7 +4,7 @@ import { INTRUDER_NAMES, WOUNDS } from '../data/cards.mjs';
 import { OPS, ask, next, log, player, pname, room, roomName, playersInRoom, intrudersIn, inCombat,
     isContam, isInfected, discardCard, removeCardFromGame, gainContamination, drawCards,
     removeWound, restoreHealth, loseHealth, gainWound, maxAllowedHealth, needDice, fmtRoll } from './core.mjs';
-import { removeCarnomorphMutation } from './carnomorphs.mjs';
+import { removeCarnomorphMutation, mutationOptions } from './carnomorphs.mjs';
 import { dealHits, applyHitsNoRoll } from './combat.mjs';
 import { repelIntruder } from './intruders.mjs';
 
@@ -45,7 +45,8 @@ OPS['mutation.scan'] = (state, step) => {
     p.mutationRevealed = true;
     if (infected) discardCard(state, p, selected);
     else { removeCardFromGame(state, p, selected); gainContamination(state, p, 1); }
-    log(state, pname(p) + ' раскрывает мутацию «' + CARNOMORPH_MUTATIONS[step.card].name + '»: ' + (infected ? 'заражён.' : 'не заражён.'), 'action');
+    // The result is coloured like the card itself: red for ЗАРАЖЁН, green for НЕ ЗАРАЖЁН.
+    log(state, pname(p) + ' раскрывает мутацию «' + CARNOMORPH_MUTATIONS[step.card].name + '»: ' + (infected ? 'ЗАРАЖЁН.' : 'НЕ ЗАРАЖЁН.'), infected ? 'bad' : 'good');
     if (p.status !== 'active') { next(state, step.then); return; }
     next(state, { op: 'carnomorph.gainMarker', player: p.id },
         { op: 'mutation.effect', player: p.id, card: step.card, infected, payload: step.payload, then: step.then });
@@ -60,7 +61,7 @@ OPS['mutation.effect'] = (state, step) => {
             if (!cards.length) { log(state, 'Колода мутаций пуста.', 'minor'); next(state, then); return; }
             if (cards.length === 1) { p.mutationCard = cards[0]; p.mutationRevealed = false; next(state, then); return; }
             ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Адаптация: выберите новую карту мутации',
-                options: cards.map(id => ({ id, label: CARNOMORPH_MUTATIONS[id].name, desc: 'Заражён: ' + CARNOMORPH_MUTATIONS[id].infected + ' Не заражён: ' + CARNOMORPH_MUTATIONS[id].clean })) },
+                options: mutationOptions(cards) },
                 { op: 'mutation.adaptationPick', player: p.id, cards, then });
             return;
         }

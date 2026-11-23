@@ -1,4 +1,5 @@
 import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, CHYTRID_WEAKNESSES, chytridEventText } from '/shared/data/chytrids.mjs';
+import { eventTextFor } from '/shared/data/event-text.mjs';
 import { bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mjs';
 // app.js — Nemesis client: lobby, HUD, prompts, hand, log, chat, undo. Talks to server.mjs over
 // WebSocket and renders the 3D board through scene3d.js.
@@ -11,11 +12,12 @@ import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
+import { iconizeDom, ic } from './icons.mjs';
+import { watchIcons } from './icons.mjs';
 import * as Snd from './sound.js';
-import { NemesisP2P } from './p2p.mjs';
-import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, itemDescription, roomActionText, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
-import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
+import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, COORDINATE_CARDS, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 import { adaptationSlots, toughnessText } from './carnomorph-ui.mjs';
 import { CARNOMORPH_MUTATIONS, CARNOMORPH_ATTACK_CARDS } from '/shared/data/carnomorphs.mjs';
@@ -74,22 +76,9 @@ BOARD_EDITS = tileKeyedEdits(rawBoardEdits);
 // Network
 // ---------------------------------------------------------------------------------------------
 let ws = null, wsTimer = null;
-const p2pRole = new URLSearchParams(location.search).get('p2p');
-let p2p = null;
-function setP2PStatus(text) { const el = $('p2pStatus'); if (el) el.textContent = text; }
 const net = {
-    send(obj) {
-        if (p2pRole === 'guest') { if (p2p) p2p.send(obj); return; }
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
-    },
+    send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },
     connect() {
-        if (p2pRole === 'guest') {
-            p2p = new NemesisP2P({ role: 'guest', onMessage, onStatus: setP2PStatus });
-            $('p2pPanel')?.classList.remove('hidden'); $('p2pGuestControls')?.classList.remove('hidden');
-            setP2PStatus('Готово. Вставьте приглашение ведущего и нажмите «Принять приглашение».');
-            return;
-        }
-        if (p2pRole === 'host' && !p2p) p2p = new NemesisP2P({ role: 'host', onMessage, onStatus: setP2PStatus });
         const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
         ws = new WebSocket(proto + location.host + '/ws');
         ws.onopen = () => { net.send({ t: 'join', token: localStorage.getItem('nemesis.token'), name: localStorage.getItem('nemesis.name') || '' }); };
@@ -105,7 +94,7 @@ const app = {
     me: null, host: false, spectator: false,
     lobby: null, view: null, logEntries: [], selectedCards: new Set(), hoverRoom: null,
     charId: null, colors: {}, parts: {}, pendingParts: null, labWorkshop: false, name: '', ready: false, menuCollapsed: true,
-    canUndo: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
+    canUndo: false, canRollBack: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
     wp: null, itemPick: null, itemPickMin: false, gallery: false,
     hoverCard: null,    // card under the pointer: { kind: 'card', id } | { kind: 'item', uid }
     showing: null,      // the card currently shown to the table: { card, from, cid }
@@ -148,7 +137,7 @@ function onMessage(m) {
                 }
             }
             app.logEntries.push(...m.view.log);
-            app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo;
+            app.view = m.view; app.undoDepth = m.undoDepth; app.history = m.history; app.canUndo = !!m.canUndo; app.canRollBack = !!m.canRollBack;
             if (app.gallery) closeGallery();       // the table started while the gallery was open
             if (app.wp && (!app.view.prompt || app.view.prompt.id !== app.wp.prId)) closeWorldPop();
             renderGame();
@@ -215,14 +204,14 @@ function addChatCard(from, card) {
 function hoveredCardDesc() {
     const h = app.hoverCard; if (!h || !app.view) return null;
     if (h.kind === 'card') {
-        const d = describeCard(h.id, app.view.enemySet);
+        const d = describeCard(h.id);
         return { name: d.name, text: d.text || '', art: cardArt(h.id) || '',
             tag: d.contam ? 'заражение' : d.field ? 'полевые данные' : 'карта действия' };
     }
     const me = app.view.players.find(p => p.id === app.me); if (!me) return null;
     const inst = (me.items || []).find(i => i.uid === h.uid) || (me.armor && me.armor.uid === h.uid ? me.armor : null);
     const d = inst && ITEMS[inst.item]; if (!d) return null;
-    return { name: d.name, text: itemDescription(inst, app.view.enemySet), art: itemArt(inst.item) || '', tag: 'предмет' };
+    return { name: d.name, text: d.text || '', art: itemArt(inst.item) || '', tag: 'предмет' };
 }
 function showCardToTable(card) {
     const me = app.view && app.view.players.find(p => p.id === app.me);
@@ -242,6 +231,10 @@ document.addEventListener('pointerover', e => {
     const itemEl = el.closest('[data-item]');
     app.hoverCard = itemEl ? { kind: 'item', uid: itemEl.dataset.item } : null;
 });
+
+/** Hand-drawn icons replace the system emoji everywhere the table can see them. Text nodes only:
+ *  tooltips stay plain text and user chat is skipped (see icons.mjs). */
+function drawIcons(root) { iconizeDom(root || document.body); }
 
 function notice(text, kind) {
     const el = document.createElement('div'); el.className = 'notice ' + (kind || ''); el.textContent = text;
@@ -268,6 +261,7 @@ function showCenterTurnBanner(text = 'Ваш ход') {
 // Lobby
 // ---------------------------------------------------------------------------------------------
 function renderLobby() {
+    drawIcons();   // the lobby's own buttons and tabs use the same hand-drawn set
     const L = app.lobby; if (!L) return;
     const previousCharId = app.charId;
     const activePicker = document.activeElement && document.activeElement.matches
@@ -280,6 +274,7 @@ function renderLobby() {
     const inGame = L.phase === 'playing' && app.view;
     $('lobby').classList.toggle('hidden', !!inGame || app.gallery);
     if (inGame) return;
+    drawIcons($('lobby'));
     const mySeat = L.seats.find(s => s.id === app.me);
     if (mySeat) {
         if (document.activeElement !== $('nameInput')) $('nameInput').value = mySeat.name;
@@ -355,55 +350,14 @@ function renderLobby() {
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
     if ($('enemySetSelect')) { $('enemySetSelect').value = L.settings.enemySet || 'redux'; $('enemySetSelect').disabled = !app.host; }
     if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
-    if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'evolutions' ? 'evolutions' : 'weaknesses';
-    if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant === false ? 'standard' : 'safe';
+    if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'weaknesses' ? 'weaknesses' : 'evolutions';
+    if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
+    if ($('undoAnyoneSelect')) { $('undoAnyoneSelect').value = L.settings.undoAnyone ? 'all' : 'host'; $('undoAnyoneSelect').disabled = !app.host; }
     $('modeSelect').disabled = !app.host; $('seedInput').disabled = !app.host;
-    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || L.settings.alienMode === 'weaknesses' || L.settings.enemySet !== 'redux';
-    if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || L.settings.enemySet !== 'redux';
+    if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || L.settings.alienMode === 'weaknesses';
+    if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host;
     if ($('noiseDieSelect')) $('noiseDieSelect').disabled = !app.host;
     $('lanAddr').textContent = L.addresses.length ? L.addresses.map(a => 'http://' + a + ':' + L.port).join('   ') : location.origin;
-    const directInput = $('directJoinLink'), directCopy = $('copyDirectJoin'), directHint = $('directJoinHint');
-    if (directInput && directCopy && !directInput.dataset.lookupStarted) {
-        directInput.dataset.lookupStarted = '1';
-        fetch('https://api.ipify.org?format=json', { cache: 'no-store' }).then(r => {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        }).then(({ ip }) => {
-            if (typeof ip !== 'string' || !/^[0-9a-fA-F:.]+$/.test(ip)) throw new Error('Неверный IP');
-            const host = ip.includes(':') ? `[${ip}]` : ip;
-            directInput.value = `http://${host}:${L.port}/client/`;
-            directCopy.disabled = false;
-            if (directHint) directHint.textContent = `Внешний IP: ${ip}. Нужен проброс TCP-порта ${L.port} на этот компьютер; если это IP VPN или CGNAT, входящие соединения могут быть запрещены.`;
-        }).catch(err => {
-            directInput.placeholder = 'Не удалось определить внешний IP';
-            if (directHint) directHint.textContent = 'Не удалось определить внешний IP (' + (err.message || err) + '). Перезагрузите страницу и попробуйте снова.';
-            directInput.dataset.lookupStarted = '';
-        });
-        directCopy.onclick = async () => {
-            const value = directInput.value.trim();
-            if (!value) return;
-            try { await navigator.clipboard.writeText(value); }
-            catch { directInput.focus(); directInput.select(); document.execCommand('copy'); }
-            notice('Ссылка на внешний IP скопирована.', 'good');
-        };
-    }
-    const tunnelRow = $('tunnelJoinRow'), tunnelInput = $('tunnelJoinLink'), tunnelCopy = $('copyTunnelJoin');
-    if (tunnelRow && tunnelInput) {
-        const tunnelUrl = typeof L.tunnelUrl === 'string' ? L.tunnelUrl : '';
-        tunnelRow.classList.toggle('hidden', !tunnelUrl);
-        tunnelInput.value = tunnelUrl;
-        if (tunnelCopy) tunnelCopy.onclick = async () => {
-            if (!tunnelInput.value) return;
-            try { await navigator.clipboard.writeText(tunnelInput.value); }
-            catch { tunnelInput.focus(); tunnelInput.select(); document.execCommand('copy'); }
-            notice('Ссылка для подключения скопирована.', 'good');
-        };
-    }
-    if ($('p2pPanel')) {
-        $('p2pPanel').classList.toggle('hidden', p2pRole !== 'host' && p2pRole !== 'guest');
-        $('p2pHostControls')?.classList.toggle('hidden', p2pRole !== 'host');
-        $('p2pGuestControls')?.classList.toggle('hidden', p2pRole !== 'guest');
-    }
     $('readyBtn').textContent = app.ready ? 'Не готов' : 'Готов';
     $('readyBtn').disabled = app.spectator;
     const online = L.seats.filter(s => s.online);
@@ -648,88 +602,18 @@ const sendSettings = () => net.send({ t: 'lobby', settings: {
     seed: $('seedInput').value,
     draft: $('draftSelect').value === '1',
     adaptations: $('adaptSelect') ? $('adaptSelect').value : '3',
-    alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'weaknesses',
+    alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'evolutions',
+    undoAnyone: $('undoAnyoneSelect') ? $('undoAnyoneSelect').value === 'all' : false,
     noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
 } });
-if ($('enemySetSelect')) $('enemySetSelect').onchange = () => { const dlc = $('enemySetSelect').value !== 'redux'; if ($('alienModeSelect')) $('alienModeSelect').disabled = !app.host || dlc; if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || dlc || $('alienModeSelect')?.value === 'weaknesses'; sendSettings(); };
+if ($('enemySetSelect')) $('enemySetSelect').onchange = sendSettings;
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
 $('draftSelect').onchange = sendSettings;
 if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
-if ($('alienModeSelect')) $('alienModeSelect').onchange = () => { if ($('adaptSelect')) $('adaptSelect').disabled = !app.host || $('alienModeSelect').value === 'weaknesses' || $('enemySetSelect')?.value !== 'redux'; sendSettings(); };
+if ($('alienModeSelect')) $('alienModeSelect').onchange = sendSettings;
 if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
-const copyP2PText = async id => {
-    const el = $(id); if (!el || !el.value) return;
-    try { await navigator.clipboard.writeText(el.value); }
-    catch { el.focus(); el.select(); document.execCommand('copy'); }
-    notice('Текст приглашения скопирован.', 'good');
-};
-async function waitForP2PAnswer(room) {
-    for (let i = 0; i < 180; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        try {
-            const r = await fetch(`/api/p2p?room=${encodeURIComponent(room)}&part=answer`, { cache: 'no-store' });
-            if (r.ok) {
-                const { sdp } = await r.json();
-                await p2p.applyAnswer(JSON.stringify({ type: 'answer', sdp }));
-                setP2PStatus('Ответ получен; устанавливаем прямое P2P-соединение…');
-                return;
-            }
-            if (r.status !== 204) throw new Error('Комната сигналинга закрыта или истекла.');
-        } catch (err) { setP2PStatus(err.message || String(err)); return; }
-    }
-    setP2PStatus('Время ожидания ответа истекло. Создайте новое приглашение.');
-}
-if ($('p2pCreateOffer')) $('p2pCreateOffer').onclick = async () => {
-    try {
-        const offer = await p2p.createOffer();
-        $('p2pLocalOffer').value = offer;
-        const stored = await fetch('/api/p2p', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ part: 'offer', sdp: JSON.parse(offer).sdp }) });
-        if (!stored.ok) throw new Error('Не удалось создать комнату сигналинга на сервере.');
-        const { room } = await stored.json();
-        const base = $('tunnelJoinLink')?.value || location.origin;
-        $('p2pInviteLink').value = `${base.replace(/\/$/, '')}/client/?p2p=guest&room=${room}`;
-        if (!$('tunnelJoinLink')?.value) setP2PStatus('Ссылка создана для локальной сети. Для друга через интернет сначала запустите nemesis_p2p.bat.');
-        else setP2PStatus('Короткая ссылка готова. Ожидаем автоматический ответ друга…');
-        void waitForP2PAnswer(room);
-    } catch (err) { setP2PStatus(err.message || String(err)); }
-};
-if ($('p2pApplyAnswer')) $('p2pApplyAnswer').onclick = async () => {
-    try { await p2p.applyAnswer($('p2pRemoteAnswer').value.trim()); }
-    catch (err) { setP2PStatus(err.message || String(err)); }
-};
-if ($('p2pCreateAnswer')) $('p2pCreateAnswer').onclick = async () => {
-    try { $('p2pLocalAnswer').value = await p2p.createAnswer($('p2pRemoteOffer').value.trim()); }
-    catch (err) { setP2PStatus(err.message || String(err)); }
-};
-if ($('p2pCopyOffer')) $('p2pCopyOffer').onclick = () => copyP2PText('p2pLocalOffer');
-if ($('p2pCopyInviteLink')) $('p2pCopyInviteLink').onclick = () => copyP2PText('p2pInviteLink');
-// An invite URL carries the SDP offer in its fragment (never sent to the HTTP server).
-if (p2pRole === 'guest') {
-    const room = new URLSearchParams(location.search).get('room');
-    if (room) setTimeout(async () => {
-        try {
-            const r = await fetch(`/api/p2p?room=${encodeURIComponent(room)}&part=offer`, { cache: 'no-store' });
-            if (!r.ok) throw new Error('Приглашение не найдено или уже истекло.');
-            const { sdp } = await r.json();
-            const answer = await p2p.createAnswer(JSON.stringify({ type: 'offer', sdp }));
-            const stored = await fetch('/api/p2p', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ part: 'answer', room, sdp: JSON.parse(answer).sdp }) });
-            if (!stored.ok) throw new Error('Не удалось отправить ответ ведущему.');
-            $('p2pLocalAnswer').value = answer;
-            setP2PStatus('Ответ отправлен автоматически. Ожидаем прямое соединение…');
-        } catch (err) { setP2PStatus(err.message || String(err)); }
-    }, 0);
-    else try {
-        const encoded = new URLSearchParams(location.hash.slice(1)).get('offer');
-        if (encoded) {
-            const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
-            const offer = decodeURIComponent(escape(atob(normalized + '='.repeat((4 - normalized.length % 4) % 4))));
-            $('p2pRemoteOffer').value = offer;
-            setTimeout(() => $('p2pCreateAnswer').click(), 0);
-        }
-    } catch (err) { setP2PStatus('Не удалось прочитать приглашение из ссылки: ' + (err.message || err)); }
-}
-if ($('p2pCopyAnswer')) $('p2pCopyAnswer').onclick = () => copyP2PText('p2pLocalAnswer');
+if ($('undoAnyoneSelect')) $('undoAnyoneSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
 // ---------------------------------------------------------------------------------------------
@@ -800,7 +684,7 @@ function renderGame() {
         // While the die is being asked for, the scene is frozen: a room revealed by this very move is
         // still lying face down. The die must not name it before the tile has been turned over.
         dice.update(v, app.me, playerName, diceTitleMask(pr));
-        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays();
+        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays(); drawIcons();
         // Nothing that spoils the die result: while the die is on the table the follow-up question
         // (pull an intruder token) stays hidden. It appears once the die has landed — see dice.onLanded.
         $('prompt').classList.add('hidden'); $('menuToggle').classList.add('hidden');
@@ -822,9 +706,9 @@ function renderGame() {
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
-    renderBagStrip(); renderHint(); refreshOverlays();
+    renderBagStrip(); renderHint(); refreshOverlays(); drawIcons();
     const meNow2 = v.players.find(x => x.id === app.me);
-    $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
+    if ($('sheetBtn')) $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName, diceTitleMask(pr));
     tableFx.resume();          // the die is not on the table: whatever the queue holds may play
     renderPilePopups(v); syncPanes();
@@ -835,8 +719,28 @@ function renderTopbar() {
     const v = app.view;
     renderTrack(v);
     $('tbDest').textContent = v.destination;
-    const bk = v.bagKnown; $('tbBag').textContent = v.bagCount + ' (' + Object.entries(bk).map(([k, n]) => bagTokenLabel(k) + ': ' + n).join(' · ') + ')';
-    $('tbMarkers').textContent = (8 - v.fireLeft) + '/8 · ' + (8 - v.malfLeft) + '/8';
+    // The bag is a stack with a count; what is inside it opens under the pointer instead of
+    // stretching the top bar. Counts are the public ones (`bagKnown`), never the hidden values.
+    const bk = v.bagKnown || {};
+    const bagRows = Object.entries(bk).filter(([, n]) => n > 0).sort((a, b) => a[0].localeCompare(b[0]));
+    // The bar clips everything that sticks out of it, so the content is lifted into #tbPop on hover
+    // (the same layer the Computer cell uses): that is what the `itag` class switches on.
+    $('tbBag').innerHTML = v.bagCount + '<span class="ipop"><b>Мешок · ' + v.bagCount + '</b>' +
+        (bagRows.length ? bagRows.map(([k, n]) => '<span class="tbrow">' + esc(bagTokenLabel(k)) + ' ×' + n + '</span>').join('') : '<span class="tbrow">пусто</span>') + '</span>';
+    $('tbBag').classList.toggle('itag', bagRows.length > 0);
+    // A pilot who has looked at the coordinates can see them again at any moment: the top bar's
+    // destination cell carries the same card text, but only for that character.
+    const mine = v.players.find(p => p.id === app.me);
+    const coord = mine && mine.knownCoords ? COORDINATE_CARDS.find(c => c.id === mine.knownCoords) : null;
+    $('tbDest').innerHTML = esc(v.destination) + (coord
+        ? '<span class="ipop"><b>Координаты · пункт ' + esc(v.destination) + '</b>' +
+          ['A', 'B', 'C', 'D'].map(k => '<span class="tbrow">' + k + ': ' + esc(DESTINATION_NAMES[coord[k]] || coord[k]) + '</span>').join('') + '</span>'
+        : '');
+    $('tbDest').classList.toggle('itag', !!coord);
+    $('tbDest').title = coord ? 'Вы уже смотрели координаты — наведите, чтобы увидеть их снова' : 'Пункт назначения';
+    // Printed on the board there are nine cells for fire and nine for malfunctions; the engine keeps
+    // the old counters, so only the reading changes: a ship is not lost on the eighth marker.
+    $('tbMarkers').textContent = (9 - v.fireLeft) + '/9 · ' + (9 - v.malfLeft) + '/9';
     const cc = v.computerCard ? COMPUTER_CARDS[v.computerCard] : null;
     const ccText = cc ? (cc.options ? Object.values(cc.options).map(t => '• ' + t).join('\n') : cc.text) : '';
     $('tbComputer').innerHTML = cc ? esc(cc.name) + '<span class="ipop"><span class="ipart" style="background-image:url(' + computerArt(v.computerCard) + ')"></span><b>' + esc(cc.name) + '</b><span class="pre">' + esc(ccText) + '</span></span>' : '—';
@@ -861,7 +765,7 @@ function renderTopbar() {
         $('tbAdapt').innerHTML = adaptationSlots(v).map(slot => {
             const label = esc(slot.label) + ': ';
             if (slot.status === 'removed') return '<span class="itag">' + label + 'удалена</span>';
-            if (slot.status === 'hidden') return '<span class="itag">' + label + '🔒 скрыта</span>';
+            if (slot.status === 'hidden') return '<span class="itag">' + label + '🔒</span>';
             return '<span class="itag adapt">' + label + esc(slot.name) + '<span class="ipop"><b>🧬 ' + esc(slot.name) + '</b><span>' + esc(slot.text) + '</span></span></span>';
         }).join('<span class="sep"> · </span>');
     } else if (v.enemySet === 'voidseeders') {
@@ -898,8 +802,8 @@ function renderTopbar() {
         app.lastBadgeTurn = v.current;
         if (mineTurn) { badge.classList.remove('flash'); void badge.offsetWidth; badge.classList.add('flash'); setTimeout(() => badge.classList.remove('flash'), 1700); }
     }
-    $('undoBtn').disabled = !app.host || !app.undoDepth;
-    $('undoBtn').title = app.host ? 'Откатить последнее действие (' + (app.undoDepth || 0) + ' в стеке)' : 'Откатывать может только ведущий';
+    $('undoBtn').disabled = !app.canRollBack || !app.undoDepth;
+    $('undoBtn').title = app.canRollBack ? 'Откатить последнее действие (' + (app.undoDepth || 0) + ' в стеке)' : 'Откатывать может только ведущий';
     renderSelfHud();
 }
 
@@ -979,7 +883,7 @@ function showHudPop(tag) {
         const art = itemArt(me.armor.item);
         armor = true;
         html = (art ? '<span class="ipart" style="background-image:url(' + art + ')"></span>' : '') +
-            '<b>🛡 ' + esc(itemLabel(me.armor)) + '</b><span>' + esc(itemTitle(me.armor, v.enemySet)) + '</span>';
+            '<b>🛡 ' + esc(itemLabel(me.armor)) + '</b><span>' + esc(itemTitle(me.armor)) + '</span>';
     } else return;
     el.innerHTML = html;
     el.classList.remove('hidden'); el.classList.toggle('armor', armor); el.classList.add('show');
@@ -994,6 +898,9 @@ function statusName(p) { return ({ active: '', dead: 'ПОГИБ', escaped: 'У�
 
 function renderPlayers() {
     const v = app.view;
+    // The left-hand pane with the other characters was removed from the table; the data still
+    // lives on the sheet (C) and in the self HUD, so the renderer is a no-op without its pane.
+    if (!$('players')) return;
     $('players').innerHTML = v.players.map(p => {
         const me = p.id === app.me;
         const tags = [];
@@ -1019,7 +926,7 @@ function renderPlayers() {
             tags.push('<span class="tag purple" title="С уровня 3 безумие нельзя снизить ниже 3 обычными способами; увеличение выше 5 смертельно">🧠 безумие ' + p.madness + '/5' + typeLabel + '</span>');
         }
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
-        if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor, v.enemySet)) + '">' + itemArtHtml(p.armor, v.enemySet) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
+        if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor)) + '">' + itemArtHtml(p.armor) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
         if (p.signal) tags.push('<span class="tag green">сигнал</span>');
@@ -1030,7 +937,7 @@ function renderPlayers() {
         tags.push('<span class="tag" title="Карт в руке / колоде / сбросе (всего заражений)">🂠 ' + p.handCount + ' / ' + p.deckCount + ' / ' + p.discardCount + (cCount ? ' ☣ Заражений: ' + cCount : '') + '</span>');
         const items = p.items.map(i => {
             const isHeavy = ITEMS[i.item].kind === 'heavy' && !(i.item === 'cuffs' && (i.flipped || (i.charge ?? ITEMS.cuffs.markers) <= 0));
-            return '<span class="itag" title="' + esc(itemTitle(i, v.enemySet)) + '">' + itemArtHtml(i, v.enemySet) + (ITEMS[i.item].weapon ? '🔫' : isHeavy ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>';
+            return '<span class="itag" title="' + esc(itemTitle(i)) + '">' + itemArtHtml(i) + (ITEMS[i.item].weapon ? '🔫' : isHeavy ? '📦' : '🔹') + esc(itemLabel(i)) + '</span>';
         }).join('')
             + p.heavy.map(h => '<span>🧳 ' + ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[h.type] + '</span>').join('')
             // p. 14: another character's light items are hidden; show only how many there are.
@@ -1157,6 +1064,14 @@ function renderPrompt() {
     // pictures. It can be minimised and opened again from the floating button.
     if (pr.kind === 'choice' && !pr.waiting && pr.player === app.me && Array.isArray(pr.options)) {
         const itemOpts = pr.options.filter(o => o.item);
+        const cardOpts = pr.options.filter(o => o.art);
+        // Both kinds of printed choice are made by looking at pictures: an item («Поиск», a crate)
+        // and a mutation card. They open in the same big centred window, never in the corner.
+        if (cardOpts.length >= 2 && cardOpts.length >= pr.options.length - 1) {
+            if (!app.itemPick || app.itemPick.pr !== pr.id) openItemPicker(pr, pr.options);
+            el.classList.add('hidden'); tg.classList.add('hidden');
+            return;
+        }
         if (itemOpts.length >= 2 && itemOpts.length >= pr.options.length - 1) {
             if (!app.itemPick || app.itemPick.pr !== pr.id) openItemPicker(pr, pr.options);
             el.classList.add('hidden'); tg.classList.add('hidden');
@@ -1201,7 +1116,7 @@ function renderPrompt() {
                 '<button class="opt" data-act="' + a.id + '" ' + (a.enabled ? '' : 'disabled') + '><span>' + esc(a.label) + (a.cost ? ' <small>(' + a.cost + ' 🂠)</small>' : '') + '</span>' + (a.reason ? '<span class="why">' + esc(a.reason) + '</span>' : '') + '</button>').join('') + '</div></div>';
             html += '<div><h5>Предметы</h5><div class="opts">' + (pr.items.length ? pr.items.map(i => {
                 const pp = v.players[pr.player]; const inst = pp.items.find(x => x.uid === i.uid) || (pp.armor && pp.armor.uid === i.uid ? pp.armor : null);
-                return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst, v.enemySet) : '') + '">' + (inst ? itemArtHtml(inst, v.enemySet) : '') + '<span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
+                return '<button class="opt" data-item="' + i.uid + '" ' + (i.enabled ? '' : 'disabled') + ' title="' + esc(inst ? itemTitle(inst) : '') + '">' + (inst ? itemArtHtml(inst) : '') + '<span>' + esc(inst ? itemLabel(inst) : i.uid) + (i.cost ? ' <small>(' + i.cost + ' 🂠)</small>' : ' <small>(бесплатно)</small>') + '</span>' + (i.reason ? '<span class="why">' + esc(i.reason) + '</span>' : '') + '</button>';
             }).join('') : '<div class="hint">Нет используемых предметов</div>') + '<div class="hint" style="margin-top:6px">Карты действий — внизу: нажмите на карту, чтобы разыграть.</div></div></div></div>';
             break;
         }
@@ -1356,17 +1271,12 @@ function renderBagStrip() {
 /** Contextual key hints at the bottom of the screen. */
 function renderHint() {
     const v = app.view; if (!v) return;
-    const pr = v.prompt; const hints = [];
-    if (v.enemySet === 'chytrids') hints.push('Правила DLC: нарост не считается боем; споры и мицелий видны в отсеках');
-    if (v.enemySet === 'voidseeders') hints.push('Правила DLC: «взрослый» = шепчущий; логово вызывает шум в конце хода');
-    if (v.enemySet === 'carnomorphs') hints.push('Правила DLC: «взрослый» = падальщик; «Королева» в целях = мясник');
-    if (pr && !pr.waiting && pr.kind !== 'dice' && pr.kind !== 'ack') hints.push('<b>1–9</b> выбор');
-    if (app.canUndo) hints.push('<b>Esc</b> шаг назад');
-    hints.push('<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>Alt</b> названия комнат, неоновые номера на дверях и поиск', '<b>C</b> персонаж', '<b>F</b> к себе', '<b>Q/E</b> поворот', '<b>WASD</b> камера');
+    // Three hints only: the two things a player does with the mouse and the keyboard, and Alt.
+    const hints = ['<b>ЛКМ</b> по комнате — идти, по чужому — атака', '<b>ALT</b> режим отображения', '<b>C</b> персонаж'];
     // The build stamp sits at the end of the hint bar: one glance settles "are you looking at the
     // scene I just changed?" without opening the console.
     const stamp = window.__BUILD ? '<span class="buildtag" title="Версия сборки">сб. ' + window.__BUILD.slice(0, 6) + '</span>' : '';
-    $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>') + stamp;
+    $('hintBar').innerHTML = hints.map(h => '<span>' + h + '</span>').join('<span>·</span>') + (stamp ? '<span>·</span>' + stamp : '');
 }
 function playerName(id) { const v = app.view; return v && v.players[id] ? v.players[id].name : ''; }
 function act(answer) { const pr = app.view && app.view.prompt; if (!pr) return; net.send({ t: 'act', promptId: pr.id, answer }); }
@@ -1377,7 +1287,7 @@ function renderPilePopups(v) {
     const disc = document.querySelector('.pile[data-pile="owndisc"]');
     if (disc && me.discard) {
         const pop = document.createElement('div'); pop.className = 'ppop';
-        pop.innerHTML = '<h5>Мой сброс · ' + me.discard.length + '</h5>' + (me.discard.length ? me.discard.map(c => { const d = describeCard(c, v.enemySet); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('') : '<div>пусто</div>');
+        pop.innerHTML = '<h5>Мой сброс · ' + me.discard.length + '</h5>' + (me.discard.length ? me.discard.map(c => { const d = describeCard(c); return '<div class="' + (d.contam ? 'contam' : '') + '">' + esc(d.name) + '</div>'; }).join('') : '<div>пусто</div>');
         disc.appendChild(pop);
     }
     const own = document.querySelector('.pile[data-pile="own"]');
@@ -1404,7 +1314,21 @@ function renderHand() {
     const pr = v.prompt; const mine = pr && !pr.waiting && pr.player === app.me;
     const menu = mine && pr.kind === 'turn' ? Object.fromEntries(pr.cards.map(c => [c.id, c])) : null;
     const picking = mine && pr.kind === 'cards' ? new Set(pr.cards) : null;
-    el.innerHTML = me.hand.map(c => cardHtml(c, menu ? menu[c] : picking ? { enabled: picking.has(c), reason: picking.has(c) ? '' : 'Нельзя выбрать' } : null, app.selectedCards.has(c), v.enemySet)).join('');
+    if (!me.hand.length) {
+        // Empty hand: the fan disappears and the only thing left to do at that spot is pass (the
+        // printed rule — «Спасовать» — is also the way to draw a new hand). The button keeps the
+        // hand's anchor so the table does not lose the familiar place; outside your turn it is
+        // shown disabled with the reason, instead of the space standing empty.
+        const pass = menuActionOf(mine ? pr : null, 'pass');
+        const enabled = !!(pass && pass.enabled);
+        el.innerHTML = '<button id="handPass" class="hand-pass' + (enabled ? '' : ' off') + '"' + (enabled ? '' : ' disabled') +
+            ' title="' + esc(pass ? (pass.reason || 'Закончить ход и взять новую руку') : 'Не ваш ход') + '">' +
+            '<span class="hp-name">Спасовать</span><span class="hp-sub">' + esc(enabled ? 'закончить ход' : (pass && pass.reason ? pass.reason : 'Не ваш ход')) + '</span></button>';
+        const passBtn = $('handPass');
+        if (passBtn) passBtn.onclick = () => { if (enabled) act({ action: 'pass' }); };
+        return;
+    }
+    el.innerHTML = me.hand.map(c => cardHtml(c, menu ? menu[c] : picking ? { enabled: picking.has(c), reason: picking.has(c) ? '' : 'Нельзя выбрать' } : null, app.selectedCards.has(c))).join('');
     const cards = [...el.querySelectorAll('.card')], mid = (cards.length - 1) / 2;
     cards.forEach((cel, i) => { const k = i - mid; cel.style.setProperty('--fan', (k * 4) + 'deg'); cel.style.setProperty('--lift', (Math.abs(k) * 6) + 'px'); });
     for (const cel of el.querySelectorAll('.card')) cel.onclick = () => {
@@ -1434,7 +1358,7 @@ function onRoomHover(id, x, y) {
     const me = v.players.find(p => p.id === app.me);
     const tile = rs.tile || (r.kind === 'cockpit' ? 'cockpit' : r.kind === 'hibernatorium' ? 'hibernatorium' : r.kind === 'engine' ? 'engine' : null);
     let html = '<b>' + esc(roomLabel(id)) + '</b>';
-    if (tile) html += '<div>' + esc(roomActionText(tile, v.enemySet)) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
+    if (tile) html += '<div>' + esc(ROOM_TILES[tile].action) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
     else if (me && me.knownTiles && me.knownTiles[id]) html += '<div class="dim">Вам известно: ' + esc(ROOM_TILES[me.knownTiles[id]].name) + '</div>';
     else html += '<div class="dim">??? — не разведана</div>';
     const flags = [];
@@ -1487,6 +1411,7 @@ function openWorldPop(title, sub, buttons, anchor) {
             (b.art ? '<span class="art" style="background-image:url(' + b.art + ')"></span>' : '') +
             '<span>' + esc(b.label) + (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + (b.disabled && b.reason ? '<small style="color:#e0917a">' + esc(b.reason) + '</small>' : '') + '</span></button>').join('') + '</div>';
     el.classList.remove('down', 'hidden');
+    drawIcons(el);
     const w = el.offsetWidth, h = el.offsetHeight;
     let x = anchor ? anchor.x - w / 2 : window.innerWidth / 2;
     let y = anchor ? anchor.y - h - 18 : 90;
@@ -1521,7 +1446,7 @@ function onRoomClick(id) {
         const tile = roomTileOf(v, id), def = tile ? ROOM_TILES[tile] : null;
         const a = menuActionOf(menu, 'room');
         openWorldPop(roomLabel(id), def ? def.name : 'Комната ещё не исследована', [{
-            label: 'Действие комнаты:', sub: def ? roomActionText(tile, v.enemySet) : 'Сначала разведайте комнату',
+            label: 'Действие комнаты:', sub: def ? def.action : 'Сначала разведайте комнату',
             disabled: !a || !a.enabled, reason: a ? a.reason : 'Не ваш ход',
             do: () => act({ action: 'room' }),
         }], scene.screenOf('room', id));
@@ -1663,7 +1588,7 @@ function onObjectClick(roomId, index, x, y) {
 // ---------------------------------------------------------------------------------------------
 function openItemPicker(pr, options) {
     app.itemPickMin = false;
-    app.itemPick = { pr: pr.id, count: options.filter(o => o.item).length };
+    app.itemPick = { pr: pr.id, count: options.filter(o => o.item).length || options.length, art: options.some(o => o.art) };
     $('ipTitle').textContent = pr.title || 'Выбор предмета';
     // When the choice is about things I already carry, the backpack is a valid (and prettier) way in.
     const inBag = itemPickMap(pr, myChar()).size;
@@ -1675,7 +1600,8 @@ function openItemPicker(pr, options) {
         invBtn.onclick = () => openSheet();
     } else if (invBtn) invBtn.remove();
     $('ipBody').innerHTML = options.map(o => {
-        const art = o.item ? itemArt(o.item) : null;
+        const art = o.item ? itemArt(o.item) : (o.art ? 'art/' + o.art + '.jpg' : null);
+        const isCard = !o.item && !!o.art;
         const d = o.item ? ITEMS[o.item] : null;
         let weightTag = '';
         if (d || o.kind || o.weight) {
@@ -1689,13 +1615,18 @@ function openItemPicker(pr, options) {
         }
         const deckCls = d && d.deck ? d.deck : '';
         const deckTag = o.tag ? '<span class="tag ' + deckCls + '">' + esc(o.tag) + '</span>' : '';
-        return '<button class="ip-card' + (o.item ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
-            (o.item ? (art ? '<div class="ip-art" style="background-image:url(' + art + ')"></div>' : '<div class="ip-noart">📦</div>') : '') +
-            '<b>' + esc(o.label) + '</b>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') +
+        const halves = isCard
+            ? '<div class="ip-halves"><span class="inf">ЗАРАЖЁН</span><small>' + esc(o.infected || '') + '</small>' +
+              '<span class="clean">НЕ ЗАРАЖЁН</span><small>' + esc(o.clean || '') + '</small></div>'
+            : '';
+        return '<button class="ip-card' + (o.item || isCard ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
+            (o.item || isCard ? (art ? '<div class="ip-art" style="background-image:url(' + art + ')"></div>' : '<div class="ip-noart">📦</div>') : '') +
+            '<b>' + esc(o.label) + '</b>' + halves + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') +
             (o.item ? '<div class="tags">' + deckTag + weightTag + '</div>' : (o.tag ? '<span class="tag">' + esc(o.tag) + '</span>' : '')) +
             '</button>';
     }).join('');
     for (const b of $('ipBody').querySelectorAll('[data-opt]')) b.onclick = () => { const ans = b.dataset.opt; closeItemPicker(); act(ans); };
+    drawIcons($('itemPick'));
     if (!app.itemPickMin) { $('itemPick').classList.remove('hidden'); $('ipRestore').classList.add('hidden'); }
 }
 function closeItemPicker() {
@@ -1707,7 +1638,7 @@ function minimizeItemPicker() {
     if (!app.itemPick) return;
     app.itemPickMin = true;
     $('itemPick').classList.add('hidden');
-    $('ipRestore').textContent = '🃏 Выбор предмета (' + app.itemPick.count + ')';
+    $('ipRestore').textContent = '🃏 ' + (app.itemPick.art ? 'Выбор карты' : 'Выбор предмета') + ' (' + app.itemPick.count + ')';
     $('ipRestore').classList.remove('hidden');
 }
 
@@ -1726,6 +1657,7 @@ function renderEnd() {
         ? 'Вернёт всех в лобби — там можно сменить карту, зерно и драфт персонажей.'
         : 'Новую игру начнёт ведущий.';
     $('endOverlay').classList.remove('hidden');
+    drawIcons();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1745,7 +1677,7 @@ $('menuToggle').onclick = () => {
 };
 $('undoBtn').onclick = () => { if (confirm('Откатить последнее действие? Все игроки получат уведомление.')) net.send({ t: 'undo', steps: 1 }); };
 // collapsible panels (players/objectives → left, log → right, decks → down); state is remembered
-const PANES = { pl: ['playersToggle', '◀', '▶'], rt: ['rightToggle', '▶', '◀'], tb: ['tableToggle', '▼', '▲'] };
+const PANES = { rt: ['rightToggle', '▶', '◀'], tb: ['tableToggle', '▼', '▲'] };
 function syncPanes() {
     for (const [k, [id, open, closed]] of Object.entries(PANES)) { const c = document.body.classList.contains(k + '-collapsed'); $(id).textContent = c ? closed : open; }
     const tb = $('table'); $('tableToggle').style.bottom = document.body.classList.contains('tb-collapsed') ? '4px' : (14 + tb.offsetHeight) + 'px';
@@ -1763,6 +1695,8 @@ for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, () =>
 $('helpBtn').onclick = () => { $('helpBody').innerHTML = HELP; $('helpOverlay').classList.remove('hidden'); };
 /** Close the topmost modal overlay; returns true when something was closed. */
 function closeOverlay() {
+    const warn = $('sheetWarn');
+    if (warn && !warn.classList.contains('hidden')) { warn.classList.add('hidden'); return true; }
     for (const id of ['sheetOverlay', 'deckOverlay', 'helpOverlay', 'saveOverlay']) {
         const el = $(id); if (el && !el.classList.contains('hidden')) { el.classList.add('hidden'); return true; }
     }
@@ -1832,9 +1766,8 @@ function focusMe() {
     const me = v.players.find(p => p.id === app.me);
     if (me) scene.focusRoom(me.room);
 }
-$('sheetBtn').onclick = () => openSheet();
-$('decksBtn').onclick = () => openDeck(app.deckKind || 'event');
-$('focusBtn').onclick = () => focusMe();
+// «Персонаж», «Колоды» и «Я» left the top bar: the sheet opens with C (and a click on the self HUD),
+// the decks open from the piles at the bottom right.
 if ($('fsBtn')) {
     $('fsBtn').onclick = () => {
         if (!document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -1961,6 +1894,9 @@ if ($('saveFileInput')) $('saveFileInput').onchange = e => {
     e.target.value = '';
 };
 $('sheetClose').onclick = () => $('sheetOverlay').classList.add('hidden');
+// The centred warning is dismissed by its button, a click beside it or Esc.
+$('swOk').onclick = () => hideWarn();
+$('sheetWarn').onclick = e => { if (e.target === $('sheetWarn')) hideWarn(); };
 $('deckClose').onclick = () => $('deckOverlay').classList.add('hidden');
 $('sheetOverlay').onclick = e => { if (e.target === $('sheetOverlay')) $('sheetOverlay').classList.add('hidden'); };
 $('ipMin').onclick = () => minimizeItemPicker();
@@ -2068,7 +2004,7 @@ function myHandSlots(me) {
     while (slots.length < limit) slots.push({ ref: null, name: '', kind: 'empty' });
     return slots.slice(0, limit);
 }
-function sheetItemHtml(inst, picks) {
+function sheetItemHtml(inst, picks, actKey) {
     const d = ITEMS[inst.item]; if (!d) return '';
     const art = itemArt(inst.item);
     const meta = [];
@@ -2082,13 +2018,29 @@ function sheetItemHtml(inst, picks) {
     const opt = picks ? picks.get('item:' + inst.uid) : null;
     const itemName = isCuffsFlipped ? 'Наручники (сняты)' : d.name;
     const itemText = isCuffsFlipped ? 'Лёгкий предмет (в рюкзаке). Нельзя передать или сбросить. Наручники сняты с ваших рук.' : (d.text || '');
-    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (opt ? ' pickable' : '') + '" data-item="' + esc(inst.uid) + '"' +
-        (opt ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"' : '') + '>' +
+    // A click either answers the engine's list (opt) or uses the card right here (actKey). Picking
+    // wins: while a prompt waits for a specific item, that is the only meaningful answer.
+    const pick = !!opt;
+    return '<div class="sheet-item' + (d.quest ? ' quest' : '') + (d.kind === 'armor' ? ' armor' : '') + (pick ? ' pickable' : actKey ? ' usable' : '') + '" data-item="' + esc(inst.uid) + '"' +
+        (pick ? ' data-pick="' + esc(opt) + '" title="Нажмите, чтобы выбрать этот предмет"'
+            : actKey ? ' data-act="' + esc(actKey) + '" title="Нажмите, чтобы использовать"' : '') + '>' +
         (art ? '<div class="si-art" style="background-image:url(' + art + ')"></div>' : '') +
         '<div><b>' + esc(itemName) + (d.quest ? ' · квестовый' : '') + (isCuffsFlipped ? ' · перевёрнуты 🔓' : '') + '</b>' + itemDeckBadge(d.deck) + '<small>' + esc(itemText) + '</small>' +
         '<small style="color:#8394a8">' + esc(meta.join(' · ')) + '</small></div>' +
-        (opt ? '<span class="si-pick">Выбрать</span>' : '') + '</div>';
+        (pick ? '<span class="si-pick">Выбрать</span>' : actKey ? '<span class="si-use">Использовать</span>' : '') + '</div>';
 }
+/** A centred warning: an answer the rules will not accept, with the reason the card already
+ *  carries. It never sends anything to the engine — the sheet stays exactly as it was. */
+function warnCentre(text, title) {
+    const box = $('sheetWarn'); if (!box) return;
+    $('swTitle').textContent = title || 'Сейчас нельзя';
+    $('swText').textContent = String(text || '');
+    box.classList.remove('hidden');
+    clearTimeout(warnCentre._t);
+    warnCentre._t = setTimeout(() => box.classList.add('hidden'), 4200);
+}
+function hideWarn() { const box = $('sheetWarn'); if (box) box.classList.add('hidden'); }
+
 function openSheet(quiet, targetPlayerId) {
     const v = app.view; if (!v) return;
     if (targetPlayerId !== undefined) app.sheetPlayer = targetPlayerId;
@@ -2106,6 +2058,33 @@ function openSheet(quiet, targetPlayerId) {
     const quests = items.filter(i => ITEMS[i.item] && ITEMS[i.item].quest && !ITEMS[i.item].weapon);
     const closedQuests = (me.quests || []).filter(q => !q.open);
     const questMenu = isMine && pr && pr.player === me.id ? (pr.actions || []).find(a => a.id === 'quest') : null;
+    // The sheet is also the fastest way to play: when the turn menu is mine, every card, weapon, item
+    // and the mutation card carries the engine's own answer and its own refusal, so a click either
+    // does the action or repeats the printed reason in a centred warning.
+    const turn = isMine && pr && pr.kind === 'turn' && pr.player === me.id && !pr.waiting ? pr : null;
+    const menuCards = turn ? new Map((turn.cards || []).map(c => [c.id, c])) : null;
+    const menuItems = turn ? new Map((turn.items || []).map(i => [i.uid, i])) : null;
+    const menuAction = id => (turn && (turn.actions || []).find(a => a.id === id)) || null;
+    const offTurn = 'Сейчас не ваш ход';
+    const sheetActs = new Map();
+    const registerAct = (key, answer, info, fallback) => {
+        if (!key) return null;
+        sheetActs.set(key, { answer, enabled: !!info && !!info.enabled,
+            reason: info ? (info.reason || '') : fallback });
+        return key;
+    };
+    const actForItem = (inst) => {
+        if (!inst) return null;
+        const d = ITEMS[inst.item] || {};
+        if (d.weapon) {
+            const shoot = menuAction('shoot');
+            return registerAct('shoot:' + inst.uid, { action: 'shoot', weapon: inst.uid }, shoot,
+                turn ? 'Этим оружием сейчас нельзя стрелять' : offTurn);
+        }
+        const info = menuItems ? menuItems.get(inst.uid) : null;
+        if (info || !turn) return registerAct('item:' + inst.uid, { action: 'item', itemId: inst.uid }, info, offTurn);
+        return registerAct('item:' + inst.uid, { action: 'item', itemId: inst.uid }, null, 'Этот предмет нельзя использовать действием');
+    };
     const closedQuestHtml = closedQuests.map(q => {
         const d = ITEMS[q.item] || {};
         const where = !d.questRoom || d.questRoom === 'any' ? 'любая комната'
@@ -2126,15 +2105,22 @@ function openSheet(quiet, targetPlayerId) {
             ((isMine && questMenu && !questMenu.enabled && questMenu.reason) ? '<small style="color:#e2a33f">' + esc(questMenu.reason) + '</small>' : '') +
             '</div>' + (open ? '<span class="si-pick">Открыть</span>' : '') + '</div>';
     }).join('');
-    const armor = me.armor ? sheetItemHtml(me.armor, picks) : '';
+    const armor = me.armor ? sheetItemHtml(me.armor, picks, picks.has('item:' + me.armor.uid) ? null : actForItem(me.armor)) : '';
     const weapons = items.filter(i => ITEMS[i.item] && ITEMS[i.item].weapon);
     const gear = items.filter(i => !(ITEMS[i.item] && (ITEMS[i.item].quest || ITEMS[i.item].weapon)));
     const wounds = (me.wounds || []).map(w => '<div class="sheet-wound"><b>' + esc(WOUNDS[w] ? WOUNDS[w].name : w) + '</b><small>' + esc(WOUNDS[w] ? WOUNDS[w].text : '') + '</small></div>').join('');
     const objs = isMine
         ? ((me.objectives || []).map(o => '<div class="sheet-goal" style="background-image:url(' + objectiveArt(o.kind) + ')"><b>🎯 ' + esc(OBJECTIVES[o.kind][o.id].name) + ' · ' + (o.kind === 'corporate' ? 'корпоративная' : 'личная') + '</b><span>' + esc(objectiveTextOf(OBJECTIVES[o.kind][o.id], v.players, v.enemySet)) + '</span></div>').join('') || '<div class="empty">Цель ещё не выбрана — выберите бесплатным действием.</div>')
         : '<div class="empty">🔒 Карты целей скрыты.</div>';
+    // Cards in hand on the sheet are playable here too: the turn menu's own answer lights them up,
+    // while its refusal («Нельзя в бою», «Нужна карта заражения в руке», …) is shown on the card and
+    // repeated in the centred warning if the player clicks anyway.
     const hand = isMine
-        ? ((me.hand || []).map(c => cardHtml(c, null, false, v.enemySet)).join('') || '<div class="deck-empty">Пусто</div>')
+        ? ((me.hand || []).map(c => {
+            const info = menuCards ? (menuCards.get(c) || { enabled: false, reason: 'Эту карту сейчас нельзя разыграть' })
+                : { enabled: false, reason: pr && pr.player === me.id && !pr.waiting ? 'Сейчас нельзя' : 'Сейчас не ваш ход' };
+            return cardHtml(c, info, false);
+        }).join('') || '<div class="deck-empty">Пусто</div>')
         : '<div class="empty">🔒 Карты в руке скрыты (' + (me.handCount ?? 0) + ' шт.).</div>';
     const chips = [];
     if (me.signal) chips.push('<span class="tag green">сигнал отправлен</span>');
@@ -2189,7 +2175,14 @@ function openSheet(quiet, targetPlayerId) {
 
     const mutation = v.enemySet !== 'carnomorphs' ? '' : (() => {
         const card = CARNOMORPH_MUTATIONS[me.mutationCard];
-        if (card) return '<div class="sheet-sec"><h4>🧬 Мутация' + (me.mutationRevealed ? ' · раскрыта' : ' · только вам') + '</h4><div class="sheet-wound"><i class="mutation-art" style="background-image:url(art/carnomorph/mutation/' + esc(me.mutationCard) + '.jpg)"></i><b>' + esc(card.name) + '</b><small>Заражён: ' + esc(card.infected) + '</small><small>Не заражён: ' + esc(card.clean) + '</small></div></div>';
+        if (card) {
+            const mutationKey = registerAct('mutation', { action: 'mutation' }, menuAction('mutation'),
+                turn ? 'Сейчас мутацию использовать нельзя' : offTurn);
+            return '<div class="sheet-sec"><h4>🧬 Мутация' + (me.mutationRevealed ? ' · раскрыта' : ' · только вам') + '</h4><div class="sheet-wound usable" data-act="' + esc(mutationKey) + '" title="Нажмите, чтобы использовать мутацию">' +
+                '<i class="mutation-art" style="background-image:url(art/carnomorph/mutation/' + esc(me.mutationCard) + '.jpg)"></i><b>' + esc(card.name) + '</b>' +
+                '<small class="inf">ЗАРАЖЁН: ' + esc(card.infected) + '</small><small class="clean">НЕ ЗАРАЖЁН: ' + esc(card.clean) + '</small>' +
+                '<span class="si-use">Использовать</span></div></div>';
+        }
         return '<div class="sheet-sec"><h4>🧬 Мутация</h4><div class="empty">' + (me.hasMutation ? '🔒 Карта мутации скрыта.' : 'Карты мутации нет.') + '</div></div>';
     })();
 
@@ -2210,14 +2203,29 @@ function openSheet(quiet, targetPlayerId) {
         '<div class="sheet-sec"><h4>🎯 Цели · что даёт выполнение</h4>' + objs + '</div>' +
         '<div class="sheet-sec"><h4>🏆 Квестовые предметы</h4><div class="sheet-items">' + (closedQuestHtml + quests.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Нет квестовых предметов.</div>') + '</div>' +
         (closedQuests.length ? '<div class="empty" style="margin-top:6px">Закрытая карта ждёт действия «Открыть квестовый предмет» в комнате, напечатанной на ней. Карта «Инструменты» открывает её где угодно.</div>' : '') + '</div>' +
-        '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(i => sheetItemHtml(i, picks)).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
-        '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(i => sheetItemHtml(i, picks)).join('') + heavy || '<div class="empty">Пусто.</div>') + hiddenItemsNotice + '</div></div>' +
+        '<div class="sheet-sec"><h4>🎒 Рюкзак · оружие</h4><div class="sheet-items">' + (weapons.map(i => sheetItemHtml(i, picks, picks.has('item:' + i.uid) ? null : actForItem(i))).join('') || '<div class="empty">Оружия нет.</div>') + '</div></div>' +
+        '<div class="sheet-sec"><h4>📦 Предметы и костюм</h4><div class="sheet-items">' + (armor + gear.map(i => sheetItemHtml(i, picks, picks.has('item:' + i.uid) ? null : actForItem(i))).join('') + heavy || '<div class="empty">Пусто.</div>') + hiddenItemsNotice + '</div></div>' +
         '<div class="sheet-sec"><h4>🩸 Травмы</h4>' + (wounds || '<div class="empty">Травм нет.</div>') + '</div>' + mutation +
         '<div class="sheet-sec" style="grid-column:1/-1"><h4>🂠 Карты в руке · ' + (me.handCount ?? (me.hand || []).length) + '</h4><div class="sheet-hand">' + hand + '</div></div>' +
         '</div>';
     for (const b of $('sheetBody').querySelectorAll('[data-sheet-player]')) b.onclick = () => openSheet(true, Number(b.dataset.sheetPlayer));
     for (const b of $('sheetBody').querySelectorAll('[data-sheet-deck]')) b.onclick = () => openDeck(b.dataset.sheetDeck);
     for (const b of $('sheetBody').querySelectorAll('[data-pick]')) b.onclick = () => { const id = b.dataset.pick; $('sheetOverlay').classList.add('hidden'); act(id); };
+    // Using a card / weapon / item / mutation right from the sheet.
+    for (const b of $('sheetBody').querySelectorAll('[data-act]')) b.onclick = () => {
+        const a = sheetActs.get(b.dataset.act);
+        if (!a) return;
+        if (!a.enabled) { warnCentre(a.reason || 'Сейчас нельзя'); return; }
+        $('sheetOverlay').classList.add('hidden');
+        act(a.answer);
+    };
+    for (const b of $('sheetBody').querySelectorAll('.sheet-hand .card')) b.onclick = () => {
+        const id = b.dataset.card;
+        const info = menuCards ? menuCards.get(id) : null;
+        if (!info || !info.enabled) { warnCentre(info ? (info.reason || 'Эту карту сейчас нельзя разыграть') : (isMine ? 'Сейчас не ваш ход' : 'Это чужая рука')); return; }
+        $('sheetOverlay').classList.add('hidden');
+        act({ action: 'card', cardId: id });
+    };
     $('sheetOverlay').classList.remove('hidden');
     if (!quiet) Snd.play('click');
 }
@@ -2230,65 +2238,108 @@ function refreshOverlays() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Deck viewer: every face-up pile on the table plus my own discard
+// Deck viewer: the table's decks, read as one horizontal row of cards
 // ---------------------------------------------------------------------------------------------
-const DECK_TITLES = { panic: 'Паника · сброс', event: 'События · сброс', attack: 'Атаки чужих · сброс', queen: 'Здоровье Королевы · открытые', wound: 'Тяжёлые травмы · сброс',
-    green: 'Зелёные предметы · сброс', red: 'Красные предметы · сброс', yellow: 'Жёлтые предметы · сброс', support: 'Поддержка · сброс',
-    computer: 'Компьютер · сброс', feats: 'Подвиги · запас', own: 'Моя колода', owndisc: 'Мой сброс карт действий' };
+// The choice of deck sits ABOVE the row of cards, and the cards themselves open left to right the
+// way the item picker does: a picture, a name, the rules text. A card carries its state in colour —
+// `в колоде` is ordinary, `в руке` is lit up, `сброшена` is faded — so one glance answers "what is
+// still coming, what can I play right now, what is already spent".
+const DECK_TITLES = { panic: 'Паника · сброс', event: 'События · сброс', attack: 'Атаки чужих · сброс', queen: 'Здоровье Королевы',
+    wound: 'Тяжёлые травмы · сброс', computer: 'Компьютер', feats: 'Подвиги · запас', own: 'Мои карты' };
+const DECK_STATE_TAGS = { deck: 'в колоде', hand: 'в руке', active: 'активна', spent: 'сброшена' };
+/** Stable order for a face-down deck: the viewer shows WHAT is in it, never the draw order. */
+const byId = (a, b) => String(a.id || a).localeCompare(String(b.id || b));
+function actionCard(id, state) {
+    const d = describeCard(id);
+    return { name: d.name, text: d.text, art: cardArt(id), state, tag: DECK_STATE_TAGS[state], contam: !!d.contam };
+}
+function computerCard(id, state) {
+    const c = COMPUTER_CARDS[id]; if (!c) return null;
+    return { name: c.name, text: c.text || Object.values(c.options || {}).join(' / '), art: computerArt(id), state, tag: DECK_STATE_TAGS[state] };
+}
+function queenCard(idx, state) {
+    const q = QUEEN_CARDS[idx]; if (!q) return null;
+    return { name: 'Карта здоровья ' + (idx + 1), text: q.text + ' (сбросить ещё: ' + q.extra + ')', art: queenArt(), state, tag: DECK_STATE_TAGS[state] };
+}
 function deckList(kind, v, me) {
     const piles = v.piles || {};
     const list = [];
     if (kind === 'own') {
-        return { note: 'Колода закрыта: видно только количество карт (' + (me ? me.deckCount : 0) + '). Порядок карт не раскрывается.', cards: [] };
-    }
-    if (kind === 'owndisc') {
         if (!me) return { note: 'Вы наблюдатель.', cards: [] };
-        for (const c of (me.discard || [])) { const d = describeCard(c, v.enemySet); list.push({ name: d.name, text: d.text, tag: d.contam ? 'заражение' : '' }); }
-        return { note: 'Карты в вашем сбросе (' + list.length + ').', cards: list };
+        // Deck, hand and discard in one list: the deck as a set (sorted, so the draw order stays
+        // hidden), then the hand lit up, then the discard faded out.
+        for (const id of (me.deck || []).slice().sort()) list.push(actionCard(id, 'deck'));
+        for (const id of (me.hand || [])) list.push(actionCard(id, 'hand'));
+        for (const id of (me.discard || [])) list.push(actionCard(id, 'spent'));
+        return {
+            note: 'Ваши карты действий: ' + (me.deck || []).length + ' в колоде (какие есть — порядок скрыт), ' +
+                (me.hand || []).length + ' в руке (подсвечены) и ' + (me.discard || []).length + ' в сбросе.',
+            cards: list,
+        };
     }
-    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: e.id.startsWith('chyEvent') ? chytridEventText(e) : e.move && e.move.types ? carnomorphEventText(e) : e.text, tag: 'событие', art: eventArt(e.id) }); }
-    if (kind === 'attack') for (const id of (piles.attack || [])) { const a = ATTACK_BY_ID[id]; if (a) list.push({ name: a.name, text: a.text + (a.targets ? ' Цели: ' + a.targets.map(t => INTRUDER_NAMES[t]).join(', ') + '. ' + (!a.id.startsWith('chyAttack') && a.toughness !== undefined ? 'Стойкость: ' + (a.toughness === 'retreat' ? 'отступление' : a.toughness) + '.' : (a.id.startsWith('chyAttack') ? 'Стойкость проверяется кубиком Redux.' : toughnessText(a))) : ''), tag: 'атака', art: attackArt(a.id) }); }
-    if (kind === 'panic') for (const id of (piles.panic || [])) { const c = PANIC_BY_ID[id]; if (c) list.push({ name: c.name, text: c.text + ' (уровень ' + c.level + '+)', tag: 'паника', art: panicArt(id) }); }
-    if (kind === 'queen') for (const idx of (piles.queen || [])) { const q = QUEEN_CARDS[idx]; if (q) list.push({ name: 'Карта здоровья', text: q.text + ' (сбросить ещё: ' + q.extra + ')', tag: 'королева' }); }
-    if (kind === 'wound') for (const w of (piles.wound || [])) list.push({ name: WOUNDS[w] ? WOUNDS[w].name : w, text: WOUNDS[w] ? WOUNDS[w].text : '', tag: 'травма' });
-    if (kind === 'computer') for (const id of (piles.computer || [])) { const c = COMPUTER_CARDS[id]; if (c) list.push({ name: c.name, text: c.text || Object.values(c.options || {}).join(' / '), tag: 'компьютер' }); }
-    if (['green', 'red', 'yellow', 'support'].includes(kind)) for (const key of ((piles.items || {})[kind] || [])) { const it = ITEMS[key]; if (it) list.push({ name: it.name, text: it.text, tag: DECK_NAMES[kind] }); }
+    if (kind === 'computer') {
+        if (v.computerCard) list.push(computerCard(v.computerCard, 'active'));
+        for (const id of (v.computerDeck || []).slice().sort()) list.push(computerCard(id, 'deck'));
+        for (const id of (piles.computer || [])) list.push(computerCard(id, 'spent'));
+        return {
+            note: 'Колода компьютера: активная карта подсвечена, карты в колоде обычные, сброшенные — бледные. ' +
+                'В колоде: ' + (v.computerDeck || []).length + ', сброшено: ' + (piles.computer || []).length + '.',
+            cards: list.filter(Boolean),
+        };
+    }
+    if (kind === 'queen') {
+        for (const idx of (v.queenDeck || []).slice().sort((a, b) => a - b)) list.push(queenCard(idx, 'deck'));
+        for (const idx of (piles.queen || [])) list.push(queenCard(idx, 'spent'));
+        return {
+            note: 'Карты здоровья Королевы: в колоде ' + (v.queenDeck || []).length +
+                ', уже открыто ' + (piles.queen || []).length + '. Урон по Королеве: ' + (v.queenHits || 0) + '.',
+            cards: list.filter(Boolean),
+        };
+    }
     if (kind === 'feats') {
         // The shared Feat pool: after keeping an Objective a player takes one Feat, resolves it and the
         // card leaves the game. Both parts are public, so the viewer shows the pool and what is gone.
         const pool = v.feats || [], used = v.featsUsed || [];
-        for (const k of pool) if (FEATS[k]) list.push({ name: FEATS[k].name, text: FEATS[k].text, tag: 'в запасе', art: 'art/feat/' + k + '.jpg' });
-        for (const k of used) if (FEATS[k] && !pool.includes(k)) list.push({ name: FEATS[k].name, text: FEATS[k].text, tag: 'выбыл из игры', art: 'art/feat/' + k + '.jpg', gone: true });
+        for (const k of pool) if (FEATS[k]) list.push({ name: FEATS[k].name, text: FEATS[k].text, tag: 'в запасе', art: 'art/feat/' + k + '.jpg', state: 'deck' });
+        for (const k of used) if (FEATS[k] && !pool.includes(k)) list.push({ name: FEATS[k].name, text: FEATS[k].text, tag: 'выбыл из игры', art: 'art/feat/' + k + '.jpg', state: 'spent' });
         return {
             note: 'Подвиги — общий запас команды на всю партию: после выбора цели вы берёте из него один подвиг, сразу разыгрываете его (или убираете без розыгрыша) — и карта уходит из игры. В запасе: ' + pool.length + ' из ' + (pool.length + used.length) + '.',
             cards: list,
         };
     }
+    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: eventTextFor(e), tag: 'событие', art: eventArt(e.id), state: 'spent' }); }
+    if (kind === 'attack') for (const id of (piles.attack || [])) { const a = ATTACK_BY_ID[id]; if (a) list.push({ name: a.name, text: a.text + (a.targets ? ' Цели: ' + a.targets.map(t => INTRUDER_NAMES[t]).join(', ') + '. ' + (!a.id.startsWith('chyAttack') && a.toughness !== undefined ? 'Стойкость: ' + (a.toughness === 'retreat' ? 'отступление' : a.toughness) + '.' : (a.id.startsWith('chyAttack') ? 'Стойкость проверяется кубиком Redux.' : toughnessText(a))) : ''), tag: 'атака', art: attackArt(a.id), state: 'spent' }); }
+    if (kind === 'panic') for (const id of (piles.panic || [])) { const c = PANIC_BY_ID[id]; if (c) list.push({ name: c.name, text: c.text + ' (уровень ' + c.level + '+)', tag: 'паника', art: panicArt(id), state: 'spent' }); }
+    if (kind === 'wound') for (const w of (piles.wound || [])) list.push({ name: WOUNDS[w] ? WOUNDS[w].name : w, text: WOUNDS[w] ? WOUNDS[w].text : '', tag: 'травма', state: 'spent' });
     return { note: '', cards: list };
 }
 function openDeck(kind, quiet) {
     const v = app.view; if (!v) return;
-    app.deckKind = kind || 'event';
+    app.deckKind = kind === 'owndisc' ? 'own' : (kind || 'event');
     const me = v.players.find(p => p.id === app.me);
-    const tabs = ['event', 'attack', ...(v.enemySet === 'voidseeders' ? ['panic'] : ['queen']), 'wound', 'green', 'red', 'yellow', 'support', 'computer', 'feats', 'own', 'owndisc'];
-    const counts = { panic: (v.piles && v.piles.panic || []).length, event: (v.piles && v.piles.event || []).length, attack: (v.piles && v.piles.attack || []).length, queen: (v.piles && v.piles.queen || []).length,
-        wound: (v.piles && v.piles.wound || []).length, computer: (v.piles && v.piles.computer || []).length,
-        green: ((v.piles && v.piles.items && v.piles.items.green) || []).length, red: ((v.piles && v.piles.items && v.piles.items.red) || []).length,
-        yellow: ((v.piles && v.piles.items && v.piles.items.yellow) || []).length, support: ((v.piles && v.piles.items && v.piles.items.support) || []).length,
+    const tabs = ['computer', 'own', ...(v.enemySet === 'voidseeders' ? ['panic'] : ['queen']), 'event', 'attack', 'wound', 'feats'];
+    const counts = { panic: (v.piles && v.piles.panic || []).length, event: (v.piles && v.piles.event || []).length,
+        attack: (v.piles && v.piles.attack || []).length,
+        queen: ((v.piles && v.piles.queen || []).length + (v.queenDeck || []).length),
+        wound: (v.piles && v.piles.wound || []).length,
+        computer: ((v.computerDeck || []).length + (v.piles && v.piles.computer || []).length + (v.computerCard ? 1 : 0)),
         feats: (v.feats || []).length,
-        own: me ? me.deckCount : 0, owndisc: me ? me.discardCount : 0 };
+        own: me ? me.deckCount + me.handCount + me.discardCount : 0 };
     const { note, cards } = deckList(app.deckKind, v, me);
     const box = $('deckOverlay').querySelector('.help-box'); const keep = quiet && box ? box.scrollTop : 0;
+    const row = quiet && $('deckBody').querySelector('.deck-row') ? $('deckBody').querySelector('.deck-row').scrollLeft : 0;
     $('deckTitle').textContent = DECK_TITLES[app.deckKind] || 'Колоды';
     $('deckBody').innerHTML = '<div class="deck-tabs">' + tabs.map(k => '<button class="btn small' + (k === app.deckKind ? ' active' : '') + '" data-deck="' + k + '">' + esc(DECK_TITLES[k].split(' · ')[0]) + ' (' + (counts[k] || 0) + ')</button>').join('') + '</div>' +
-        (note ? '<div class="hint" style="margin-bottom:8px">' + esc(note) + '</div>' : '') +
-        (cards.length ? '<div class="deck-grid">' + cards.map(c => '<div class="deck-card' + (c.art ? ' has-art' : '') + (c.gone ? ' gone' : '') + '">' +
+        (note ? '<div class="hint deck-note">' + esc(note) + '</div>' : '') +
+        (cards.length ? '<div class="deck-row">' + cards.map(c =>
+            '<div class="deck-card st-' + esc(c.state || 'deck') + (c.art ? ' has-art' : '') + (c.contam ? ' contam' : '') + '">' +
             (c.art ? '<i class="dart" style="background-image:url(' + esc(c.art) + ')"></i>' : '') +
             (c.tag ? '<span class="tag">' + esc(c.tag) + '</span>' : '') + '<b>' + esc(c.name) + '</b><small>' + esc(c.text || '') + '</small></div>').join('') + '</div>'
             : '<div class="deck-empty">Здесь пусто.</div>');
     for (const b of $('deckBody').querySelectorAll('[data-deck]')) b.onclick = () => openDeck(b.dataset.deck);
     $('deckOverlay').classList.remove('hidden');
     if (keep && box) box.scrollTop = keep;
+    if (row) { const again = $('deckBody').querySelector('.deck-row'); if (again) again.scrollLeft = row; }
     if (!quiet) Snd.play('click');
 }
 
@@ -2304,9 +2355,31 @@ const HELP = `
 <h4>Конец игры</h4><p>Когда время дойдёт до 0 (или сработает самоуничтожение/капсулы): проверяются двигатели (нужно ≥2 исправных), пункт назначения (A–D по тайной карте координат), заражение всех карт выживших и цели.</p>
 <h4>Управление</h4><p>ЛКМ по комнате — идти (спросит «идти или красться»), по чужому — атака своим оружием или ближний бой, по тяжёлому объекту — в какую руку взять. Нажатие мимо окна, <b>Esc</b> или <b>WASD</b> отменяют вопрос. WASD — панорама, ПКМ/СКМ — поворот камеры, колесо — масштаб. Наведите на комнату — подсказка.</p>
 <h4>Горячие клавиши</h4><p><b>Esc</b> — закрыть окно или вернуть свой последний шаг (пока вы выбираете действие). <b>Alt</b> (удерживать) — названия комнат, неоновые номера на дверях коридоров и цвета поиска над комнатами. <b>C</b> — планшет персонажа, <b>F</b> — к своей комнате, <b>Tab</b> — пинг по столу (а если курсор над картой в руке или предметом — показать эту карту всем на 5 секунд, потом она останется в чате), <b>Q</b>/<b>E</b> — повернуть камеру, <b>Enter</b> — подтвердить выбранные карты, <b>1…9</b> — нажать кнопку в окне выбора.</p>
-<h4>Выбор предмета</h4><p>Когда движок просит выбрать предмет (что сбросить, каким оружием стрелять, что передать, в какую руку взять объект), ответить можно тремя способами: кнопкой в списке, в центральном окне с картинками — или <b>прямо в планшете персонажа</b> (клавиша C): нужные предметы и слоты рук подсвечиваются и нажимаются, кнопка «🧍 Персонаж» в это время мигает. Удобно, когда предметов много и по картинке понятнее, чем по названию.</p>
-<h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на мешок или на большую кнопку; внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
-<h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс. Вкладка <b>«Подвиги»</b> показывает общий запас одноразовых карт, которые вы получите за выбор цели: что ещё в запасе и что уже выбыло из игры.</p>
-<h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление.</p>`;
+<h4>Выбор предмета</h4><p>Когда движок просит выбрать предмет (что сбросить, каким оружием стрелять, что передать, в какую руку взять объект), ответить можно тремя способами: кнопкой в списке, в центральном окне с картинками — или <b>прямо в планшете персонажа</b> (клавиша C): нужные предметы и слоты рук подсвечиваются и нажимаются. Там же можно играть карты из руки, использовать предметы, стрелять из оружия (движок спросит цель) и включать мутацию — а если правила не разрешают, по центру экрана появится причина отказа.</p>
+<h4>Мешок и события</h4><p>Жетон из мешка тянет сам игрок — нажмите на большую кнопку в появившейся внизу полосе (сколько жетонов и каких осталось, видно при наведении на «Мешок» в верхней панели); внизу появится, <i>зачем</i> тянули и что вытянули. Карта события остаётся на столе, пока каждый не нажмёт «Готово».</p>
+<h4>Колоды и сбросы</h4><p>Любая стопка внизу справа открывает просмотр колод — выбор колоды сверху, карты одной строкой слева направо, с картинками. В «Моих картах» видно всю колоду, руку и сброс сразу: карты в руке подсвечены, сброшенные — бледные. Так же показаны колода компьютера (активная карта подсвечена) и карты здоровья Королевы. Вкладка <b>«Подвиги»</b> показывает общий запас одноразовых карт, которые вы получите за выбор цели: что ещё в запасе и что уже выбыло из игры.</p>
+<h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление. В настройках лобби есть пункт «Откат хода: любой игрок»: тогда кнопка работает у всех.</p>`;
 
-net.connect();
+// ---------------------------------------------------------------------------------------------
+// One entrance: the game's LAN server
+// ---------------------------------------------------------------------------------------------
+// The kit's dev server (run.bat), the editor (editor.bat) and a file:// page can show this same
+// client, but none of them speaks /ws — the lobby would stay empty and the tab would loop on
+// "Связь с сервером потеряна". The only page that gets a game connection is the one served by
+// nemesis/server.mjs, and that server is the one that injects the build stamp. Everything else gets
+// an instruction instead of a broken table.
+function lanOnlyNotice() {
+    const box = $('lanOnly');
+    if (!box) return;
+    const src = location.protocol === 'file:' ? 'файл на диске' : location.origin;
+    const note = box.querySelector('.lo-src');
+    if (note) note.textContent = 'Эта страница открыта не сервером Nemesis (' + src + '), поэтому у неё ' +
+        'нет игрового сокета. Других подключений к игре нет.';
+    box.classList.remove('hidden');
+}
+// The static page (help, table chrome) and every panel that writes markup without calling
+// drawIcons() still get the drawn icons; chat and tooltips stay as typed.
+drawIcons();
+watchIcons(document);
+if (window.__BUILD) net.connect();   // the LAN server — the only way into the game
+else lanOnlyNotice();

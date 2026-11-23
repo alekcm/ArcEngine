@@ -5,9 +5,10 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     COMBAT_DIE, roll, fmtRoll, needDice, corridorsOf , computerHere } from './core.mjs';
 import { ITEMS, WOUNDS, EVENT_CARDS, ATTACK_CARDS } from '../data/cards.mjs';
 import { CARNOMORPH_ATTACK_CARDS } from '../data/carnomorphs.mjs';
-import { CARNOMORPH_EVENT_CARDS, carnomorphEventText } from '../data/carnomorph-events.mjs';
+import { CARNOMORPH_EVENT_CARDS } from '../data/carnomorph-events.mjs';
+import { eventTextFor } from '../data/event-text.mjs';
 import { VOID_ATTACK_CARDS, VOID_EVENT_CARDS } from '../data/voidseeders.mjs';
-import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, chytridEventText } from '../data/chytrids.mjs';
+import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS } from '../data/chytrids.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits, applyHitsNoRoll, canFire } from './combat.mjs';
@@ -115,8 +116,7 @@ OPS['card.fdAnalysis.place'] = (state, step) => {
         if (step.deck === 'event') {
             const ev = EVENT_BY_ID[id];
             if (!ev) return id;
-            const detail = id.startsWith('carnoEvent') ? carnomorphEventText(ev) : id.startsWith('chyEvent') ? chytridEventText(ev) :
-                ev.text + (ev.move?.types ? ' (Движение: ' + ev.move.types.join(', ') + ', коридор ' + ev.move.num + ')' : ev.intruders ? ' (Движение: ' + ev.intruders + ')' : '');
+            const detail = eventTextFor(ev);
             return ev.name + ' — ' + detail;
         } else {
             const at = ATTACK_BY_ID[id];

@@ -14,7 +14,7 @@ const B = () => window.BABYLON;
 // Face sets in the order they are printed on the dice (Nemesis Redux values).
 const NOISE_FACES = ['1', '1', '2', '2', '3', '3', '4', '4', 'silence', 'danger', 'encounter', 'encounter'];
 // The alternative noise variant: a black d10 with no Encounter faces — 'danger' is printed as
-// claw marks, 'silence' as ✕. Mirrors NOISE_DIE_SAFE on the server.
+// claw marks, 'silence' as a drawn cross. Mirrors NOISE_DIE_SAFE on the server.
 const NOISE10_FACES = ['1', '1', '2', '2', '3', '3', '4', '4', 'danger', 'silence'];
 const COMBAT_FACES = ['crit', '2', '3', '3', '4', '4', '5', '5', '5', '6'];
 // The Battle Suit's printed Blue Combat die: two 2s, three 3s, two 4s, one 5, one 6 and a Critical.
@@ -31,13 +31,45 @@ function faceText(v) {
 }
 /** Short glyph printed on the die face. */
 function faceGlyph(v) {
-    if (v === 'crit') return '☠';
     if (v === 'silence') return '';
     if (v === 'danger') return '!';
-    if (v === 'encounter') return '☠';
+    if (v === 'crit' || v === 'encounter') return '';   // painted by paintSkull / paintAlien
     return String(v);
 }
 function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : die === 'blue' ? 'Синий боевой кубик' : 'Боевой кубик'; }
+
+// Faces are painted, not typeset: a skull and an alien head drawn with arcs keep the die readable
+// on any machine (the emoji font used to decide what a Critical looked like) and match the
+// hand-drawn icon set of the HUD.
+/** Drawn cross for the silent face: a letter-like glyph would have come from the device font. */
+function paintCross(ctx, cx, cy, r, color) {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = Math.max(4, r * 0.22); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+    ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke(); ctx.restore();
+}
+
+function paintSkull(ctx, cx, cy, r, color) {
+    ctx.save(); ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = r * 0.13;
+    ctx.beginPath(); ctx.arc(cx, cy - r * 0.1, r * 0.62, Math.PI, 0); ctx.lineTo(cx + r * 0.42, cy + r * 0.5);
+    ctx.lineTo(cx - r * 0.42, cy + r * 0.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#16161c';
+    ctx.beginPath(); ctx.arc(cx - r * 0.26, cy - r * 0.12, r * 0.17, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.26, cy - r * 0.12, r * 0.17, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(cx - r * 0.1, cy + r * 0.1, r * 0.2, r * 0.22);
+    ctx.strokeStyle = color; ctx.beginPath(); ctx.moveTo(cx - r * 0.28, cy + r * 0.62); ctx.lineTo(cx + r * 0.28, cy + r * 0.62); ctx.stroke();
+    ctx.restore();
+}
+function paintAlien(ctx, cx, cy, r, color) {
+    ctx.save(); ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.8);
+    ctx.bezierCurveTo(cx + r * 0.9, cy - r * 0.7, cx + r * 0.8, cy + r * 0.55, cx, cy + r * 0.8);
+    ctx.bezierCurveTo(cx - r * 0.8, cy + r * 0.55, cx - r * 0.9, cy - r * 0.7, cx, cy - r * 0.8);
+    ctx.fill();
+    ctx.fillStyle = '#16161c';
+    ctx.beginPath(); ctx.ellipse(cx - r * 0.24, cy - r * 0.05, r * 0.2, r * 0.29, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + r * 0.24, cy - r * 0.05, r * 0.2, r * 0.29, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
 
 /** The yaw (about the die's long axis) that points a face normal at the camera. */
 function yawToShowFace(normal) { return Math.PI - Math.atan2(normal.x, normal.z); }
@@ -190,7 +222,8 @@ export class DiceUI {
             if (f.value === 'danger') { ctx.fillStyle = '#7a1010'; ctx.font = 'bold 96px Arial'; }
             else if (f.value === 'encounter') ctx.font = 'bold 84px Arial';
             else ctx.font = 'bold 86px Arial';
-            if (glyph) ctx.fillText(glyph, 64, 70);
+            if (f.value === 'encounter') paintAlien(ctx, 64, 68, 42, '#1b1b1b');
+            else if (glyph) ctx.fillText(glyph, 64, 70);
             f.dt = dt;
             if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
             dt.update();
@@ -229,15 +262,18 @@ export class DiceUI {
             texture.wrapU = B().Texture.CLAMP_ADDRESSMODE; texture.wrapV = B().Texture.CLAMP_ADDRESSMODE;
             const ctx = texture.getContext();
             ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 128, 128);
-            const glyph = kind === 'noise10' && face.value === 'silence' ? '✕' : faceGlyph(face.value);
+            const glyph = faceGlyph(face.value);
             ctx.fillStyle = '#f7f2ea'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             if (kind === 'noise10' && face.value === 'danger') {
                 // Claw marks, as printed on the alternative d10.
                 ctx.strokeStyle = '#f7f2ea'; ctx.lineWidth = 8; ctx.lineCap = 'round';
                 for (let s = 0; s < 3; s++) { ctx.beginPath(); ctx.moveTo(40 + s * 24, 32); ctx.quadraticCurveTo(52 + s * 24, 64, 36 + s * 24, 98); ctx.stroke(); }
+            } else if (face.value === 'crit') {
+                paintSkull(ctx, 64, 66, 44, '#f7f2ea');
+            } else if (kind === 'noise10' && face.value === 'silence') {
+                paintCross(ctx, 64, 66, 34, '#f7f2ea');
             } else {
-                if (face.value === 'crit') ctx.font = 'bold 84px Arial';
-                else ctx.font = 'bold 86px Arial';
+                ctx.font = 'bold 86px Arial';
                 if (glyph) ctx.fillText(glyph, 64, 70);
                 if (/^[69]$/.test(glyph)) ctx.fillRect(44, 112, 40, 6);
             }

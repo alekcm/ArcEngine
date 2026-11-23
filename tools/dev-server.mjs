@@ -15,6 +15,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
 import { execFile } from 'node:child_process';
+import { isNemesisGamePage, nemesisLanOnlyPage } from './game-entry.mjs';
 
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 // Port: --port=N > the PORT environment variable (set by the Claude Code browser
@@ -81,6 +82,13 @@ const server = http.createServer(async (req, res) => {
     return send(res, 400, { 'Content-Type': 'text/plain' }, 'Bad URL');
   }
   if (pathname === '/') pathname = '/index.html';
+
+  // The Nemesis board game is played only through its own LAN server (nemesis.bat): this dev server
+  // has no /ws, so the page would come up as an empty lobby that reconnects for ever. Its modules
+  // stay available — the editor's Nemesis tab loads scene3d.js and tuning.js from there.
+  if (isNemesisGamePage(pathname)) {
+    return send(res, 403, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, nemesisLanOnlyPage());
+  }
 
   // guard against escaping the root
   const filePath = path.join(ROOT, pathname);

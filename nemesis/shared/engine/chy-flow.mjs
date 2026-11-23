@@ -2,6 +2,7 @@
 import { OPS, ask, next, log, player, pname, playersInRoom, intrudersIn, corridorsOf, placeNoise, cardDef, turnOrder } from './core.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { spawnChytrid, placeGerminator, hasChyWeakness, developChyBag } from './chytrids.mjs';
+import { surpriseAttack, encounterLine } from './surprise.mjs';
 
 function noiseAround(state, id) { for (const c of corridorsOf(state, id)) placeNoise(state, c.id); }
 OPS['chy.encounter'] = (state, step) => {
@@ -30,7 +31,12 @@ OPS['chy.encounter'] = (state, step) => {
     }
     const it = spawnChytrid(state, token.type, step.room);
     if (!it) return;
+<<<<<<< HEAD
     if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[it.type] + ' (значение жетона ' + token.value + '); жетон уходит в запас. Если в руке меньше ' + token.value + ' карт (с учётом слабости/эффектов хитридов), чужой сразу атакует.';
+=======
+    if (state.bagLast) state.bagLast.effect = encounterLine(INTRUDER_NAMES[it.type], chySurpriseValue(state, token.value),
+        hasChyWeakness(state, 'heightenedReadiness') ? '«Повышенная готовность»: порог −1.' : '');
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     const then = { ...step, op: 'chy.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {
@@ -40,14 +46,14 @@ OPS['chy.encounter'] = (state, step) => {
             { op: 'predict.spawn', player: holder.id, card, intruder: it.uid, then });
     } else next(state, then);
 };
+/** Printed value of a Chytrid token, tuned by the pack's vulnerability. */
+export function chySurpriseValue(state, value) {
+    return Math.max(1, value - (hasChyWeakness(state, 'heightenedReadiness') ? 1 : 0));
+}
 OPS['chy.encounterSurprise'] = (state, step) => {
     const p = player(state, step.player), it = state.intruders[step.intruder];
     if (!p || p.status !== 'active' || p.room !== step.room || !it || it.room !== step.room || step.noSurprise) return;
-    const threshold = Math.max(1, step.token.value - (hasChyWeakness(state, 'heightenedReadiness') ? 1 : 0));
-    if (p.hand.length < threshold) {
-        log(state, 'Внезапная атака хитрида: карт ' + p.hand.length + ' < ' + threshold + '.', 'combat');
-        next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'surprise' });
-    }
+    surpriseAttack(state, it, p, chySurpriseValue(state, step.token.value));
 };
 OPS['chy.bagDevelop'] = (state, step) => {
     if (!step.token) return;

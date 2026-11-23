@@ -8,6 +8,7 @@ import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom
     clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, hasWeak, canDestroyDoor, inCombat, isContam } from './core.mjs';
 import { hyperAttackStep, ignoresIntruderDoor } from './intruders.mjs';
 import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
+import { surpriseAttack, encounterLine } from './surprise.mjs';
 import { spawnVoid } from './voidseeders.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { INTRUDER_NAMES, INTRUDER_TOKENS } from '../data/cards.mjs';
@@ -297,7 +298,9 @@ OPS['encounter'] = (state, step) => {
         next(state, { ...step, op: 'chy.encounter' }); return;
     }
     if (!token) { log(state, 'Мешок пуст — встречи нет.', 'minor'); return; }
-    if (state.bagLast) state.bagLast.effect = token === 'blank' ? 'Пустой жетон — чужой не появляется.' : 'Появляется «' + INTRUDER_NAMES[token] + '».';
+    if (state.bagLast) state.bagLast.effect = token === 'blank' ? 'Пустой жетон — чужой не появляется.'
+        : encounterLine('«' + INTRUDER_NAMES[token] + '»', { larva: 1, adult: 3, drone: 4, queen: 5 }[token],
+            hasAdapt(state, 'swiftStrikes') && token !== 'larva' ? '«Молниеносные удары»: порог +1.' : '');
     log(state, '👁 Встреча: из мешка — ' + INTRUDER_NAMES[token] + '.', 'combat');
     // Reaction: Field Experience (Xenobiologist) — return the token to the bag and draw another
     if (!step.noFE && fieldExpAsk(state, token, { ...step, op: 'encounter' })) return;
@@ -334,11 +337,7 @@ OPS['encounter.surprise'] = (state, step) => {
     if (p && p.status === 'active' && p.room === roomId && !step.noSurprise) {
         let threshold = { larva: 1, adult: 3, drone: 4, queen: 5 }[token] + (hasAdapt(state, 'swiftStrikes') && token !== 'larva' ? 1 : 0);
         if (hasWeak(state, 'dangerSense')) threshold = Math.max(1, threshold - 1);   // Reaction to Danger weakness
-        const cards = p.hand.length;
-        if (cards < threshold) {
-            log(state, 'Внезапная атака! (карт в руке ' + cards + ' < ' + threshold + ')', 'combat');
-            next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'surprise' });
-        } else log(state, 'Внезапной атаки нет (карт в руке ' + cards + ' ≥ ' + threshold + ').', 'minor');
+        surpriseAttack(state, it, p, threshold);
     }
 };
 /** If the Xenobiologist holds "Field Experience" and has a Tissue sample, offer to redraw the token. `resume` is re-run with token/noFE. */

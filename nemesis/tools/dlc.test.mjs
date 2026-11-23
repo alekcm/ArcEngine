@@ -224,6 +224,8 @@ import { OPS, next, run, answer } from '../shared/engine/core.mjs';
 import { analyzeAdaptation } from '../shared/engine/rooms.mjs';
 import { viewFor } from '../shared/view.mjs';
 import { developCarnomorphBag } from '../shared/engine/carnomorphs.mjs';
+import { CARNOMORPH_EVENT_BY_ID } from '../shared/data/carnomorph-events.mjs';
+import { CHYTRID_EVENT_BY_ID } from '../shared/data/chytrids.mjs';
 
 test('analysis removes hidden or revealed adaptations without exposing hidden identities', () => {
     const s = carnoState(), p = s.players[0]; s.enemySet = 'carnomorphs';
@@ -463,7 +465,7 @@ test('the physical event deck has 20 distinct cards with the printed movement ic
     assert.match(eventLogLines(CARNOMORPH_EVENT_CARDS[7]).join(' '), /тяжёлым объектом/);
 });
 
-test('event movement moves only indicated types, without moving monsters in combat', () => {
+test('event movement moves the whole pack in one direction, without moving monsters in combat', () => {
     const s = carnoState(); s.enemySet = 'carnomorphs';
     const start = Object.keys(s.ship.rooms).find(id => id !== s.players[0].room && s.ship.rooms[id].exits.some(e => (e.nums || [e.num]).includes(2)));
     const edge = s.ship.rooms[start].exits.find(e => (e.nums || [e.num]).includes(2));
@@ -471,8 +473,8 @@ test('event movement moves only indicated types, without moving monsters in comb
     const shambler = spawnCarnomorph(s, 'shambler', start), gorger = spawnCarnomorph(s, 'metagorger', start);
     const inCombat = spawnCarnomorph(s, 'breeder', s.players[0].room);
     OPS['event.movement'](s, { id: 'carnoEvent1' });
-    assert.equal(shambler.room, edge.to); assert.equal(gorger.room, start); assert.equal(inCombat.room, s.players[0].room);
-    assert.deepEqual(s.queue.map(x => x.op), ['carnomorph.eventEffect', 'event.finish', 'phase.cleanup']);
+    assert.equal(shambler.room, edge.to); assert.equal(gorger.room, edge.to); assert.equal(inCombat.room, s.players[0].room);
+    assert.deepEqual(s.queue.map(x => x.op), ['carnomorph.eventEffect', 'event.noise', 'event.finish', 'phase.cleanup']);
 });
 
 test('event finish distinguishes shuffling self, removing self and ordinary discard', () => {
@@ -552,6 +554,11 @@ test('event reveal and mutation selection survive serialization before bag devel
     restored = JSON.parse(JSON.stringify(restored));
     assert.ok(answer(restored, p.id, restored.prompt.id, 'claw'));
     assert.equal(restored.players[0].mutationCard, 'claw');
+    // The card's noise band comes first (Redux: each character rolls), then the bag development.
+    let guard = 0;
+    while (restored.prompt && restored.prompt.kind === 'dice' && guard++ < 5) {
+        assert.ok(answer(restored, restored.prompt.player, restored.prompt.id, 'roll'));
+    }
     assert.deepEqual(restored.eventDiscard, ['carnoEvent19']);
     assert.equal(restored.prompt.kind, 'bag');
 });
@@ -1251,7 +1258,7 @@ test('Carnomorph event face and acknowledgement include movement and adapted eff
     s.fx = []; s.queue = []; s.prompt = null;
     OPS['event.reveal'](s, { id: 'carnoEvent8' });
     const text = s.fx.find(f => f.type === 'event').text;
-    assert.match(text, /Движение: Мясник — коридор 2/);
+    assert.match(text, /Движение: все карноморфы — коридор 2/);
     assert.match(text, /тяжёлым объектом/);
     assert.equal(s.prompt.text, text);
 });
@@ -1294,4 +1301,177 @@ test('Carnomorph airlock failure stops when the ship is destroyed',()=>{
     OPS['carnomorph.eventEffect'](s,{id:'carnoEvent9'});
     assert.equal(s.shipDestroyed,true);assert.equal(s.roomState['003'].malfunction,false);
     assert.deepEqual(s.queue,[{op:'game.end'}]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Blue Metagorger: the development token that changes nothing on the board
+// ---------------------------------------------------------------------------------------------
+test('blue Metagorger during bag development makes every character out of combat roll Noise', () => {
+    const s = carnoState(), p = s.players[0];
+    s.enemySet = 'carnomorphs';
+    p.hand = [];                        // the report came from a player with an empty hand
+    const blue = s.bag.find(t => t && t.type === 'blueMetagorger');
+    assert.ok(blue, 'the initial bag holds two blue tokens');
+    s.bag = s.bag.filter(t => t !== blue);
+    s.queue = []; s.prompt = null; s.resume = null;
+    s.bagLast = { n: 1, token: blue, left: s.bag.length, by: p.id, reason: 'Развитие мешка', meaning: '', effect: '' };
+    next(s, { op: 'carnomorph.bagDevelop', token: blue });
+    run(s);
+    assert.equal(s.prompt && s.prompt.kind, 'dice', 'the noise roll is asked for right away');
+    assert.equal(s.prompt.die, 'noise');
+    assert.match(s.bagLast.effect, /Все персонажи вне боя бросают шум/);
+    assert.match(s.log.map(e => e.text).join('\n'), /Синий глодатель/);
+    // and the token became a red Metagorger token in the bag
+    assert.equal(s.bag.some(t => t && t.id === blue.id), false, 'the blue token went back to the supply');
+    assert.equal(s.bag.filter(t => t && t.type === 'redMetagorger').length, 4); // 3 from setup + 1 for the blue token
+});
+
+test('blue Metagorger still skips the character who is in combat', () => {
+    const s = carnoState(), p = s.players[0];
+    s.enemySet = 'carnomorphs';
+    spawnCarnomorph(s, 'metagorger', p.room);
+    const blue = s.bag.find(t => t && t.type === 'blueMetagorger');
+    s.bag = s.bag.filter(t => t !== blue);
+    assert.deepEqual(developCarnomorphBag(s, blue), []);
+});
+
+test('legacy blue token stored as a bare type name still triggers the rules', () => {
+    const s = carnoState(), p = s.players[0];
+    s.enemySet = 'carnomorphs'; p.hand = [];
+    const steps = developCarnomorphBag(s, 'blueMetagorger');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].op, 'noise.roll');
+});
+
+// ---------------------------------------------------------------------------------------------
+// Ammunition detonation
+// ---------------------------------------------------------------------------------------------
+test('Ammunition Detonation fires the lowest-numbered three-red compartment and its open neighbours', () => {
+    const s = carnoState();
+    s.enemySet = 'carnomorphs';
+    const rooms = Object.keys(s.ship.rooms).sort();
+    for (const id of rooms) { s.roomState[id].tile = undefined; s.roomState[id].explored = true; }
+    // two three-red compartments: only the lower number burns, the other one stays untouched
+    const target = '003', other = '010';
+    s.roomState[target].tile = 'archives';
+    s.roomState[other].tile = 'archives';
+    const exits = s.ship.rooms[target].exits;
+    assert.ok(exits.length >= 2, 'the target compartment has neighbours');
+    s.ship.corridors[exits[0].corridor].door = 'open';
+    s.ship.corridors[exits[1].corridor].door = 'closed';
+    s.fireLeft = 8;
+    for (const id of rooms) s.roomState[id].fire = false;
+    OPS['carnomorph.eventEffect'](s, { id: CARNOMORPH_EVENT_BY_ID['carnoEvent15'].id });
+    assert.equal(s.roomState[target].fire, true, 'the lowest three-red compartment burns');
+    assert.equal(s.roomState[exits[0].to].fire, true, 'fire passes an open door');
+    assert.equal(s.roomState[exits[1].to].fire, false, 'fire does not pass a closed door');
+    assert.equal(s.roomState[other].fire, false, 'only the lowest-numbered compartment is chosen');
+});
+
+// ---------------------------------------------------------------------------------------------
+// One wording for the surprise attack, in every pack
+// ---------------------------------------------------------------------------------------------
+import { surpriseAttack, encounterLine } from '../shared/engine/surprise.mjs';
+import { spawnVoid, initVoidseeders } from '../shared/engine/voidseeders.mjs';
+import { spawnChytrid, placeGerminator, initChytrids } from '../shared/engine/chytrids.mjs';
+
+test('the surprise attack reads the same in all four packs and always says why nothing happened', () => {
+    const base = carnoState();
+    const gorger = spawnCarnomorph(base, 'metagorger', '002');
+    base.players[0].hand = [];
+    surpriseAttack(base, gorger, base.players[0], 3);
+    assert.match(base.log.map(e => e.text).join('\n'), /Внезапная атака: Глодатель нападает на Test \(Солдат\) — карт в руке 0 < 3\./);
+    base.log = [];
+    base.players[0].hand = ['soldier.search#1', 'soldier.repairs#1', 'soldier.rest#1', 'soldier.demolition#1'];
+    surpriseAttack(base, gorger, base.players[0], 3);
+    assert.match(base.log.map(e => e.text).join('\n'), /Внезапной атаки нет: Глодатель не нападает на Test \(Солдат\) — карт в руке 4 ≥ 3\./);
+    assert.equal(encounterLine('«Мясник»', 4), 'Появляется «Мясник» · жетон 4: внезапная атака, если карт в руке меньше 4.');
+});
+
+test('Voidseeder and Chytrid encounters use the shared line with their own threshold', () => {
+    const vs = carnoState(); vs.enemySet = 'voidseeders';
+    initVoidseeders(vs);
+    const nightmare = spawnVoid(vs, 'lurker', '002', true);
+    vs.players[0].room = '002'; vs.players[0].hand = [];
+    OPS['void.encounterSurprise'](vs, { player: 0, room: '002', intruder: nightmare.uid, token: { value: 2 } });
+    assert.match(vs.log.map(e => e.text).join('\n'), /Внезапная атака: .+ нападает на Test \(Солдат\) — карт в руке 0 < 2\./);
+
+    const chy = carnoState(); chy.enemySet = 'chytrids';
+    initChytrids(chy);
+    placeGerminator(chy, '002');
+    const stink = spawnChytrid(chy, 'stinkhorn', '002');
+    chy.players[0].room = '002'; chy.players[0].hand = [];
+    OPS['chy.encounterSurprise'](chy, { player: 0, room: '002', intruder: stink.uid, token: { value: 1 } });
+    assert.match(chy.log.map(e => e.text).join('\n'), /Внезапная атака: Отросток нападает на Test \(Солдат\) — карт в руке 0 < 1\./);
+});
+
+// ---------------------------------------------------------------------------------------------
+// One direction for the whole pack
+// ---------------------------------------------------------------------------------------------
+test('a Chytrid event moves every figure in one direction, spores stay spores', () => {
+    const s = carnoState(); s.enemySet = 'chytrids'; initChytrids(s);
+    const ev = CHYTRID_EVENT_BY_ID['chyEvent12'];   // «Растущий во тьме»: ростки, коридор 3
+    assert.equal(ev.mover, 'stinkhorn');
+    const start = Object.keys(s.ship.rooms).find(id => id !== s.players[0].room && s.ship.rooms[id].exits.some(e => (e.nums || [e.num]).includes(3)));
+    assert.ok(start);
+    const edge = s.ship.rooms[start].exits.find(e => (e.nums || [e.num]).includes(3));
+    s.ship.corridors[edge.corridor].door = 'open';
+    placeGerminator(s, start);
+    placeGerminator(s, edge.to);   // large Chytrids only walk into growth, as printed
+    const stink = spawnChytrid(s, 'stinkhorn', start);
+    const cap = spawnChytrid(s, 'deathcap', start);
+    OPS['chy.eventMovement'](s, { id: 'chyEvent12' });
+    assert.equal(stink.room, edge.to, 'the small figure walks the printed corridor');
+    assert.equal(cap.room, edge.to, 'the large figure walks it too — one direction for the pack');
+});
+
+test('a Voidseeder event moves all nightmares, not only the types on the icon strip', () => {
+    const s = carnoState(); s.enemySet = 'voidseeders'; initVoidseeders(s);
+    const start = Object.keys(s.ship.rooms).find(id => id !== s.players[0].room && s.ship.rooms[id].exits.some(e => (e.nums || [e.num]).includes(1)));
+    const edge = s.ship.rooms[start].exits.find(e => (e.nums || [e.num]).includes(1));
+    s.ship.corridors[edge.corridor].door = 'open';
+    const lurker = spawnVoid(s, 'lurker', start, true);
+    const despoiler = spawnVoid(s, 'despoiler', start, true);
+    // «Аутофобия» lists only [lurker, creeper, despoiler]; the despoiler must move as well.
+    OPS['event.movement'](s, { id: 'voidEvent2' });
+    assert.equal(lurker.room, edge.to);
+    assert.equal(despoiler.room, edge.to);
+});
+
+import { VOID_EVENT_CARDS as VOID_EVENTS } from '../shared/data/voidseeders.mjs';
+import { CHYTRID_EVENT_CARDS as CHY_EVENTS } from '../shared/data/chytrids.mjs';
+import { EVENT_NOISE_TEXT, eventTextFor } from '../shared/data/event-text.mjs';
+
+test('every DLC event carries the Redux noise band in its text and rolls it as its last step', () => {
+    const packs = [['carnomorphs', CARNOMORPH_EVENT_CARDS], ['voidseeders', VOID_EVENTS], ['chytrids', CHY_EVENTS]];
+    const hasRoll = step => !step ? false : step.op === 'noise.roll' || hasRoll(step.then);
+    for (const [pack, cards] of packs) {
+        for (const card of cards) {
+            assert.equal(card.noise, 'all', pack + ': ' + card.id + ' must roll for every character');
+            assert.ok(eventTextFor(card).includes(EVENT_NOISE_TEXT), pack + ': ' + card.id + ' text lacks the noise line');
+            const s = carnoState(); s.enemySet = pack;
+            if (pack === 'carnomorphs') initCarnomorphs(s); else if (pack === 'voidseeders') initVoidseeders(s); else initChytrids(s);
+            OPS['event.noise'](s, { id: card.id });
+            assert.ok(s.queue.some(hasRoll), pack + ': ' + card.id + ' must queue a Noise roll');
+        }
+    }
+});
+
+test('the printed Ammunition Detonation card carries the Redux wording the table reads', () => {
+    const card = CARNOMORPH_EVENT_BY_ID['carnoEvent15'];
+    assert.equal(card.name, 'Детонация амуниции');
+    assert.match(card.text, /^Поместите фишку огня в отсек с тремя красными символами с наименьшим номером и в каждый соседний отсек\./);
+    assert.match(card.text, /Огонь не распространяется через закрытые двери и технические коридоры\./);
+    assert.equal(card.finish, 'remove');
+    assert.match(eventTextFor(card), /Детонация амуниции|тремя красными символами/);
+});
+
+import { readFileSync } from 'node:fs';
+import { dlcReference } from './dlc-reference.mjs';
+
+test('docs/NEMESIS_DLC_REFERENCE.md is the generator output, never a hand copy', () => {
+    const doc = readFileSync(new URL('../../docs/NEMESIS_DLC_REFERENCE.md', import.meta.url), 'utf8');
+    assert.equal(doc, dlcReference(), 'run: node nemesis/tools/dlc-reference.mjs --write');
+    assert.match(doc, /Поместите фишку огня в отсек с тремя красными символами/);
+    assert.match(doc, /Броски шума — последний шаг события/);
 });

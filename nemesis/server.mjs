@@ -235,7 +235,11 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, appearances, ready, socket|null}]
+<<<<<<< HEAD
     settings: { enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: true, alienMode: 'weaknesses' }, poses: {},
+=======
+    settings: { enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: false, alienMode: 'evolutions', undoAnyone: false }, poses: {},
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -277,7 +281,8 @@ function sendState(socket, full) {
     const view = viewFor(game.state, pid, from);
     socket.logSeen = game.state.logSeq;
     socket.send({ t: 'state', you: pid, host: isHost(socket), view, full: !!full, build: BUILD, undoDepth: game.undo.length,
-        canUndo: pid != null && canSelfUndo(pid), history: game.history.slice(-12), poses: full ? game.poses : undefined });
+        canUndo: pid != null && canSelfUndo(pid), canRollBack: isHost(socket) || !!(game.settings.undoAnyone && pid != null),
+        history: game.history.slice(-12), poses: full ? game.poses : undefined });
 }
 
 /** May this player take back their own last answer with Esc? The snapshot must be theirs, must not
@@ -354,6 +359,7 @@ function onMessage(socket, m) {
                 if (typeof m.settings.adaptations === 'string' && ['0', '1', '2', '3', 'all', 'none'].includes(m.settings.adaptations)) game.settings.adaptations = m.settings.adaptations;
                 if (typeof m.settings.noiseVariant === 'boolean') game.settings.noiseVariant = m.settings.noiseVariant;
                 if (m.settings.alienMode === 'evolutions' || m.settings.alienMode === 'weaknesses') game.settings.alienMode = m.settings.alienMode;
+                if (typeof m.settings.undoAnyone === 'boolean') game.settings.undoAnyone = m.settings.undoAnyone;
             }
             if (m.kick !== undefined && isHost(socket)) { const k = game.seats[m.kick]; if (k && k !== seat) { if (k.socket) k.socket.close(); game.seats.splice(m.kick, 1); } }
             broadcastLobby();
@@ -437,14 +443,15 @@ function onMessage(socket, m) {
                 broadcastState(true);
                 return;
             }
-            if (!isHost(socket)) return;
+            // The host rolls the table back; with the lobby option on, any seated player may do it too.
+            if (!isHost(socket) && !(game.settings.undoAnyone && seat)) return;
             // Nothing to take back: answer with the current state instead of popping an empty stack.
             if (!game.undo.length) { sendState(socket, true); return; }
             const n = Math.max(1, Math.min(Number(m.steps) || 1, game.undo.length));
             let entry = null;
             for (let i = 0; i < n; i++) { entry = game.undo.pop(); game.history.pop(); }
             game.state = JSON.parse(entry.json);
-            broadcastNotice('⟲ Ведущий откатил ' + (n === 1 ? 'действие' : n + ' действия') + ': «' + entry.label + '».', 'undo');
+            broadcastNotice('⟲ ' + (isHost(socket) ? 'Ведущий' : seat.name) + ' откатил ' + (n === 1 ? 'действие' : n + ' действия') + ': «' + entry.label + '».', 'undo');
             broadcastState(true);
             break;
         }
