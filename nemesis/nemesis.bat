@@ -18,6 +18,10 @@ if errorlevel 1 (
 )
 set "PORT=8090"
 if not "%~1"=="" set "PORT=%~1"
+rem A checkout that came out of a bad merge dies on "Unexpected token '<<'" before the game
+rem starts. The repair puts back any file that still carries conflict markers and says what it did;
+rem it never touches a file that parses, and it is silent when everything is clean.
+if exist "%~dp0..\tools\repair-checkout.mjs" node "%~dp0..\tools\repair-checkout.mjs"
 start "" /b cmd /c "timeout /t 2 >nul & start http://localhost:%PORT%"
 node server.mjs --port=%PORT%
 if errorlevel 1 pause
