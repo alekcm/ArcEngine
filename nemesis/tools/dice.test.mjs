@@ -15,7 +15,15 @@ import vm from 'node:vm';
 
 // The client loads Babylon as a global; these tests give it the same global in a sandbox.
 const noop = () => {};
-const canvasContext = { clearRect: noop, fillRect: noop, fillText: noop };
+// A canvas 2D context is only a recorder here: every drawing call is a no-op, and individual
+// tests swap `fillText` / `fillRect` to see what the faces print.
+const canvasContext = {
+    clearRect: noop, fillRect: noop, fillText: noop, strokeText: noop, measureText: () => ({ width: 40 }),
+    save: noop, restore: noop, translate: noop, scale: noop, rotate: noop, setTransform: noop,
+    beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, arc: noop, arcTo: noop,
+    ellipse: noop, bezierCurveTo: noop, quadraticCurveTo: noop, fill: noop, stroke: noop,
+    setLineDash: noop, createLinearGradient: () => ({ addColorStop: noop }),
+};
 const el = () => ({
     style: {}, classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
     appendChild: noop, removeChild: noop, getContext: () => canvasContext, addEventListener: noop, removeEventListener: noop,
@@ -310,21 +318,30 @@ test('DICE-10: the noise die still lands on every server value and shows the mat
     }
 });
 
-test('DICE-11: the textures print the glyph for each server die value', () => {
+test('DICE-11: the textures print numbers, and paint the Critical and the encounter mark', () => {
     const drawText = canvasContext.fillText, drawRect = canvasContext.fillRect;
-    const drawn = []; let underlines = 0;
+    const drawArc = canvasContext.arc, drawFill = canvasContext.fill, drawBezier = canvasContext.bezierCurveTo;
+    const drawn = []; let underlines = 0, arcs = 0, fills = 0, curves = 0;
     canvasContext.fillText = glyph => drawn.push(glyph);
     canvasContext.fillRect = (x, y, w, h) => { if (x === 44 && y === 112 && w === 40 && h === 6) underlines++; };
+    canvasContext.arc = () => { arcs++; };
+    canvasContext.fill = () => { fills++; };
+    canvasContext.bezierCurveTo = () => { curves++; };
     try {
         makeTestUI(scene);
+        // Skulls (Critical) and the alien head (Encounter) are drawn with paths, not typed glyphs.
         const glyph = value => value === 'silence' ? '' : value === 'danger' ? '!' :
-            value === 'crit' || value === 'encounter' ? '☠' : String(value);
+            value === 'crit' || value === 'encounter' ? '' : String(value);
         const expected = [NOISE_DIE, COMBAT_DIE, BLUE_DIE].flatMap(values => values.map(glyph).filter(Boolean));
-        assert.deepEqual(drawn, expected, 'every face prints its own value; silence is blank');
+        assert.deepEqual(drawn, expected, 'every number prints itself; silence, Critical and Encounter are drawn');
         assert.equal(underlines, 2, 'the 6 is underlined on both combat dice');
+        assert.equal(drawn.includes('☠'), false, 'no emoji skull is left on the die');
     } finally {
         canvasContext.fillText = drawText;
         canvasContext.fillRect = drawRect;
+        canvasContext.arc = drawArc;
+        canvasContext.fill = drawFill;
+        canvasContext.bezierCurveTo = drawBezier;
     }
 });
 

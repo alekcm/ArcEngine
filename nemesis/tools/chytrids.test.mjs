@@ -242,9 +242,11 @@ test('Chytrid event deck excludes Power Surge and all other card effects are exe
 
 test('event movement grows physical cubes before card effect and event is queued ahead of bag', () => {
     const s=fresh();placeGerminator(s,'002');const ev=CHYTRID_EVENT_CARDS[0];
-    OPS['event.movement'](s,{id:ev.id});assert.deepEqual(s.queue.map(q=>q.op),['chy.eventMovement','chy.eventEffect','event.finish','phase.cleanup']);
+    OPS['event.movement'](s,{id:ev.id});assert.deepEqual(s.queue.map(q=>q.op),['chy.eventMovement','chy.eventEffect','event.noise','event.finish','phase.cleanup']);
     OPS['chy.eventMovement'](s,s.queue.shift());assert.equal(s.roomState['002'].chyGerm.level,2);
-    OPS['chy.eventEffect'](s,s.queue.shift());OPS['event.finish'](s,s.queue.shift());
+    OPS['chy.eventEffect'](s,s.queue.shift());OPS['event.noise'](s,s.queue.shift());
+    for (const step of s.queue.filter(q => q.op === 'noise.roll')) OPS['noise.roll'](s, { ...step, forced: 'silence' });
+    s.queue = s.queue.filter(q => q.op !== 'noise.roll'); OPS['event.finish'](s,s.queue.shift());
     assert.equal(s.queue[0].op,'bag.develop'); assert.ok(s.chyEventRemoved.includes(ev.id));
 });
 
@@ -305,7 +307,16 @@ test('Chytrid full phase survives JSON save through event acknowledgement, bag d
     placeGerminator(s,'002');next(s,{op:'phase.intruder'});run(s);
     assert.equal(s.prompt.kind,'ack');assert.equal(s.prompt.event,'chyEvent1');s=JSON.parse(JSON.stringify(s));s.prompt.flipped=true;
     for(const id of s.prompt.players.slice())assert.equal(answer(s,id,s.prompt.id,'ok'),true);
-    assert.equal(s.prompt.kind,'bag');s=JSON.parse(JSON.stringify(s));assert.equal(answer(s,s.firstPlayer,s.prompt.id,'draw'),true);
+    // Every event now carries the Redux noise band: each character rolls before bag development,
+    // and a «Встреча» face on the noise die may ask for a token first.
+    let guard = 0;
+    while (s.prompt && s.prompt.kind !== 'turn' && guard++ < 20) {
+        const pr = s.prompt;
+        if (pr.kind === 'dice') assert.equal(answer(s, pr.player, pr.id, 'roll'), true);
+        else if (pr.kind === 'bag') assert.equal(answer(s, pr.player, pr.id, 'draw'), true);
+        else if (pr.kind === 'choice') assert.equal(answer(s, pr.player, pr.id, pr.options[0].id), true);
+        else break;
+    }
     assert.equal(s.prompt.kind,'turn');assert.equal(s.time,9);assert.equal(s.round,2);assert.ok(s.chyEventRemoved.includes('chyEvent1'));
     assert.equal(s.bag.includes('blank'),true);assert.ok(s.roomState['002'].chyGerm.level>=2);
 });

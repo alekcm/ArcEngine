@@ -4070,7 +4070,7 @@ export class Scene3D {
         closedDoor.setEnabled(false);
         const noise = B().MeshBuilder.CreateCylinder('noise', { diameter: 1.4, height: 0.12, tessellation: 12 }, S);
         noise.parent = door; noise.position.set(0, 0.1, -2.2); noise.material = M('#f1c40f', 0.9); noise.isPickable = false; noise.setEnabled(false); noise.visibility = 0;   // kept for layout; the ribs of the corridor show noise
-        const noiseLabel = this.makeLabel('nl_' + c.id, '🔊', '', door, 0, 1.4, -2.2, 1.4);
+        const noiseLabel = this.makeLabel('nl_' + c.id, 'icon:speaker', '', door, 0, 1.4, -2.2, 1.4);
         noiseLabel.setEnabled(false);
         // --- the corridor number, stenciled flat on the plate -------------------------------------
         // Not a board and not a billboard: paint on the plate's own steel, the way the "?" is printed
@@ -4194,6 +4194,24 @@ export class Scene3D {
         this.setLabel(plane, big, small);
         return plane;
     }
+    /** Drawn speaker: a cone with three expanding sound arcs. */
+    paintSpeaker(ctx, cx, cy, r, color) {
+        ctx.save(); ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = r * 0.16; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx - r * 0.9, cy - r * 0.28); ctx.lineTo(cx - r * 0.55, cy - r * 0.28);
+        ctx.lineTo(cx - r * 0.05, cy - r * 0.75); ctx.lineTo(cx - r * 0.05, cy + r * 0.75);
+        ctx.lineTo(cx - r * 0.55, cy + r * 0.28); ctx.lineTo(cx - r * 0.9, cy + r * 0.28); ctx.closePath(); ctx.fill();
+        for (let i = 1; i <= 2; i++) {
+            ctx.beginPath(); ctx.arc(cx + r * 0.1, cy, r * (0.3 + i * 0.32), -Math.PI / 3.2, Math.PI / 3.2); ctx.stroke();
+        }
+        ctx.restore();
+    }
+    /** Drawn cross for damage taken (intruder labels). */
+    paintHit(ctx, cx, cy, r, color) {
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx - r * 0.5, cy - r * 0.5); ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
+        ctx.moveTo(cx + r * 0.5, cy - r * 0.5); ctx.lineTo(cx - r * 0.5, cy + r * 0.5); ctx.stroke();
+        ctx.restore();
+    }
     setLabel(plane, big, small, color = '#ffffff') {
         const key = big + '|' + small + '|' + color;
         if (plane.metadata.text === key) return;
@@ -4207,7 +4225,11 @@ export class Scene3D {
         ctx.font = font(size);
         while (size > 26 && ctx.measureText(big).width > 496) { size -= 4; ctx.font = font(size); }
         ctx.fillStyle = color;
-        ctx.fillText(big, 256, small ? 70 + (64 - size) * 0.25 : 100);
+        // A speaker mark for a noise token is drawn, not typed: the emoji font used to decide what
+        // the board's noise warning looked like, and it was the only coloured glyph on the ship.
+        if (big === 'icon:speaker' && this.paintSpeaker) this.paintSpeaker(ctx, 256, small ? 64 : 90, 54, color);
+        else if (big === 'icon:hit' && this.paintHit) this.paintHit(ctx, 256, small ? 64 : 90, 50, color);
+        else ctx.fillText(big, 256, small ? 70 + (64 - size) * 0.25 : 100);
         if (small) { ctx.font = '600 42px Segoe UI, Arial'; ctx.fillStyle = '#dfe6ee'; ctx.fillText(small, 256, 130); }
         dt.update();
     }
@@ -4469,7 +4491,7 @@ export class Scene3D {
             const m = B().MeshBuilder.CreateBox('deb', { width: 0.3, height: 0.06, depth: 0.12 }, S);
             const a = i * 1.3; m.position.set(Math.cos(a) * 1.05, 0.24, Math.sin(a) * 1.05); m.rotation.y = a; m.material = this.M('#3a4148'); m.parent = parent; m.isPickable = false;
         }
-        const tag = this.makeLabel('pode_' + st.num, '№' + st.num + ' ✕', '', parent, 0, 1.1, 0, 1.6);
+        const tag = this.makeLabel('pode_' + st.num, '№' + st.num + ' — сгорела', '', parent, 0, 1.1, 0, 1.6);
         tag.parent = parent;
         owned.push(tag.material);
     }
@@ -4872,7 +4894,9 @@ export class Scene3D {
                 n.faceY = Math.PI * 0.75 + Math.PI;  // default face characters' side
             }
             if (!wasRoom) n.root.rotation.y = n.faceY;
-            this.setLabel(n.label, names[it.type] + (it.hits ? ' ✚' + it.hits : ''), '', '#9cff3b');
+            // Wounds are spelled out on the label's second line: the canvas texture cannot embed the
+            // drawn icon set, and a typed cross glyph depended on the system emoji font.
+            this.setLabel(n.label, names[it.type], it.hits ? 'ранения: ' + it.hits : '', '#9cff3b');
         }
         for (const uid of Object.keys(this.intr)) if (!seen.has(uid)) { dispose(this.intr[uid]); delete this.intr[uid]; }
     }

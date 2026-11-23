@@ -1,4 +1,5 @@
 import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, CHYTRID_WEAKNESSES, chytridEventText } from '/shared/data/chytrids.mjs';
+import { eventTextFor } from '/shared/data/event-text.mjs';
 import { bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mjs';
 // app.js — Nemesis client: lobby, HUD, prompts, hand, log, chat, undo. Talks to server.mjs over
 // WebSocket and renders the 3D board through scene3d.js.
@@ -11,6 +12,8 @@ import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
 import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
+import { iconizeDom, ic } from './icons.mjs';
+import { watchIcons } from './icons.mjs';
 import * as Snd from './sound.js';
 import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
@@ -229,6 +232,10 @@ document.addEventListener('pointerover', e => {
     app.hoverCard = itemEl ? { kind: 'item', uid: itemEl.dataset.item } : null;
 });
 
+/** Hand-drawn icons replace the system emoji everywhere the table can see them. Text nodes only:
+ *  tooltips stay plain text and user chat is skipped (see icons.mjs). */
+function drawIcons(root) { iconizeDom(root || document.body); }
+
 function notice(text, kind) {
     const el = document.createElement('div'); el.className = 'notice ' + (kind || ''); el.textContent = text;
     $('notices').appendChild(el);
@@ -254,6 +261,7 @@ function showCenterTurnBanner(text = 'Ваш ход') {
 // Lobby
 // ---------------------------------------------------------------------------------------------
 function renderLobby() {
+    drawIcons();   // the lobby's own buttons and tabs use the same hand-drawn set
     const L = app.lobby; if (!L) return;
     const previousCharId = app.charId;
     const activePicker = document.activeElement && document.activeElement.matches
@@ -266,6 +274,7 @@ function renderLobby() {
     const inGame = L.phase === 'playing' && app.view;
     $('lobby').classList.toggle('hidden', !!inGame || app.gallery);
     if (inGame) return;
+    drawIcons($('lobby'));
     const mySeat = L.seats.find(s => s.id === app.me);
     if (mySeat) {
         if (document.activeElement !== $('nameInput')) $('nameInput').value = mySeat.name;
@@ -672,7 +681,7 @@ function renderGame() {
         // While the die is being asked for, the scene is frozen: a room revealed by this very move is
         // still lying face down. The die must not name it before the tile has been turned over.
         dice.update(v, app.me, playerName, diceTitleMask(pr));
-        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays();
+        renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderHand(); renderHint(); refreshOverlays(); drawIcons();
         // Nothing that spoils the die result: while the die is on the table the follow-up question
         // (pull an intruder token) stays hidden. It appears once the die has landed — see dice.onLanded.
         $('prompt').classList.add('hidden'); $('menuToggle').classList.add('hidden');
@@ -694,7 +703,7 @@ function renderGame() {
     const selectable = pr && pr.kind === 'room' && !pr.waiting ? pr.rooms : [];
     scene.update(v, ROOM_TILES, INTRUDER_NAMES, selectable);
     renderTopbar(); renderPlayers(); renderLog(); renderHistory(); renderPrompt(); renderHand();
-    renderBagStrip(); renderHint(); refreshOverlays();
+    renderBagStrip(); renderHint(); refreshOverlays(); drawIcons();
     const meNow2 = v.players.find(x => x.id === app.me);
     $('sheetBtn').classList.toggle('attention', !!(meNow2 && itemPickMap(v.prompt, meNow2).size));
     dice.update(v, app.me, playerName, diceTitleMask(pr));
@@ -1029,6 +1038,14 @@ function renderPrompt() {
     // pictures. It can be minimised and opened again from the floating button.
     if (pr.kind === 'choice' && !pr.waiting && pr.player === app.me && Array.isArray(pr.options)) {
         const itemOpts = pr.options.filter(o => o.item);
+        const cardOpts = pr.options.filter(o => o.art);
+        // Both kinds of printed choice are made by looking at pictures: an item («Поиск», a crate)
+        // and a mutation card. They open in the same big centred window, never in the corner.
+        if (cardOpts.length >= 2 && cardOpts.length >= pr.options.length - 1) {
+            if (!app.itemPick || app.itemPick.pr !== pr.id) openItemPicker(pr, pr.options);
+            el.classList.add('hidden'); tg.classList.add('hidden');
+            return;
+        }
         if (itemOpts.length >= 2 && itemOpts.length >= pr.options.length - 1) {
             if (!app.itemPick || app.itemPick.pr !== pr.id) openItemPicker(pr, pr.options);
             el.classList.add('hidden'); tg.classList.add('hidden');
@@ -1276,6 +1293,20 @@ function renderHand() {
     const pr = v.prompt; const mine = pr && !pr.waiting && pr.player === app.me;
     const menu = mine && pr.kind === 'turn' ? Object.fromEntries(pr.cards.map(c => [c.id, c])) : null;
     const picking = mine && pr.kind === 'cards' ? new Set(pr.cards) : null;
+    if (!me.hand.length) {
+        // Empty hand: the fan disappears and the only thing left to do at that spot is pass (the
+        // printed rule — «Спасовать» — is also the way to draw a new hand). The button keeps the
+        // hand's anchor so the table does not lose the familiar place; outside your turn it is
+        // shown disabled with the reason, instead of the space standing empty.
+        const pass = menuActionOf(mine ? pr : null, 'pass');
+        const enabled = !!(pass && pass.enabled);
+        el.innerHTML = '<button id="handPass" class="hand-pass' + (enabled ? '' : ' off') + '"' + (enabled ? '' : ' disabled') +
+            ' title="' + esc(pass ? (pass.reason || 'Закончить ход и взять новую руку') : 'Не ваш ход') + '">' +
+            '<span class="hp-name">Спасовать</span><span class="hp-sub">' + esc(enabled ? 'закончить ход' : (pass && pass.reason ? pass.reason : 'Не ваш ход')) + '</span></button>';
+        const passBtn = $('handPass');
+        if (passBtn) passBtn.onclick = () => { if (enabled) act({ action: 'pass' }); };
+        return;
+    }
     el.innerHTML = me.hand.map(c => cardHtml(c, menu ? menu[c] : picking ? { enabled: picking.has(c), reason: picking.has(c) ? '' : 'Нельзя выбрать' } : null, app.selectedCards.has(c))).join('');
     const cards = [...el.querySelectorAll('.card')], mid = (cards.length - 1) / 2;
     cards.forEach((cel, i) => { const k = i - mid; cel.style.setProperty('--fan', (k * 4) + 'deg'); cel.style.setProperty('--lift', (Math.abs(k) * 6) + 'px'); });
@@ -1359,6 +1390,7 @@ function openWorldPop(title, sub, buttons, anchor) {
             (b.art ? '<span class="art" style="background-image:url(' + b.art + ')"></span>' : '') +
             '<span>' + esc(b.label) + (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + (b.disabled && b.reason ? '<small style="color:#e0917a">' + esc(b.reason) + '</small>' : '') + '</span></button>').join('') + '</div>';
     el.classList.remove('down', 'hidden');
+    drawIcons(el);
     const w = el.offsetWidth, h = el.offsetHeight;
     let x = anchor ? anchor.x - w / 2 : window.innerWidth / 2;
     let y = anchor ? anchor.y - h - 18 : 90;
@@ -1535,7 +1567,7 @@ function onObjectClick(roomId, index, x, y) {
 // ---------------------------------------------------------------------------------------------
 function openItemPicker(pr, options) {
     app.itemPickMin = false;
-    app.itemPick = { pr: pr.id, count: options.filter(o => o.item).length };
+    app.itemPick = { pr: pr.id, count: options.filter(o => o.item).length || options.length, art: options.some(o => o.art) };
     $('ipTitle').textContent = pr.title || 'Выбор предмета';
     // When the choice is about things I already carry, the backpack is a valid (and prettier) way in.
     const inBag = itemPickMap(pr, myChar()).size;
@@ -1547,7 +1579,8 @@ function openItemPicker(pr, options) {
         invBtn.onclick = () => openSheet();
     } else if (invBtn) invBtn.remove();
     $('ipBody').innerHTML = options.map(o => {
-        const art = o.item ? itemArt(o.item) : null;
+        const art = o.item ? itemArt(o.item) : (o.art ? 'art/' + o.art + '.jpg' : null);
+        const isCard = !o.item && !!o.art;
         const d = o.item ? ITEMS[o.item] : null;
         let weightTag = '';
         if (d || o.kind || o.weight) {
@@ -1561,13 +1594,18 @@ function openItemPicker(pr, options) {
         }
         const deckCls = d && d.deck ? d.deck : '';
         const deckTag = o.tag ? '<span class="tag ' + deckCls + '">' + esc(o.tag) + '</span>' : '';
-        return '<button class="ip-card' + (o.item ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
-            (o.item ? (art ? '<div class="ip-art" style="background-image:url(' + art + ')"></div>' : '<div class="ip-noart">📦</div>') : '') +
-            '<b>' + esc(o.label) + '</b>' + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') +
+        const halves = isCard
+            ? '<div class="ip-halves"><span class="inf">ЗАРАЖЁН</span><small>' + esc(o.infected || '') + '</small>' +
+              '<span class="clean">НЕ ЗАРАЖЁН</span><small>' + esc(o.clean || '') + '</small></div>'
+            : '';
+        return '<button class="ip-card' + (o.item || isCard ? '' : ' plain') + '" data-opt="' + esc(o.id) + '">' +
+            (o.item || isCard ? (art ? '<div class="ip-art" style="background-image:url(' + art + ')"></div>' : '<div class="ip-noart">📦</div>') : '') +
+            '<b>' + esc(o.label) + '</b>' + halves + (o.desc ? '<small>' + esc(o.desc) + '</small>' : '') +
             (o.item ? '<div class="tags">' + deckTag + weightTag + '</div>' : (o.tag ? '<span class="tag">' + esc(o.tag) + '</span>' : '')) +
             '</button>';
     }).join('');
     for (const b of $('ipBody').querySelectorAll('[data-opt]')) b.onclick = () => { const ans = b.dataset.opt; closeItemPicker(); act(ans); };
+    drawIcons($('itemPick'));
     if (!app.itemPickMin) { $('itemPick').classList.remove('hidden'); $('ipRestore').classList.add('hidden'); }
 }
 function closeItemPicker() {
@@ -1579,7 +1617,7 @@ function minimizeItemPicker() {
     if (!app.itemPick) return;
     app.itemPickMin = true;
     $('itemPick').classList.add('hidden');
-    $('ipRestore').textContent = '🃏 Выбор предмета (' + app.itemPick.count + ')';
+    $('ipRestore').textContent = '🃏 ' + (app.itemPick.art ? 'Выбор карты' : 'Выбор предмета') + ' (' + app.itemPick.count + ')';
     $('ipRestore').classList.remove('hidden');
 }
 
@@ -1598,6 +1636,7 @@ function renderEnd() {
         ? 'Вернёт всех в лобби — там можно сменить карту, зерно и драфт персонажей.'
         : 'Новую игру начнёт ведущий.';
     $('endOverlay').classList.remove('hidden');
+    drawIcons();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2061,7 +2100,7 @@ function openSheet(quiet, targetPlayerId) {
 
     const mutation = v.enemySet !== 'carnomorphs' ? '' : (() => {
         const card = CARNOMORPH_MUTATIONS[me.mutationCard];
-        if (card) return '<div class="sheet-sec"><h4>🧬 Мутация' + (me.mutationRevealed ? ' · раскрыта' : ' · только вам') + '</h4><div class="sheet-wound"><i class="mutation-art" style="background-image:url(art/carnomorph/mutation/' + esc(me.mutationCard) + '.jpg)"></i><b>' + esc(card.name) + '</b><small>Заражён: ' + esc(card.infected) + '</small><small>Не заражён: ' + esc(card.clean) + '</small></div></div>';
+        if (card) return '<div class="sheet-sec"><h4>🧬 Мутация' + (me.mutationRevealed ? ' · раскрыта' : ' · только вам') + '</h4><div class="sheet-wound"><i class="mutation-art" style="background-image:url(art/carnomorph/mutation/' + esc(me.mutationCard) + '.jpg)"></i><b>' + esc(card.name) + '</b><small class="inf">ЗАРАЖЁН: ' + esc(card.infected) + '</small><small class="clean">НЕ ЗАРАЖЁН: ' + esc(card.clean) + '</small></div></div>';
         return '<div class="sheet-sec"><h4>🧬 Мутация</h4><div class="empty">' + (me.hasMutation ? '🔒 Карта мутации скрыта.' : 'Карты мутации нет.') + '</div></div>';
     })();
 
@@ -2118,7 +2157,7 @@ function deckList(kind, v, me) {
         for (const c of (me.discard || [])) { const d = describeCard(c); list.push({ name: d.name, text: d.text, tag: d.contam ? 'заражение' : '' }); }
         return { note: 'Карты в вашем сбросе (' + list.length + ').', cards: list };
     }
-    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: e.id.startsWith('chyEvent') ? chytridEventText(e) : e.move && e.move.types ? carnomorphEventText(e) : e.text, tag: 'событие', art: eventArt(e.id) }); }
+    if (kind === 'event') for (const id of (piles.event || [])) { const e = EVENT_BY_ID[id]; if (e) list.push({ name: e.name, text: eventTextFor(e), tag: 'событие', art: eventArt(e.id) }); }
     if (kind === 'attack') for (const id of (piles.attack || [])) { const a = ATTACK_BY_ID[id]; if (a) list.push({ name: a.name, text: a.text + (a.targets ? ' Цели: ' + a.targets.map(t => INTRUDER_NAMES[t]).join(', ') + '. ' + (!a.id.startsWith('chyAttack') && a.toughness !== undefined ? 'Стойкость: ' + (a.toughness === 'retreat' ? 'отступление' : a.toughness) + '.' : (a.id.startsWith('chyAttack') ? 'Стойкость проверяется кубиком Redux.' : toughnessText(a))) : ''), tag: 'атака', art: attackArt(a.id) }); }
     if (kind === 'panic') for (const id of (piles.panic || [])) { const c = PANIC_BY_ID[id]; if (c) list.push({ name: c.name, text: c.text + ' (уровень ' + c.level + '+)', tag: 'паника', art: panicArt(id) }); }
     if (kind === 'queen') for (const idx of (piles.queen || [])) { const q = QUEEN_CARDS[idx]; if (q) list.push({ name: 'Карта здоровья', text: q.text + ' (сбросить ещё: ' + q.extra + ')', tag: 'королева' }); }
@@ -2181,4 +2220,26 @@ const HELP = `
 <h4>Колоды и сбросы</h4><p>Любая стопка внизу справа (и кнопка «🃏 Колоды») открывает просмотр: события, атаки чужих, карты здоровья Королевы, тяжёлые травмы, сбросы предметов, компьютер и ваш собственный сброс. Вкладка <b>«Подвиги»</b> показывает общий запас одноразовых карт, которые вы получите за выбор цели: что ещё в запасе и что уже выбыло из игры.</p>
 <h4>Откат</h4><p>Ведущий (👑) может откатить любое количество действий кнопкой «⟲ Откатить ход» — все получают уведомление.</p>`;
 
-net.connect();
+// ---------------------------------------------------------------------------------------------
+// One entrance: the game's LAN server
+// ---------------------------------------------------------------------------------------------
+// The kit's dev server (run.bat), the editor (editor.bat) and a file:// page can show this same
+// client, but none of them speaks /ws — the lobby would stay empty and the tab would loop on
+// "Связь с сервером потеряна". The only page that gets a game connection is the one served by
+// nemesis/server.mjs, and that server is the one that injects the build stamp. Everything else gets
+// an instruction instead of a broken table.
+function lanOnlyNotice() {
+    const box = $('lanOnly');
+    if (!box) return;
+    const src = location.protocol === 'file:' ? 'файл на диске' : location.origin;
+    const note = box.querySelector('.lo-src');
+    if (note) note.textContent = 'Эта страница открыта не сервером Nemesis (' + src + '), поэтому у неё ' +
+        'нет игрового сокета. Других подключений к игре нет.';
+    box.classList.remove('hidden');
+}
+// The static page (help, table chrome) and every panel that writes markup without calling
+// drawIcons() still get the drawn icons; chat and tooltips stay as typed.
+drawIcons();
+watchIcons(document);
+if (window.__BUILD) net.connect();   // the LAN server — the only way into the game
+else lanOnlyNotice();

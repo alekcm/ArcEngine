@@ -254,6 +254,30 @@
 
 <div id="endOverlay" class="overlay hidden"><div class="help-box"><h2>Конец игры</h2><div id="endBody"></div><div class="end-buttons"><button id="restartBtn" class="btn primary">🔄 Новая игра</button></div><p class="hint" id="restartHint"></p></div></div>
 
+<!-- The game has exactly one entrance: its LAN server (nemesis.bat -> server.mjs, WebSocket /ws).
+     The kit's dev server and the editor answer this page with 403; a page opened from disk can
+     still render this note, because it sits OUTSIDE the module (the module's absolute /shared/
+     imports cannot resolve without a server). app.js reveals the same block if it is ever served
+     by something that has no game socket. -->
+<div id="lanOnly" class="hidden">
+    <div class="lo-box">
+        <h1>NEMESIS <span>Redux</span></h1>
+        <p><b>Игра подключается только по локальной сети.</b> Запустите <b>nemesis.bat</b> в корне
+            проекта и откройте адрес, который он напечатает:</p>
+        <p class="lo-addr">на этом компьютере — <code>http://localhost:8090</code><br>
+            для друзей — <code>http://&lt;ваш IP в локальной сети&gt;:8090</code></p>
+        <p class="lo-src"></p>
+    </div>
+</div>
+<script>
+    // Shown unless the game's own LAN server served this page: only it injects the build stamp
+    // (nemesis/server.mjs). app.js reveals the same block when it does load; this covers a page
+    // opened from disk or from a static host, where the module's absolute /shared/ imports fail
+    // before app.js can say anything.
+    addEventListener('DOMContentLoaded', () => {
+        if (!window.__BUILD) document.getElementById('lanOnly').classList.remove('hidden');
+    });
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

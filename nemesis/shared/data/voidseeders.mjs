@@ -92,6 +92,7 @@ const eventRows = [
 const eventSheetOrder = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,17,18,19,15];
 export const VOID_EVENT_CARDS = eventRows.map(([effect, name, num, types, text, finish], index) => Object.freeze({
     id: 'voidEvent' + (index + 1), effect, name, move: { type: 'corridor', num, types }, text,
-    finish: finish || 'discard', sheetIndex: eventSheetOrder[index],
+    // Redux reads one noise band on every event card: each character rolls Noise in turn order.
+    noise: 'all', finish: finish || 'discard', sheetIndex: eventSheetOrder[index],
 }));
 export const VOID_EVENT_BY_ID = Object.fromEntries(VOID_EVENT_CARDS.map(card => [card.id, card]));

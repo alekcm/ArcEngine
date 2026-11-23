@@ -557,3 +557,16 @@ test('isolated server: each enabled DLC starts, hides private state, saves, load
         } finally {host.close();guest.close();child.kill();}
     }
 });
+
+test('ENTRY-01: игра подключается только со страницы своего LAN-сервера', async (t) => {
+    const { child, port } = await startServer(pickPort());
+    t.after(() => { try { child.kill(); } catch { /* gone */ } });
+    const html = await (await fetch('http://127.0.0.1:' + port + '/client/')).text();
+    // The build stamp is the marker the client uses: it exists only on the page this server injects.
+    assert.match(html, /window\.__BUILD = '[a-f0-9]+'/, 'страница сервера несёт штамп сборки');
+    assert.match(CLIENT_SRC, /if \(window\.__BUILD\) net\.connect\(\);/, 'сокет открывается только со страницы сервера');
+    assert.match(CLIENT_SRC, /else lanOnlyNotice\(\);/, 'любая другая страница получает инструкцию, а не пустое лобби');
+    assert.match(CLIENT_HTML, /id="lanOnly"/, 'инструкция лежит в самой странице (видна и без модуля)');
+    assert.match(CLIENT_HTML, /Запустите <b>nemesis\.bat<\/b>/, 'инструкция называет nemesis.bat');
+    assert.doesNotMatch(CLIENT_SRC, /^\s*net\.connect\(\);\s*$/m, 'безусловного подключения нет');
+});

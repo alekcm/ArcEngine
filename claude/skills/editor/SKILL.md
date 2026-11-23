@@ -56,6 +56,11 @@ The board of the Nemesis game (a separate game in `nemesis/`, its own server) is
 the same window: the tab swaps the location view for `#nemesis-canvas` (`body.nemesis-tab` hides the
 location toolbar and chips). No separate page, no extra .bat.
 
+The GAME itself is not opened from here: `/nemesis/client/` and `/nemesis/client/index.html` answer
+`403` with a note (`tools/game-entry.mjs`) — it has exactly one entrance, the LAN server
+(`nemesis/nemesis.bat` → `nemesis/server.mjs`, WebSocket `/ws`). The tab imports the client's
+modules from the same folder (`scene3d.js`, `tuning.js`), and those stay served.
+
 **Parts.** `Scene3D` keeps a registry of every mesh it builds: the id is `"<owner>#<n>"`, the owner
 is `room:<id>` (floor and walls), `room:<id>:shell`, `room:<id>:obj`, `room:<id>:dyn`, `cor:<id>`
 or `hull`, and `n` restarts in every `owner()` step — so an id means the same part on every build.

@@ -53,9 +53,12 @@ const E = [
  ['regrowth','Отрастание','deathcap',[3,4],['purple'],'Верните погибшего отростка на планшет и жетон в мешок; споры в соседних с отростками отсеках.'],
 ];
 const eventSheetOrder = [0,19,3,9,16,2,12,5,14,6,1,11,17,4,15,18,10,7,8,13];
-export const CHYTRID_EVENT_CARDS = E.map(([effect,name,mover,numbers,growth,text,finish], i) => Object.freeze({ id:'chyEvent'+(i+1), effect,name,mover,numbers,growth,text,finish:finish||'discard',sheetIndex:eventSheetOrder[i], move:{type:'none'}, noise:'none' }));
+export const CHYTRID_EVENT_CARDS = E.map(([effect,name,mover,numbers,growth,text,finish], i) => Object.freeze({ id:'chyEvent'+(i+1), effect,name,mover,numbers,growth,text,finish:finish||'discard',sheetIndex:eventSheetOrder[i], move:{type:'none'}, noise:'all' }));
 export const CHYTRID_EVENT_BY_ID = Object.fromEntries(CHYTRID_EVENT_CARDS.map(c => [c.id,c]));
 export function chytridEventText(c) {
-    const kind = { growth:'распространение спор', stinkhorn:'отростки', deathcap:'шляпки', chyQueen:'королева' }[c.mover];
-    return 'Движение: ' + kind + ', коридоры ' + c.numbers.join(' и ') + '. Рост: ' + (c.growth.join(', ') || 'нет') + '. ' + c.text;
+    // One direction for the whole pack, like Redux. «Рост» cards move spores (they are not figures),
+    // every other card moves all Chytrid miniatures through the printed corridors.
+    const kind = c.mover === 'growth' ? 'споры' : 'все хитриды';
+    return 'Движение: ' + kind + ', коридоры ' + c.numbers.join(' и ') + '. Рост: ' + (c.growth.join(', ') || 'нет') + '. ' +
+        c.text + ' Бросок кубика: каждый персонаж делает бросок шума.';
 }

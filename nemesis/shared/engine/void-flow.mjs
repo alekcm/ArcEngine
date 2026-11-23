@@ -6,6 +6,7 @@ import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { spawnVoid, encounterVoidType, returnVoidTokenToSupply, hasVoidWeakness, voidPowerCheck, dissipateVoid } from './voidseeders.mjs';
 import { addVoidToken } from './void-bag.mjs';
 import './void-panic.mjs';
+import { surpriseAttack, encounterLine } from './surprise.mjs';
 
 function noiseAround(state, roomId) { for (const c of corridorsOf(state, roomId)) placeNoise(state, c.id); }
 OPS['void.encounter'] = (state, step) => {
@@ -22,7 +23,8 @@ OPS['void.encounter'] = (state, step) => {
     if (!p || p.status !== 'active' || p.room !== step.room) return;
     const requested = encounterVoidType(state, p), it = spawnVoid(state, requested, step.room, true);
     if (!it) { log(state, 'Нет доступных фигурок кошмаров для столкновения.', 'minor'); return; }
-    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[it.type] + ', значение жетона ' + token.value + '.';
+    if (state.bagLast) state.bagLast.effect = encounterLine(INTRUDER_NAMES[it.type], voidSurpriseValue(state, token.value),
+        hasVoidWeakness(state, 'dangerReaction') ? '«Реакция на опасность»: порог −1.' : '');
     const then = { ...step, op: 'void.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {
@@ -34,14 +36,14 @@ OPS['void.encounter'] = (state, step) => {
     }
     next(state, then);
 };
+/** Printed value of a Nightmare token, tuned by the pack's vulnerability. */
+export function voidSurpriseValue(state, value) {
+    return Math.max(1, value - (hasVoidWeakness(state, 'dangerReaction') ? 1 : 0));
+}
 OPS['void.encounterSurprise'] = (state, step) => {
     const p = player(state, step.player), it = state.intruders[step.intruder];
     if (!p || p.status !== 'active' || p.room !== step.room || !it || it.room !== step.room || step.noSurprise) return;
-    const value = Math.max(1, step.token.value - (hasVoidWeakness(state, 'dangerReaction') ? 1 : 0));
-    if (p.hand.length < value) {
-        log(state, 'Внезапная атака кошмара: карт ' + p.hand.length + ' < ' + value + '.', 'combat');
-        next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'surprise' });
-    }
+    surpriseAttack(state, it, p, voidSurpriseValue(state, step.token.value));
 };
 OPS['void.surprise'] = (state, step) => {
     const p = player(state, step.player);

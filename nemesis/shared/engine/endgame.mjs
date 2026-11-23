@@ -5,6 +5,7 @@ import { eclosionProcedure } from './actions.mjs';
 import { shuffle } from '../rng.mjs';
 import { OBJECTIVES, COORDINATE_CARDS, DESTINATION_NAMES, ITEMS, FEATS, objectiveTextOf } from '../data/cards.mjs';
 import { CARNOMORPH_MUTATIONS } from '../data/carnomorphs.mjs';
+import { mutationOptions } from './carnomorphs.mjs';
 
 function objectiveOf(p) { return p.objective || p.objectives[0]; }
 function defOf(p) { const ob = objectiveOf(p); return OBJECTIVES[ob.kind][ob.id]; }
@@ -137,7 +138,7 @@ OPS['game.carnomorphFinal'] = (state, step) => {
             next(state, { op: 'game.carnomorphDraw', player: p.id, then: after }); return;
         }
         ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Финальная проверка: выберите карту мутации',
-            options: offered.map(id => ({ id, label: CARNOMORPH_MUTATIONS[id].name, desc: 'Заражён: ' + CARNOMORPH_MUTATIONS[id].infected + ' Не заражён: ' + CARNOMORPH_MUTATIONS[id].clean })) },
+            options: mutationOptions(offered) },
             { op: 'game.carnomorphPick', player: p.id, offered, then: after });
         return;
     }

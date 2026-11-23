@@ -3,6 +3,7 @@
 import { randInt, shuffle } from '../rng.mjs';
 import { CARNOMORPH_ATTACK_CARDS, CARNOMORPH_ATTACK_BY_ID, CARNOMORPH_ADAPTATIONS, CARNOMORPH_MUTATIONS } from '../data/carnomorphs.mjs';
 import { repelIntruder } from './intruders.mjs';
+import { surpriseAttack, encounterLine } from './surprise.mjs';
 import { initialExpansionBag } from '../dlc.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { OPS, ask, log, next, intrudersIn, playersInRoom, room, roomName, tileOf, spawnIntruder, removeIntruder, loseHealth, gainContamination, killPlayer, turnOrder, corridorsOf, placeNoise, cardDef, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, fx } from './core.mjs';
@@ -234,7 +235,7 @@ export function resolveCarnomorphEncounter(state, step) {
     state.carnomorphSupply.push(token);
     const it = spawnCarnomorph(state, type, step.room);
     if (!it) { noiseAround(state, step.room); return; }
-    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[type] + ', значение жетона ' + token.value + '.';
+    if (state.bagLast) state.bagLast.effect = encounterLine(INTRUDER_NAMES[type], token.value, carnomorphSurpriseNote(state, token.value));
     const continuation = { ...step, op: 'carnomorph.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {
@@ -250,15 +251,24 @@ OPS['carnomorph.encounterSurprise'] = (state, step) => {
     const it = state.intruders[step.intruder];
     const p = step.player == null ? null : state.players[step.player];
     if (!it || it.room !== step.room || !p || p.status !== 'active' || p.room !== step.room || step.noSurprise) return;
-    const bonus = hasCarnomorphAdaptation(state, 'acceleration') ? 1 : 0;
-    if (p.hand.length < step.token.value + bonus)
-        next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'surprise' });
+    surpriseAttack(state, it, p, carnomorphSurpriseValue(state, step.token.value));
 };
+
+/** Surprise value of a Carnomorph token, with the pack's Adaptation applied. */
+export function carnomorphSurpriseValue(state, value) {
+    return Math.max(1, value + (hasCarnomorphAdaptation(state, 'acceleration') ? 1 : 0));
+}
+function carnomorphSurpriseNote(state, value) {
+    return hasCarnomorphAdaptation(state, 'acceleration') ? '«Ускорение»: порог +1.' : '';
+}
 
 /** Resolve the expansion's bag-development token, returning queued actions in execution order. */
 export function developCarnomorphBag(state, token) {
     if (!token) return [];
-    if (token === 'blank') {
+    // Old saves and a few test fixtures still carry the token as a bare type name. The rules only
+    // care about the type here, so accept both shapes instead of dropping the token's effect.
+    const type = typeof token === 'string' ? token : token.type;
+    if (type === 'blank') {
         for (const it of Object.values(state.intruders)) {
             if (it.type !== 'shambler' || playersInRoom(state, it.room).length) continue;
             removeIntruder(state, it.uid, false);
@@ -268,13 +278,19 @@ export function developCarnomorphBag(state, token) {
         state.bag.push('blank');
         return allNoiseSteps(state);
     }
-    if (!tokenRank[token.type]) throw new Error('Invalid Carnomorph token');
-    if (token.type === 'blueMetagorger') {
-        state.carnomorphSupply.push(token);
+    if (!tokenRank[type]) throw new Error('Invalid Carnomorph token');
+    if (type === 'blueMetagorger') {
+        // Printed: remove this token from the bag, put one Metagorger token into it, then EVERY
+        // player rolls Noise in turn order (a Character in combat does not roll). The blue token is
+        // the only development token that changes nothing on the board, so without this line the
+        // table saw a token come out and nothing happen at all.
+        if (typeof token === 'object') state.carnomorphSupply.push(token);
         addCarnomorphToken(state, 'metagorger');
+        if (state.bagLast) state.bagLast.effect = 'Синий глодатель: жетон в запас, в мешок — 1 красный глодатель. Все персонажи вне боя бросают шум по порядку хода.';
+        log(state, 'Синий глодатель: в мешок добавлен красный глодатель; все персонажи вне боя бросают шум.', 'event');
         return allNoiseSteps(state);
     }
-    if (token.type === 'redMetagorger') {
+    if (type === 'redMetagorger') {
         state.bag.push(token);
         const targetRooms = new Set();
         for (const it of Object.values(state.intruders)) if (it.type === 'metagorger') targetRooms.add(it.room);
@@ -287,7 +303,7 @@ export function developCarnomorphBag(state, token) {
         for (const id of [...targetRooms].sort()) spawnCarnomorph(state, 'metagorger', id);
         return [];
     }
-    if (token.type === 'butcher') {
+    if (type === 'butcher') {
         state.carnomorphSupply.push(token);
         const p = state.players[state.firstPlayer];
         if (!p || p.status !== 'active' || p.pod) return [];
@@ -295,6 +311,7 @@ export function developCarnomorphBag(state, token) {
         return it ? [{ op: 'encounter', player: p.id, room: p.room, reason: 'Мясник: столкновение при развитии мешка' }] : [];
     }
     state.bag.push(token);
+    if (state.bagLast) state.bagLast.effect = 'Жетон возвращён в мешок; все персонажи вне боя бросают шум по порядку хода.';
     return allNoiseSteps(state);
 }
 OPS['carnomorph.encounter'] = (state, step) => resolveCarnomorphEncounter(state, step);
@@ -310,6 +327,18 @@ export function removeCarnomorphMutation(state, p) {
     return true;
 }
 
+/** The two printed halves of a mutation card, as a client-ready choice.
+ *
+ *  The physical card is picked by looking at it: the client draws the card face (`art/…`) and
+ *  prints «ЗАРАЖЁН» in red and «НЕ ЗАРАЖЁН» in green, exactly like the card itself, instead of one
+ *  grey line of text. */
+export function mutationOptions(ids) {
+    return ids.map(id => {
+        const card = CARNOMORPH_MUTATIONS[id];
+        return { id, label: card.name, art: 'carnomorph/mutation/' + id, infected: card.infected, clean: card.clean };
+    });
+}
+
 /** Gaining a mutation card is a secret 2-to-1 choice; unused cards return to the deck. */
 OPS['carnomorph.gainCard'] = (state, step) => {
     const p = state.players[step.player];
@@ -318,8 +347,7 @@ OPS['carnomorph.gainCard'] = (state, step) => {
     if (!cards.length) { log(state, 'Колода мутаций пуста.', 'minor'); return; }
     if (cards.length === 1) { p.mutationCard = cards[0]; p.mutationRevealed = false; return; }
     ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Выберите карту мутации',
-        options: cards.map(id => ({ id, label: CARNOMORPH_MUTATIONS[id].name,
-            desc: 'Заражён: ' + CARNOMORPH_MUTATIONS[id].infected + ' Не заражён: ' + CARNOMORPH_MUTATIONS[id].clean })) },
+        options: mutationOptions(cards) },
         { op: 'carnomorph.pickMutation', player: p.id, cards });
 };
 OPS['carnomorph.pickMutation'] = (state, step) => {

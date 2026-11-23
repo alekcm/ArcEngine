@@ -2,12 +2,13 @@
 import { shuffle } from '../rng.mjs';
 import { CARNOMORPH_EVENT_CARDS, CARNOMORPH_EVENT_BY_ID } from '../data/carnomorph-events.mjs';
 import { OPS, next, log, pname, room, roomName, playersInRoom, intrudersIn, removeIntruder,
-    placeFire, removeFire, placeMalfunction, placeNoise, corridorsOf, findRoomsByTile, turnOrder,
+    placeFire, removeFire, placeMalfunction, placeNoise, corridorsOf, findRoomsByTile, tileOf, turnOrder,
     drawCards, discardCard, isContam, isInfected, canDestroyDoor } from './core.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { hasCarnomorphAdaptation, spawnCarnomorph, addCarnomorphToken } from './carnomorphs.mjs';
 import { startSelfDestruct } from './events.mjs';
 import { hyperAttackStep } from './intruders.mjs';
+import { ROOM_TILES } from '../ship.mjs';
 
 const ranks = new Set(['metagorger', 'shambler', 'breeder', 'butcher']);
 const heavy = new Set(['egg', 'carcass', 'charCorpse', 'corpse']);
@@ -123,7 +124,26 @@ OPS['carnomorph.eventEffect'] = (state, step) => {
         case 'beastOnHunt': case 'markedPrey': case 'quarantine':
             log(state, 'Слизь не используется: зависящий от неё эффект события пропущен.', 'minor');
             break;
-        case 'detonation': case 'decompression': case 'structuralWeakness':
+        case 'detonation': {
+            // Printed (Redux wording): fire in the lowest-numbered compartment with three red item
+            // symbols and in every compartment next to it. Fire does not spread through closed
+            // doors or technical corridors — a technical corridor is not a room exit, so only the
+            // door check matters here.
+            const target = Object.keys(state.ship.rooms).sort().find(id => {
+                const printed = tileOf(state, id);
+                return printed && ROOM_TILES[printed] && ROOM_TILES[printed].items.filter(x => x === 'red').length >= 3;
+            });
+            if (!target) { log(state, 'Детонация амуниции: отсека с тремя красными значками нет — эффект пропущен.', 'minor'); break; }
+            log(state, 'Детонация амуниции: огонь в ' + roomName(state, target) + ' и в соседних отсеках.', 'event');
+            placeFire(state, target, 'Детонация амуниции');
+            for (const exit of state.ship.rooms[target].exits) {
+                if (state.shipDestroyed) break;
+                if (state.ship.corridors[exit.corridor].door === 'closed') continue;
+                placeFire(state, exit.to, 'Детонация амуниции');
+            }
+            break;
+        }
+        case 'decompression': case 'structuralWeakness':
             log(state, 'Цвет отсека и счётчик предметов отсутствуют в Redux: эффект события пропущен.', 'minor');
             break;
         default: throw new Error('Unknown Carnomorph event effect: ' + ev.effect);

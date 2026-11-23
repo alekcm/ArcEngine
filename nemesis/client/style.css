@@ -21,6 +21,15 @@ input, select { background: #0f1620; border: 1px solid #334; color: var(--txt); 
 .overlay { position: fixed; inset: 0; background: rgba(4, 7, 11, 0.82); display: flex; align-items: center; justify-content: center; z-index: 50; overflow: auto; }
 .lobby-box, .help-box { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 24px 28px; width: min(1000px, 96vw); max-height: 94vh; overflow: auto; box-shadow: 0 20px 60px #000a; }
 .help-box { width: min(760px, 96vw); }
+/* The one entrance: a page opened by the dev server, the editor or from disk (no /ws behind it). */
+#lanOnly { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(1200px 600px at 50% -10%, #16202e, #070b10 70%); }
+#lanOnly .lo-box { width: min(620px, 96vw); background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 28px 32px; box-shadow: 0 20px 60px #000a; }
+#lanOnly p { margin: 10px 0; line-height: 1.55; }
+#lanOnly code { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; color: var(--acc); }
+#lanOnly .lo-addr { color: var(--dim); }
+#lanOnly .lo-src { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
 h1 { margin: 0 0 16px; letter-spacing: 6px; font-weight: 800; color: #fff; }
 h1 span { font-weight: 300; letter-spacing: 2px; color: var(--acc); font-size: 0.6em; }
 h2, h3 { margin: 14px 0 8px; color: var(--acc); font-weight: 600; }
@@ -831,3 +840,27 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .knowledge-cell.here { box-shadow: 0 0 0 2px #fff2b5; }
 .sh-larva { flex: none; font-size: 14px; line-height: 1; cursor: help; }
 .lockdown-alert { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 200; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 16px 24px; border: 2px solid #ed5b59; border-radius: 10px; background: #210e10f5; color: #ffd3cd; box-shadow: 0 0 35px #ed4b4b99; text-align: center; font-size: clamp(16px, 3vw, 24px); font-weight: 800; pointer-events: none; }
+
+/* ---- empty hand: the pass button takes the fan's place ---- */
+#hand .hand-pass { pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-width: 210px; height: 92px; padding: 10px 26px; border: 1px solid var(--acc); border-radius: 12px;
+    background: linear-gradient(180deg, #16263aee, #0d1622ee); color: var(--txt); font: inherit; cursor: pointer;
+    box-shadow: 0 10px 26px #000a, 0 0 0 1px #0007 inset; animation: card-glow 2.6s ease-in-out infinite; }
+#hand .hand-pass .hp-name { font-size: 17px; letter-spacing: .04em; }
+#hand .hand-pass .hp-sub { font-size: 11px; color: var(--dim); }
+#hand .hand-pass:hover { background: linear-gradient(180deg, #1d3350, #122033); transform: translateY(-2px); }
+#hand .hand-pass.off { animation: none; opacity: .55; border-color: var(--line); cursor: default; }
+#hand .hand-pass.off:hover { transform: none; background: linear-gradient(180deg, #16263aee, #0d1622ee); }
+
+/* ---- infected / clean halves ---- */
+.inf { color: #e2604f; }
+.clean { color: #6fd08a; }
+#itemPick .ip-card .ip-halves { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid #223247; padding-top: 6px; }
+#itemPick .ip-card .ip-halves span { font-size: 10px; letter-spacing: .08em; font-weight: 600; }
+#itemPick .ip-card .ip-halves small { color: #b9c7d8; }
+
+/* ---- hand-drawn icons (icons.mjs) ---- */
+.gi { width: 1em; height: 1em; vertical-align: -0.14em; fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.gi-dot { stroke: none; }
+.tag .gi, .itag .gi { margin-right: 2px; }

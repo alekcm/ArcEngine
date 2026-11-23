@@ -24,9 +24,15 @@ OPS['chy.eventMovement'] = (state, step) => {
     const ev = CHYTRID_EVENT_BY_ID[step.id]; if (!ev) throw new Error('Invalid Chytrid event');
     for (const n of ev.numbers) {
         if (state.chyOverrun) return;
-        if (ev.mover === 'growth') spreadChySpores(state,n);
-        else if (ev.mover === 'stinkhorn') moveIntrudersByCorridor(state,n,['stinkhorn']);
-        else moveLarge(state,ev.mover,n);
+        // The movement band of a Redux event is one direction for the whole pack: every Chytrid
+        // figure walks the printed corridor instead of only the kind named on the icon strip.
+        // «Рост» is not a figure at all — it is the spore band of the card, so it still spreads.
+        if (ev.mover === 'growth') spreadChySpores(state, n);
+        else {
+            moveIntrudersByCorridor(state, n, ['stinkhorn']);
+            moveLarge(state, 'deathcap', n);
+            moveLarge(state, 'chyQueen', n);
+        }
     }
     for (const color of ev.growth) { if (state.chyOverrun) return; growChyColor(state,color); }
 };
