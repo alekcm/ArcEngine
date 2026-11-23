@@ -87,6 +87,40 @@ test('PASS-CONTAM-02: only the selected cards leave the hand, contamination incl
     assert.ok(!s.players[0].discard.includes(contam2));
 });
 
+test('PASS-CONTAM-03: every Pass offers the same window — a pod, the technical corridors, the forced pass', () => {
+    // Waiting inside an escape pod is a Pass: the player chooses, contamination is not swept.
+    {
+        const s = fresh();
+        const p = s.players[0];
+        p.hand = ['contam#11', s.players[0].deck.splice(0, 1)[0]];
+        s.pods = [{ num: 1, section: 'A', occupants: [p.id], launched: false, removed: false, locked: false }];
+        p.pod = 1;
+        next(s, { op: 'pod.turn', player: 0 });
+        run(s);
+        assert.equal(s.prompt.kind, 'choice');
+        answer(s, 0, s.prompt.id, 'wait');
+        run(s);
+        assert.equal(s.prompt.kind, 'cards', 'the pod Pass opens the ordinary discard window');
+        assert.match(s.prompt.title, /в том числе заражения/);
+        answer(s, 0, s.prompt.id, []);
+        run(s);
+        assert.ok(p.hand.includes('contam#11'), 'the deselected contamination stays');
+    }
+    // The forced Pass after «Ещё одну вещь» does the same.
+    {
+        const s = fresh();
+        const p = s.players[0];
+        p.hand = ['contam#12'];
+        p.justOneMore = true;
+        next(s, { op: 'turn.end' });
+        run(s);
+        assert.equal(s.prompt.kind, 'cards');
+        answer(s, 0, s.prompt.id, []);
+        run(s);
+        assert.ok(p.hand.includes('contam#12'));
+    }
+});
+
 test('R21-02: the event is logged as movement / effect / dice inside one card', () => {
     const ev = EVENT_CARDS.find(e => e.id === 'bulkheadsOpen');
     const lines = eventLogLines(ev);

@@ -304,7 +304,7 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 .card.with-art .ctext { font-size: 10px; line-height: 1.2; overflow: hidden; }
 
 /* ---- table piles & flying cards ---- */
-#table { position: fixed; right: 10px; bottom: 10px; width: 262px; transition: transform .3s; display: grid; grid-template-columns: repeat(3, 46px); justify-content: end; gap: 8px 6px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
+#table { position: fixed; right: 10px; bottom: 10px; width: fit-content; min-width: 176px; transition: transform .3s; display: grid; grid-template-columns: repeat(3, 46px); justify-content: end; gap: 8px 6px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
 #table .pile { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; }
 #table .pile.empty { opacity: 0.4; }
 #table .pback { width: 38px; height: 52px; border-radius: 5px; background: linear-gradient(150deg, var(--pc), #0c1118 140%); border: 1px solid #ffffff33; box-shadow: 2px 2px 0 #0008, 4px 4px 0 #0005; position: relative; display: flex; align-items: flex-end; justify-content: flex-end; }

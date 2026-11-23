@@ -433,11 +433,22 @@ OPS['pass.discard'] = (state, step) => {
     ask(state, { kind: 'cards', player: p.id, title: 'Пас: можете сбросить любые карты, в том числе заражения', cards: [...p.hand], min: 0, max: p.hand.length },
         { op: 'pass.discard.done', player: p.id });
 };
+/* The same optional window for a Pass that does not start in the turn menu — the forced Pass after
+ * «Ещё одну вещь», waiting inside a pod, Technical Corridors. Contamination is discarded only when
+ * it is ticked, exactly as at the ordinary Pass; nothing is swept away behind the player's back. */
+OPS['pass.offer'] = (state, step) => {
+    const p = player(state, step.player);
+    if (p.status !== 'active' || !p.hand.length) { next(state, { op: 'turn.end' }); return; }
+    ask(state, { kind: 'cards', player: p.id, title: 'Пас: можете сбросить любые карты, в том числе заражения',
+        cards: [...p.hand], min: 0, max: p.hand.length }, { op: 'pass.discard.done', player: p.id, quiet: true });
+};
 OPS['pass.discard.done'] = (state, step) => {
     const p = player(state, step.player);
     const chosen = (Array.isArray(step.answer) ? step.answer : []).filter(c => p.hand.includes(c));
     for (const c of chosen) discardCard(state, p, c);
     if (chosen.length) log(state, pname(p) + ' сбрасывает ' + chosen.length + ' карт при пасе.', 'minor');
+    // A quiet window belongs to a Pass that was already forced: there is nothing to react to.
+    if (step.quiet) { next(state, { op: 'turn.end' }); return; }
     // CEO "Just One More Thing": after you have Passed, draw 1 and take an extra Turn,
     // after which you must Pass.
     const card = p.justOneMoreUsed ? null : p.hand.find(c => (cardDef(state, c) || {}).effect === 'justOneMoreThing');
@@ -465,9 +476,10 @@ OPS['turn.end'] = (state) => {
     if (p.justOneMore) {
         p.justOneMore = false;
         p.passed = true;
-        const contams = p.hand.filter(isContam);
-        for (const c of contams) discardCard(state, p, c);
         log(state, pname(p) + ' обязан(а) спасовать после дополнительного хода.', 'action');
+        // The forced Pass still lets the player choose what to discard, contamination included.
+        next(state, { op: 'pass.offer', player: p.id });
+        return;
     }
     // Battle Suit (printed): "You never lose health as a result of a Fire at the End of your Turn."
     const fireProof = !!(p.armor && p.armor.item === 'battleSuit');
@@ -509,9 +521,8 @@ OPS['pod.decide'] = (state, step) => {
         next(state, { op: 'turn.end' });
     } else if (step.answer === 'wait') {
         p.passed = true;
-        const contams = p.hand.filter(isContam);
-        for (const c of contams) discardCard(state, p, c);
-        next(state, { op: 'turn.end' });
+        // Waiting in a pod is a Pass: the player still picks what to discard, contamination included.
+        next(state, { op: 'pass.offer', player: p.id });
     } else {
         pod.occupants = pod.occupants.filter(x => x !== p.id); p.pod = null;
         log(state, pname(p) + ' выходит из капсулы.', 'action');
