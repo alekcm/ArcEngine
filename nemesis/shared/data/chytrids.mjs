@@ -55,10 +55,18 @@ const E = [
 const eventSheetOrder = [0,19,3,9,16,2,12,5,14,6,1,11,17,4,15,18,10,7,8,13];
 export const CHYTRID_EVENT_CARDS = E.map(([effect,name,mover,numbers,growth,text,finish], i) => Object.freeze({ id:'chyEvent'+(i+1), effect,name,mover,numbers,growth,text,finish:finish||'discard',sheetIndex:eventSheetOrder[i], move:{type:'none'}, noise:'all' }));
 export const CHYTRID_EVENT_BY_ID = Object.fromEntries(CHYTRID_EVENT_CARDS.map(c => [c.id,c]));
+/** «Рост» is printed in colour words on the card, never as the internal key: green/purple. */
+const GROWTH_NAMES = { green: 'зелёный', purple: 'фиолетовый' };
+function growthText(list) {
+    const count = {};
+    for (const g of list || []) count[g] = (count[g] || 0) + 1;
+    const parts = Object.entries(count).map(([g, n]) => (GROWTH_NAMES[g] || g) + (n > 1 ? ' ×' + n : ''));
+    return parts.length ? parts.join(', ') : 'нет';
+}
 export function chytridEventText(c) {
     // One direction for the whole pack, like Redux. «Рост» cards move spores (they are not figures),
     // every other card moves all Chytrid miniatures through the printed corridors.
     const kind = c.mover === 'growth' ? 'споры' : 'все хитриды';
-    return 'Движение: ' + kind + ', коридоры ' + c.numbers.join(' и ') + '. Рост: ' + (c.growth.join(', ') || 'нет') + '. ' +
+    return 'Движение: ' + kind + ', коридоры ' + c.numbers.join(' и ') + '. Рост: ' + growthText(c.growth) + '. ' +
         c.text + ' Бросок кубика: каждый персонаж делает бросок шума.';
 }
