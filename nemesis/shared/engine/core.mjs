@@ -65,6 +65,73 @@ export function askAck(state, prompt, resume) {
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Public announcements (destination and engines)
+// A player may tell the table what they know — and may just as well lie: the physical game has no
+// way to check a spoken claim, so nothing here compares an announcement with the truth. The newest
+// announcement wins; the log keeps the whole story.
+// ---------------------------------------------------------------------------------------------
+export function claims(state) {
+    if (!state.claims) state.claims = { destination: null, engines: {} };
+    return state.claims;
+}
+/** Public: «летим в пункт X» says player p. Never verified. */
+export function claimDestination(state, p, value) {
+    claims(state).destination = { value: String(value), by: p.id, round: state.round };
+    log(state, pname(p) + ' отмечает для остальных: «Летим в пункт ' + value + '».', 'event');
+}
+/** Public: engine `no` is whole/damaged according to player p. Never verified. */
+export function claimEngineState(state, p, no, working) {
+    claims(state).engines[no] = { working: !!working, by: p.id, round: state.round };
+    log(state, pname(p) + ' отмечает для остальных: двигатель №' + no + ' — ' + (working ? 'исправен' : 'повреждён') + '.', 'info');
+}
+OPS['claim.dest'] = (state, step) => {
+    const p = player(state, step.player);
+    if (p && ['A', 'B', 'C', 'D'].includes(String(step.answer))) claimDestination(state, p, step.answer);
+    next(state, step.then);
+};
+const ENGINE_CLAIM_OPTIONS = [{ id: 'ok', label: 'Отметить: двигатель исправен' }, { id: 'broken', label: 'Отметить: двигатель повреждён' }, { id: 'no', label: 'Ничего не отмечать' }];
+/**
+ * The player has just looked at (or changed) an engine: show them its real state and offer to mark it
+ * for the others. The offer is optional, and a lie is a legal answer.
+ */
+export function askEngineKnown(state, p, e, then) {
+    p.knownEngines[e.no] = e.working;
+    ask(state, { kind: 'choice', player: p.id, secret: true,
+        title: 'Двигатель №' + e.no + ': ' + (e.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН'),
+        text: 'Это видите только вы. Отметить для остальных? Соврать можно — никто не проверит.',
+        options: ENGINE_CLAIM_OPTIONS }, { op: 'engine.claim', player: p.id, no: e.no, then });
+}
+/** The same offer for several engines at once (the room action that reads all four): one question each. */
+export function askEngineClaims(state, p, list, then) {
+    const first = list[0];
+    p.knownEngines[first.no] = first.working;
+    ask(state, { kind: 'choice', player: p.id, secret: true,
+        title: 'Двигатель №' + first.no + ': ' + (first.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН'),
+        text: 'Это видите только вы. Отметить для остальных? Соврать можно — никто не проверит.',
+        options: ENGINE_CLAIM_OPTIONS }, { op: 'engine.claim', player: p.id, no: first.no, rest: list.slice(1), then });
+}
+/** Reading all engines at once: the whole list in one window, then (only if asked) one question each. */
+export function askEngineReading(state, p, list, then) {
+    for (const e of list) p.knownEngines[e.no] = e.working;
+    ask(state, { kind: 'choice', player: p.id, secret: true,
+        title: 'Состояние двигателей (только вы это видите)',
+        text: list.map(e => 'Двигатель №' + e.no + ': ' + (e.working ? 'ИСПРАВЕН' : 'ПОВРЕЖДЁН')).join('\n') + '\n\nОтметить для остальных? Соврать можно — никто не проверит.',
+        options: [{ id: 'tell', label: 'Отметить для остальных' }, { id: 'no', label: 'Ничего не отмечать' }] },
+        { op: 'engine.claims', player: p.id, list, then });
+}
+OPS['engine.claims'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'tell' && step.list && step.list.length) { askEngineClaims(state, p, step.list, step.then); return; }
+    next(state, step.then);
+};
+OPS['engine.claim'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'ok' || step.answer === 'broken') claimEngineState(state, p, step.no, step.answer === 'ok');
+    if (step.rest && step.rest.length) { askEngineClaims(state, p, step.rest, step.then); return; }
+    next(state, step.then);
+};
+
 /** Called by the server with the player's choice. Returns false if the answer is not valid. */
 export function answer(state, playerId, promptId, choice) {
     const p = state.prompt;
@@ -139,10 +206,11 @@ export function log(state, text, kind = 'info') {
 // ---------------------------------------------------------------------------------------------
 // Lookups
 // ---------------------------------------------------------------------------------------------
+// The alternative noise die: twelve faces, two of them Encounters.
 export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounter', 'encounter'];
-// Alternative noise die: a plain d10 with no Encounter faces — one Danger (claw marks) and one
-// Silence (✕). Selected with state.noiseVariant; the interactive roll in `dice.rolled` below
-// must draw from it too, or the table keeps rolling the standard die (the old variant bug).
+// The noise die the table plays by default: a plain d10 with no Encounter faces — one Danger (claw
+// marks) and one Silence (✕). Selected with state.noiseVariant (lobby default); the interactive roll
+// in `dice.rolled` below must draw from it too, or the table keeps rolling the other die (the old bug).
 export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'danger', 'silence'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
 /** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,

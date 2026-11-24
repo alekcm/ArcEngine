@@ -3,7 +3,7 @@ import { killCarnomorph } from './carnomorphs.mjs';
 import { killVoid } from './voidseeders.mjs';
 // Feats (Nemesis Redux): after keeping one Objective the player picks a Feat from the shared pool,
 // resolves it immediately and removes it from the game.
-import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, drawCards, discardCard, isContam,
+import { OPS, ask, next, log, player, pname, intrudersIn, room, roomName, drawCards, discardCard, isContam, askEngineKnown,
     restoreHealth, removeWound, gainKnowledge, removeFire, removeMalfunction, removeIntruder, intruderLabel, playersInRoom } from './core.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { drawItem, giveItem } from './rooms.mjs';
@@ -166,13 +166,13 @@ OPS['feat.damageControl.engine'] = (state, step) => {
             { op: 'feat.damageControl.flip', player: p.id, no, then: step.then });
         return;
     }
-    ask(state, { kind: 'info', player: p.id, title: 'Двигатель №' + no + ' (только вы это видите)', text }, { op: 'noop', then: step.then });
+    askEngineKnown(state, p, e, step.then);
 };
 OPS['feat.damageControl.flip'] = (state, step) => {
     const p = player(state, step.player);
     const e = state.secret.engines.find(x => x.no === step.no);
-    if (step.answer === 'flip') { e.working = !e.working; p.knownEngines[e.no] = e.working; log(state, pname(p) + ' что-то делает с двигателем №' + e.no + '.', 'info'); }
-    next(state, step.then);
+    if (step.answer === 'flip') { e.working = !e.working; log(state, pname(p) + ' что-то делает с двигателем №' + e.no + '.', 'info'); }
+    askEngineKnown(state, p, e, step.then);
 };
 
 // --- Immunization: purge all contamination cards -------------------------------------------

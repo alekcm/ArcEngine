@@ -53,7 +53,8 @@ test('CFX-02 «Поиск» goes from the hand straight to the discard, never th
     assert.ok(/d\.effect === 'search'/.test(src), 'the played card knows it is a Search');
     const branch = src.slice(src.indexOf("case 'play': case 'useItem':"));
     const guard = branch.slice(0, branch.indexOf("const mid = this.centerRect"));
-    assert.ok(/pileRect\('owndisc'\)/.test(guard), 'the Search card flies to the discard pile');
+    // deck and discard are one pile now, so the played card lands back on «Моя колода»
+    assert.ok(/pileRect\('own'\)/.test(guard), 'the Search card flies to the merged deck/discard pile');
     assert.ok(!/this\.centerRect\(/.test(guard), 'and never parks in the middle of the table');
     assert.ok(/this\.skipNext = f\.card/.test(guard), 'the following discard fx for the same card is folded in');
 });

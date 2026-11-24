@@ -1,5 +1,5 @@
-// dice.js — the big die in the middle of the screen (real 3D: yellow D12 for noise — or a black
-// D10 for the alternative noise variant — and a red D10 for combat).
+// dice.js — the big die in the middle of the screen (real 3D: a black D10 for noise — the lobby's
+// standard — or a yellow D12 for the alternative twelve-face die — and a red D10 for combat).
 import * as Snd from './sound.js';
 //
 // Two situations show it:
@@ -296,7 +296,7 @@ export class DiceUI {
         if (view && view.noiseVariant !== this.lastNoiseVariant) {
             this.lastNoiseVariant = view.noiseVariant;
             this.noiseVariant = !!view.noiseVariant;
-            this.setDie(this.die);   // swap the mesh: standard D12 ⇄ alternative D10
+            this.setDie(this.die);   // swap the mesh: standard D10 ⇄ alternative D12
         }
         const pr = view.prompt;
         const roll = view.lastRoll;

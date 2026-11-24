@@ -381,19 +381,34 @@ test('SRV-08: все мастерские независимо сохраняю�
 
 test('SRV-09: драфт сохраняет выбранный образ только при совпадении персонажа', async (t) => {
     const chosen = { hair: 'longtail', probe: 'twin', jacket: 'pockets', trousers: 'field', tool: 'analyzer' };
+    // The draft deals 3 characters out of the whole pool, so a hand without xeno is perfectly normal —
+    // and which seeds give one depends on how much randomness the setup spent before the draft (picking
+    // weaknesses instead of adaptations changed that). Walk the seeds until one deals xeno in; the
+    // subject here is the appearance hand-over, not the shuffle.
+    const openDraft = async (only) => {
+        const seeds = only ? [only] : Array.from({ length: 12 }, (_, i) => 'workshop-draft-' + (7 + i));
+        for (const seed of seeds) {
+            const { child, port } = await startServer(pickPort());
+            t.after(() => { try { child.kill(); } catch { /* gone */ } });
+            const c = await wsClient(port); t.after(() => c.close());
+            c.send({ t: 'join', token: null, name: 'Автор' });
+            await waitFor(c, m => m?.t === 'lobby' && m.seats.length === 1, 'joined');
+            c.send({ t: 'lobby', charId: 'xeno', parts: chosen, colors: { coat: '#12abcd' },
+                settings: { mode: 'original', seed, draft: true } });
+            await waitFor(c, m => m?.t === 'lobby' && m.seats[0].charId === 'xeno' && m.settings.draft, 'draft settings');
+            c.send({ t: 'start' });
+            const draft = await waitFor(c, m => m?.t === 'state' && m.view?.phase === 'draft' && m.view.prompt?.options, 'draft prompt');
+            if (draft.view.prompt.options.some(o => o.id === 'xeno')) return { client: c, draft, seed };
+            c.close(); try { child.kill(); } catch { /* gone */ }
+        }
+        throw new Error('no seed dealt xeno into the draft hand');
+    };
+    const first = await openDraft();
     for (const sameCharacter of [true, false]) {
-        const { child, port } = await startServer(pickPort());
-        t.after(() => { try { child.kill(); } catch { /* gone */ } });
-        const client = await wsClient(port); t.after(() => client.close());
-        client.send({ t: 'join', token: null, name: 'Автор' });
-        await waitFor(client, m => m?.t === 'lobby' && m.seats.length === 1, 'joined');
-        client.send({ t: 'lobby', charId: 'xeno', parts: chosen, colors: { coat: '#12abcd' },
-            settings: { mode: 'original', seed: 'workshop-draft-7', draft: true } });
-        await waitFor(client, m => m?.t === 'lobby' && m.seats[0].charId === 'xeno' && m.settings.draft, 'draft settings');
-        client.send({ t: 'start' });
-        const draft = await waitFor(client, m => m?.t === 'state' && m.view?.phase === 'draft' && m.view.prompt?.options, 'draft prompt');
+        // the same seed deals the same hand, so the second case reuses it on a fresh server
+        const { client, draft } = sameCharacter ? first : await openDraft(first.seed);
         const options = draft.view.prompt.options.map(o => o.id);
-        assert.ok(options.includes('xeno'), 'the deterministic hand contains the customized character');
+        assert.ok(options.includes('xeno'), 'the hand contains the customized character (seed ' + first.seed + ')');
         const pick = sameCharacter ? 'xeno' : options.find(id => id !== 'xeno');
         client.send({ t: 'act', promptId: draft.view.prompt.id, answer: pick });
         const state = await waitFor(client, m => m?.t === 'state' && m.view?.players[0].charId === pick, 'draft result');

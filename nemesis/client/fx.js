@@ -15,7 +15,7 @@ import { ITEMS } from '/shared/data/cards.mjs';
 import * as Snd from './sound.js';
 
 const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева', panic: 'Паника', bag: 'Мешок' };
-const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', panic: '#704a89', own: '#2c5a7a', contam: '#5a7a2a', bag: '#6b4f2a' };
+const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', panic: '#704a89', own: '#2c5a7a', feats: '#7d6420', contam: '#5a7a2a', bag: '#6b4f2a' };
 
 
 export class TableFX {
@@ -30,15 +30,18 @@ export class TableFX {
     /** Redraw the deck piles (counts) and replay new fx entries. */
     update(view, me) {
         const mine = view.players.find(p => p.id === me);
-        // Five piles in two rows: my deck and discard, the shared event/attack decks and the Queen's
-        // health deck (panic, for the nightmares). The bag and the three item decks left this corner:
-        // the bag is drawn from its own strip, item decks are opened by the Search prompt.
+        // Three piles in one row: my deck and discard rolled into a single "Моя колода", the shared Feat
+        // pool and the Queen's health deck (panic, for the nightmares). The event/attack decks, the bag
+        // and the item decks left this corner — the bag is drawn from its own strip, items open from the
+        // Search prompt, and every one of those decks is still readable in the deck viewer.
         const piles = [];
-        if (mine) { piles.push(['own', 'Моя колода', mine.deckCount]); piles.push(['owndisc', 'Мой сброс', mine.discardCount]); }
-        for (const k of ['event', 'attack', view.enemySet === 'voidseeders' ? 'panic' : 'queen']) piles.push([k, DECK_LABELS[k], view.decks[k]]);
+        if (mine) piles.push(['own', 'Моя колода', mine.deckCount]);
+        piles.push(['feats', 'Подвиги', (view.feats || []).length]);
+        const shared = view.enemySet === 'voidseeders' ? 'panic' : 'queen';
+        piles.push([shared, DECK_LABELS[shared], (view.decks || {})[shared]]);
         this.table.innerHTML = piles.map(([k, label, n]) =>
-            '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k === 'owndisc' ? 'own' : k] || '#345') + '">' +
-            (k === 'owndisc' ? '<span class="pdisc">⤵</span>' : k === 'bag' ? '<span class="pdisc">🎒</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');
+            '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k] || '#345') + '">' +
+            (k === 'own' ? '<span class="pdisc">⤵</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');
         const fx = view.fx || [];
         if (this.lastSeen === null) { this.lastSeen = fx.length ? (fx[fx.length - 1].seq ?? fx[fx.length - 1].n) : 0; return; }   // nothing to replay on (re)connect
         for (const f of fx) {
@@ -144,7 +147,7 @@ export class TableFX {
                 // from, so the card goes straight from the hand to its discard pile.
                 if (!isItem && d.effect === 'search') {
                     this.skipNext = f.card;
-                    const to = isMe ? this.pileRect('owndisc') : this.playerRect(f.player);
+                    const to = isMe ? this.pileRect('own') : this.playerRect(f.player);
                     const el = this.makeCard(DECK_COLORS.own, '<b>' + esc(d.name) + '</b>', 128, 176);
                     el.classList.add('flipped');
                     Snd.play('card');
@@ -158,7 +161,7 @@ export class TableFX {
                 this.fly(el, from, mid, 420, { rotA: -6, rotB: 0, scaleA: 0.6, scaleB: 1, arc: 30 }, async () => {
                     await new Promise(r => setTimeout(r, isItem ? 1300 : 1100));
                     if (!active()) return;
-                    const to = isMe && !isItem ? this.pileRect('owndisc') : this.playerRect(f.player);
+                    const to = isMe && !isItem ? this.pileRect('own') : this.playerRect(f.player);
                     if (!isItem) this.skipNext = f.card;   // the engine's following discard/remove fx for this card is folded into this flight
                     this.fly(el, mid, to || mid, 420, { rotB: 20, scaleB: 0.45, fadeOut: isItem || !isMe }, () => { this.removeEffect(el); done(); });
                 });
@@ -174,7 +177,7 @@ export class TableFX {
                 const d = describeCard(f.card);
                 const face = '<b>' + esc(d.name) + '</b>';
                 const from = isMe ? this.handRect() : this.playerRect(f.player);
-                const to = isMe ? this.pileRect('owndisc') : this.playerRect(f.player);
+                const to = isMe ? this.pileRect('own') : this.playerRect(f.player);
                 const el = this.makeCard(d.contam ? DECK_COLORS.contam : DECK_COLORS.own, face);
                 el.classList.add('flipped');
                 const burn = f.type === 'remove';
@@ -187,7 +190,7 @@ export class TableFX {
             }
             case 'contam': {
                 Snd.play('contam'); if (isMe) this.vignette('green');
-                const to = isMe ? this.pileRect('owndisc') : this.playerRect(f.player);
+                const to = isMe ? this.pileRect('own') : this.playerRect(f.player);
                 const n = Math.min(f.n, 3);
                 for (let i = 0; i < n; i++) {
                     const el = this.makeCard(DECK_COLORS.contam, '<b>☣ Заражение</b>');

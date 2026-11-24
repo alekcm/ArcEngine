@@ -304,8 +304,8 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 .card.with-art .ctext { font-size: 10px; line-height: 1.2; overflow: hidden; }
 
 /* ---- table piles & flying cards ---- */
-#table { position: fixed; right: 10px; bottom: 10px; width: fit-content; min-width: 176px; transition: transform .3s; display: grid; grid-template-columns: repeat(3, 46px); justify-content: end; gap: 8px 6px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
-#table .pile { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; }
+#table { position: fixed; right: 10px; bottom: 10px; width: fit-content; min-width: 206px; transition: transform .3s; display: grid; grid-template-columns: repeat(3, 58px); justify-content: end; gap: 8px 6px; z-index: 9; padding: 8px 10px; background: #0b111899; border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(4px); }
+#table .pile { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 58px; }   /* one row, three piles */
 #table .pile.empty { opacity: 0.4; }
 #table .pback { width: 38px; height: 52px; border-radius: 5px; background: linear-gradient(150deg, var(--pc), #0c1118 140%); border: 1px solid #ffffff33; box-shadow: 2px 2px 0 #0008, 4px 4px 0 #0005; position: relative; display: flex; align-items: flex-end; justify-content: flex-end; }
 #table .pback::before { content: ''; position: absolute; inset: 5px; border: 1px solid #ffffff2a; border-radius: 3px; }
@@ -698,7 +698,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .deck-tabs .btn.active { background: #27384f; border-color: var(--acc); }
 /* ---- deck viewer: one row of cards, left to right, like the item picker ---- */
 /* Proportions of the item picker: one wide window with the deck choice in a row above the cards. */
-#deckOverlay .help-box { width: min(1240px, 96vw); max-width: none; }
+#deckOverlay .help-box { width: min(1320px, 97vw); max-width: none; }   /* six cards fit in one row */
 .deck-note { margin: 0 0 8px; }
 /* One row of cards, opened left to right exactly like the item picker: the deck choice above the
    row, the cards themselves big enough to read the picture and the rules text. A big deck scrolls
@@ -706,10 +706,10 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .deck-row { display: flex; align-items: stretch; gap: 12px; overflow-x: auto; overflow-y: hidden; padding: 4px 2px 14px; scrollbar-width: thin; }
 .deck-row::-webkit-scrollbar { height: 10px; }
 .deck-row::-webkit-scrollbar-thumb { background: #2b3a4d; border-radius: 6px; }
-.deck-row .deck-card { flex: 1 1 200px; min-width: 190px; max-width: 260px; display: flex; flex-direction: column; gap: 5px; border-radius: 10px; padding: 8px; transition: transform .1s, border-color .1s, background .1s; }
+.deck-row .deck-card { flex: 1 1 196px; min-width: 178px; max-width: 260px; display: flex; flex-direction: column; gap: 5px; border-radius: 10px; padding: 8px; transition: transform .1s, border-color .1s, background .1s; }
 .deck-row .deck-card:hover { transform: translateY(-2px); border-color: var(--acc); background: #131d2a; }
 .deck-row .deck-card b { font-size: 13px; }
-.deck-row .deck-card small { flex: 1 1 auto; color: #b9c7d8; line-height: 1.3; }
+.deck-row .deck-card small { flex: 1 1 auto; color: #b9c7d8; line-height: 1.3; white-space: pre-line; }   /* one effect per line */
 .deck-row .deck-card .dart { height: 118px; width: calc(100% + 16px); margin: 0 -8px 4px; border-radius: 9px 9px 0 0; border-bottom: 1px solid #34465d; }
 .deck-row .deck-card.has-art { padding-top: 0; }
 .deck-row .deck-card .tag { align-self: flex-start; margin-bottom: 2px; }
@@ -724,6 +724,21 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .deck-card.st-spent { opacity: .45; filter: grayscale(.55); }
 .deck-card.st-deck .tag { color: #9fb3c8; }
 .deck-card.contam { border-color: #6a5a86; }
+
+/* ---- destination panel: coordinates and the four unchecked «we fly to …» announcements ---- */
+.dest-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 8px 0 10px; }
+.dest-row { font-size: 12.5px; color: #cfd8e3; border: 1px solid #2b3a4d; border-radius: 7px; padding: 5px 9px; }
+.dest-row b { color: var(--acc); margin-right: 6px; }
+.dest-row.cur { border-color: #e2b33f; box-shadow: 0 0 0 1px #e2b33f44; }
+.dest-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+/* ---- the computer action that was just played: the card itself, in the middle of the screen ---- */
+#compAct { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 45; cursor: pointer; }
+#compAct .ca-card { width: 232px; display: flex; flex-direction: column; gap: 6px; background: #0d141d; border: 1px solid #4f7fa8; border-radius: 12px; padding: 0 0 10px; overflow: hidden; box-shadow: 0 18px 60px #000c, 0 0 0 1px #ffffff18; animation: caIn .18s ease-out; }
+#compAct .ca-art { height: 150px; background-size: cover; background-position: center; border-bottom: 1px solid #34465d; }
+#compAct b { font-size: 13px; color: #e6edf5; padding: 0 10px; }
+#compAct span { font-size: 12px; line-height: 1.3; color: #cfd8e3; padding: 0 10px; }
+@keyframes caIn { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
 
 /* ---- turn badge, world popups (click a room / an intruder / a heavy object) ---- */
 .tb-turn { border-radius: 8px; padding: 2px 8px; }
