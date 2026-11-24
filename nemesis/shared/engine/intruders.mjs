@@ -2,7 +2,7 @@ import { burnChytrids, returnStinkhornToQueen, moveLargeChytrid } from './chytri
 // intruders.mjs — Intruder Phase (burning, attacks), intruder movement rules, bag development.
 
 import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, removeIntruder, spawnIntruder,
-    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt, hasWeak, canDestroyDoor } from './core.mjs';
+    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt, hasWeak, canDestroyDoor, recordTurretEntry } from './core.mjs';
 import { distances, roomOfKind } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { countAvailable, fieldExpAsk } from './movement.mjs';
@@ -16,8 +16,9 @@ OPS['phase.intruder'] = (state) => {
     log(state, '— Фаза чужих —', 'phase');
     if (state.enemySet === 'carnomorphs') { next(state, { op: 'carnomorph.phaseStart' }); return; }
     if (state.enemySet === 'voidseeders') { next(state, { op: 'void.phaseStart' }); return; }
-    if (isOriginal(state)) {
-        // Original rules, p. 10: 4. Time -> 5. Intruder Attacks -> 6. Fire Damage -> 7. Event Card -> 8. Hive Development.
+    if (isOriginal(state) && state.enemySet === 'redux') {
+        // Original base-game rules, p. 10: 4. Time -> 5. Intruder Attacks -> 6. Fire Damage -> 7. Event Card -> 8. Hive Development.
+        // Expansion sets keep their own (Redux-adapted or printed) phase order.
         if (originalTimeStep(state)) return;
         const steps = [];
         const byPosition = (a, b) => (state.ship.rooms[a].y - state.ship.rooms[b].y) || (state.ship.rooms[a].x - state.ship.rooms[b].x) || a.localeCompare(b);
@@ -98,6 +99,7 @@ export function moveIntrudersByCorridor(state, num, types = null) {
             continue;
         }
         it.room = exit.to;
+        recordTurretEntry(state, 'intruder', it.uid, exit.to);
         log(state, INTRUDER_NAMES[it.type] + ' переходит по коридору ' + num + ' в ' + roomName(state, exit.to) + '.', 'event');
         const h = hyperAttackStep(state, it); if (h) attacks.push(h);
     }
@@ -140,6 +142,7 @@ export function moveOneToward(state, it, targets) {
         return;
     }
     it.room = e.to;
+    recordTurretEntry(state, 'intruder', it.uid, e.to);
     log(state, INTRUDER_NAMES[it.type] + ' движется к ' + pname(best.p) + ': ' + roomName(state, e.to) + '.', 'event');
     return true;
 }
@@ -159,6 +162,7 @@ export function repelIntruder(state, it, toRoom, force) {
         return false;
     }
     it.room = e.to;
+    recordTurretEntry(state, 'intruder', it.uid, e.to);
     log(state, INTRUDER_NAMES[it.type] + ' отогнан в ' + roomName(state, e.to) + '.', 'good');
     const h = hyperAttackStep(state, it); if (h) next(state, h);
     return true;

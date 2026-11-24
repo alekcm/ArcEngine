@@ -10,7 +10,7 @@ import { NOISE_DIE, COMBAT_DIE, BLUE_DIE, intruderLabel, log, next, roll, remove
     turnOrder, inCombat, playersInRoom, intrudersIn, drawCards, drawLimit, room, roomName, tileOf,
     gainWound, gainContamination, hasWeak, pname, spawnIntruder, canDestroyDoor, orderIndex,
     ORIGINAL_COMBAT_DIE, ORIGINAL_FACE_TEXT, ORIGINAL_BAG_MEANING, isOriginal, combatDieFor,
-    noiseDieFor, ORIGINAL_INTRUDERS, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip } from './core.mjs';
+    noiseDieFor, ORIGINAL_INTRUDERS, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, recordTurretEntry } from './core.mjs';
 import { INTRUDER_NAMES, ITEMS, EVENT_CARDS } from '../data/cards.mjs';
 import { ORIGINAL_ATTACK_BY_ID, ORIGINAL_EVENT_BY_ID } from '../data/original-cards.mjs';
 import { shuffle } from '../rng.mjs';
@@ -121,6 +121,7 @@ export function originalRetreatIntruder(state, it) {
         return false;
     }
     it.room = exit.to;
+    recordTurretEntry(state, 'intruder', it.uid, exit.to);
     log(state, '↩ Отступление («' + drawn.name + '», коридор ' + drawn.num + '): ' + INTRUDER_NAMES[it.type] + ' сбегает в ' + roomName(state, exit.to) + '.', 'good');
     return true;
 }

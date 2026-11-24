@@ -98,9 +98,15 @@ OPS['card.demolition'] = (state, step) => {
     const opts = [];
     if (!room(state, p.room).malfunction) opts.push({ id: 'malf', label: 'Поставить поломку в комнате' });
     for (const c of Object.values(state.ship.corridors)) if (c.door === 'closed') opts.push({ id: 'door:' + c.id, label: 'Уничтожить закрытую дверь ' + c.id });
+    if (state.rules === 'original' && state.enemySet === 'redux')
+        for (const t of state.turrets || []) if (!t.destroyed) opts.push({ id: 'turret:' + t.id, label: 'Уничтожить турель в ' + roomName(state, t.room) });
     choice(state, p, 'Подрыв', opts, 'card.demolition.pick');
 };
 OPS['card.demolition.pick'] = (state, step) => {
+    if (step.answer.startsWith('turret:')) {
+        next(state, { op: 'turret.destroy', player: step.player, turretId: step.answer.slice(7), then: BACK });
+        return;
+    }
     const p = player(state, step.player);
     if (step.answer === 'malf') placeMalfunction(state, p.room, 'подрыв');
     else { const c = state.ship.corridors[step.answer.slice(5)]; c.door = 'destroyed'; log(state, '💥 Дверь ' + c.id + ' уничтожена.', 'event'); }

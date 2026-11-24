@@ -74,11 +74,11 @@ export const EXPLORATION_TOKENS = [
 ];
 
 export const ORIGINAL_EXPLORATION_TOKENS = [
-    // The Aftermath rules add three Turret tokens to the original exploration pool. They do not
-    // carry an Item counter (Aftermath rulebook, p. 5).
-    { effect: 'turret', label: 'Турель' },
-    { effect: 'turret', label: 'Турель' },
-    { effect: 'turret', label: 'Турель' },
+    // Original exploration tokens include three Turrets with their printed Search counters.
+    // The Aftermath p. 5 no-counter rule applies to Epilogue research tokens, not these base-game tokens.
+    { effect: 'turret', items: 1, label: 'Турель (1 предм.)' },
+    { effect: 'turret', items: 2, label: 'Турель (2 предм.)' },
+    { effect: 'turret', items: 3, label: 'Турель (3 предм.)' },
     { effect: 'silence', items: 1, label: 'Тишина (1 предм.)' },
     { effect: 'silence', items: 1, label: 'Тишина (1 предм.)' },
     { effect: 'danger', items: 2, label: 'Опасность (2 предм.)' },

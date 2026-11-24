@@ -301,6 +301,13 @@ export function itemDef(uid, p) {
 export function activePlayers(state) { return state.players.filter(p => p.status === 'active'); }
 export function playersInRoom(state, roomId) { return state.players.filter(p => p.status === 'active' && p.room === roomId && !p.pod); }
 export function intrudersIn(state, roomId) { return Object.values(state.intruders).filter(i => i.room === roomId); }
+/** Record a figure entering a room so active Aftermath Turrets can resolve entrants in the Fire Damage step. */
+export function recordTurretEntry(state, kind, id, roomId) {
+    if (state.rules !== 'original' || state.enemySet !== 'redux' || !roomId) return;
+    state.turretEntries ||= [];
+    if (!state.turretEntries.some(e => e.kind === kind && e.id === id && e.room === roomId))
+        state.turretEntries.push({ kind, id, room: roomId });
+}
 /** The Military Taser can only affect a figure in the user's room. */
 export function taserTargets(state, p) {
     return { intruders: intrudersIn(state, p.room), players: playersInRoom(state, p.room).filter(o => o.hand.length) };
@@ -741,9 +748,9 @@ export function spawnIntruder(state, type, roomId) {
     // rules, and the number the Sneak Attack rule compares a hand of cards against.
     const toughness = origBase && ORIGINAL_INTRUDERS[type] ? ORIGINAL_INTRUDERS[type].wounds : undefined;
     state.intruders[uid] = { uid, type, room: roomId, hits: 0, ...(toughness !== undefined ? { value: toughness } : {}) };
+    recordTurretEntry(state, 'intruder', uid, roomId);
     fx(state, { type: 'spawn', intruder: type, room: roomId });
     log(state, '👾 ' + INTRUDER_NAMES[type] + ' появляется: ' + roomName(state, roomId) + '.', 'event');
-    if (origBase && state.phase === 'player') next(state, { op: 'turret.intruderEntry', intruder: uid });
     return state.intruders[uid];
 }
 export function removeIntruder(state, uid, leaveCarcass) {

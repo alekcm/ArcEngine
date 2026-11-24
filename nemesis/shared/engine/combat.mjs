@@ -4,7 +4,7 @@ import { isAdultEquivalent } from './core.mjs';
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
     gainContamination, killPlayer, discardCard, COMBAT_DIE, BLUE_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK, combatDieFor, isOriginal,
     drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, hasWeak, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
-    handSlots, dropHeavy, dieId, breakWeapon, isContam, giveSlime, drawBagToken, spawnIntruder } from './core.mjs';
+    handSlots, dropHeavy, dieId, breakWeapon, isContam, giveSlime, drawBagToken, spawnIntruder, recordTurretEntry } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
 import { originalDealHits, originalApplyWounds, originalAttackEffects } from './original.mjs';
@@ -521,6 +521,7 @@ export function resolveFollows(state) {
         const it = state.intruders[f.intruder], p = player(state, f.player);
         if (!it || !p || p.status !== 'active' || p.room !== f.dest || it.room === f.dest) continue;
         it.room = f.dest;
+        recordTurretEntry(state, 'intruder', it.uid, f.dest);
         log(state, INTRUDER_NAMES[it.type] + ' следует за ' + pname(p) + ' в ' + roomName(state, f.dest) + '.', 'combat');
     }
 }

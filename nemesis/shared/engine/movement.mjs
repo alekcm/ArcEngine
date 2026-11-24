@@ -5,7 +5,7 @@ import { hasCarnomorphAdaptation } from './carnomorphs.mjs';
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
     NOISE_DIE, NOISE_DIE_SAFE, noiseDieFor, isOriginal, roll, fmtRoll, needDice, fx, drawBagToken, spawnIntruder, returnToken, placeFire, placeMalfunction, gainKnowledge,
-    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, hasWeak, canDestroyDoor, inCombat, isContam, giveSlime } from './core.mjs';
+    clearNoiseAround, HEAVY_NAMES, cardDef, discardCard, hasAdapt, hasWeak, canDestroyDoor, inCombat, isContam, giveSlime, recordTurretEntry } from './core.mjs';
 import { hyperAttackStep, ignoresIntruderDoor } from './intruders.mjs';
 import { applyHitsNoRoll, resolveFollows } from './combat.mjs';
 import { surpriseAttack, encounterLine } from './surprise.mjs';
@@ -74,7 +74,7 @@ OPS['move.go'] = (state, step) => {
     resolveFollows(state);   // "Blood Sense": the intruder follows the character to the destination
     if (step.companion !== undefined) {
         const c = player(state, step.companion);
-        if (c && c.status === 'active' && c.room === from) { c.room = step.dest; log(state, pname(c) + ' идёт вместе.', 'action'); }
+        if (c && c.status === 'active' && c.room === from) { c.room = step.dest; recordTurretEntry(state, 'character', c.id, step.dest); log(state, pname(c) + ' идёт вместе.', 'action'); }
     }
     const after = { op: 'move.afterExplore', player: p.id, from, careful: step.careful, noNoise: step.noNoise, laikaOnArrival, then: step.then, enteredVia: from };
     if (!room(state, step.dest).explored) next(state, { op: 'explore', player: p.id, room: step.dest, from, ignoreToken: step.ignoreToken }, after);

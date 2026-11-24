@@ -1,10 +1,10 @@
 // events.mjs — Event Phase (event card, intruder movement, effects, noise rolls, bag development)
 // and Cleanup Phase (first player, draw up, time, self-destruct, end checks).
 
-import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
+import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
     findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef, payCost, payableCards, infectLarva, killPlayer,
-    roll, noiseDieFor, fmtRoll, canDestroyDoor } from './core.mjs';
+    roll, noiseDieFor, fmtRoll, canDestroyDoor, recordTurretEntry } from './core.mjs';
 import { shuffle, randInt } from '../rng.mjs';
 import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
 import { ORIGINAL_EVENT_BY_ID } from '../data/original-cards.mjs';
@@ -184,11 +184,25 @@ OPS['event.effect'] = (state, step) => {
                 break;
             case 'hunt':
                 for (const it of Object.values(state.intruders)) {
-                    if (it.type !== 'adult' || playersInRoom(state, it.room).length) continue;
+                    if (it.type !== 'drone' || playersInRoom(state, it.room).length) continue;
                     const candidates = state.ship.rooms[it.room].exits
-                        .filter(e => e.corridor !== 'tech' && state.ship.corridors[e.corridor].door !== 'closed' && playersInRoom(state, e.to).length)
+                        .filter(e => e.corridor !== 'tech' && playersInRoom(state, e.to).length)
                         .map(e => e.to).sort();
-                    if (candidates.length) { it.room = candidates[0]; log(state, '«Охота»: Взрослый движется в ' + roomName(state, candidates[0]) + '.', 'event'); }
+                    if (candidates.length) {
+                        const destination = candidates[0];
+                        const exit = state.ship.rooms[it.room].exits.find(e => e.to === destination && e.corridor !== 'tech');
+                        const corridor = state.ship.corridors[exit.corridor];
+                        if (corridor.door === 'closed') {
+                            if (canDestroyDoor(state, it)) {
+                                corridor.door = 'destroyed';
+                                log(state, '«Охота»: Трутень уничтожает закрытую дверь ' + corridor.id + ' и остаётся на месте.', 'event');
+                            }
+                            continue;
+                        }
+                        it.room = destination;
+                        recordTurretEntry(state, 'intruder', it.uid, destination);
+                        log(state, '«Охота»: Трутень движется в ' + roomName(state, destination) + '.', 'event');
+                    }
                 }
                 break;
             case 'scentOfPrey': {
@@ -197,8 +211,10 @@ OPS['event.effect'] = (state, step) => {
                 break;
             }
             case 'malfunction': {
-                const r = allRooms.filter(r => room(state, r).explored && !room(state, r).malfunction
-                    && tileOf(state, r) !== 'nest' && tileOf(state, r) !== 'contaminated').sort()[0];
+                // The printed card selects the lowest-numbered Room; it does not require the room
+                // to have been explored. Skip only rooms where a Malfunction cannot be placed.
+                const r = allRooms.find(id => !room(state, id).malfunction
+                    && !['nest', 'contaminated'].includes(secretTile(state, id)));
                 if (r) placeMalfunction(state, r, 'событие');
                 break;
             }
@@ -248,15 +264,20 @@ OPS['event.effect'] = (state, step) => {
                 break;
             }
             case 'lifeSupport':
-                for (const r of allRooms) { const t = tileOf(state, r); if (t && ROOM_TILES[t].items.includes('green')) placeMalfunction(state, r, 'сбой жизнеобеспечения'); }
+                for (const r of allRooms) { const t = secretTile(state, r); if (t && ROOM_TILES[t].items.includes('green')) placeMalfunction(state, r, 'сбой жизнеобеспечения'); }
                 break;
             case 'podEjection': {
                 const pod = state.pods.filter(x => !x.removed && !x.launched).sort((a, b) => a.num - b.num)[0];
                 if (pod) { pod.removed = true; for (const pid of pod.occupants) { const p = player(state, pid); if (p) p.pod = null; } pod.occupants = []; log(state, 'Капсула №' + pod.num + ' удалена из игры.', 'event'); }
                 break;
             }
+            case 'coolantLeak': {
+                const gen = findRoomsByTile(state, 'generator').find(r => room(state, r).malfunction);
+                if (gen) startSelfDestruct(state);
+                break;
+            }
             case 'shortCircuit':
-                for (const r of allRooms) { const t = tileOf(state, r); if (t && ROOM_TILES[t].computer && ROOM_TILES[t].items.includes('yellow')) placeMalfunction(state, r, 'короткое замыкание'); }
+                for (const r of allRooms) { const t = secretTile(state, r); if (t && ROOM_TILES[t].computer && ROOM_TILES[t].items.includes('yellow')) placeMalfunction(state, r, 'короткое замыкание'); }
                 break;
         }
         return;
@@ -549,6 +570,9 @@ OPS['event.finish'] = (state, step) => {
 // Cleanup
 // ---------------------------------------------------------------------------------------------
 OPS['phase.cleanup'] = (state) => {
+    // Original Turrets shoot before the Event Phase, so entries made by the Event card or Hive
+    // Development are already too late for this round's Fire Damage and expire at turn cleanup.
+    if (isOriginal(state) && state.enemySet === 'redux') state.turretEntries = [];
     state.phase = 'cleanup';
     log(state, '— Фаза уборки —', 'phase');
     const n = state.players.length;
@@ -562,7 +586,10 @@ OPS['phase.cleanup'] = (state) => {
         const need = Math.max(0, limit - p.hand.length);
         if (need) drawCards(state, p, need);
     }
-    if (!isOriginal(state) && state.enemySet !== 'carnomorphs' && state.enemySet !== 'voidseeders') {
+    // Chytrids use the Redux phase order in this adaptation, so their time advances at Cleanup even
+    // when the lobby's rules selector is Original. Carnomorphs and Voidseeders advance time in their
+    // own phase-start handlers; Original base intruders advance it at the start of the Intruder Phase.
+    if ((!isOriginal(state) || state.enemySet === 'chytrids') && state.enemySet !== 'carnomorphs' && state.enemySet !== 'voidseeders') {
         state.time--;
         log(state, '⏱ Время: ' + state.time + (state.time <= HIBERNATION_TIME ? ' (гибернация доступна)' : '') + '.', 'info');
         if (state.selfDestruct > 0) {

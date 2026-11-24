@@ -53,7 +53,7 @@ export function createGame(config) {
         queue: [], prompt: null, resume: null, promptSeq: 0,
         log: [], logSeq: 0,
         secret: { tiles: {}, tokens: {}, contamInfected: {}, engines: [], coordinates: null, turretStatuses: [] },
-        roomState: {}, intruders: {}, intruderSeq: 0, contamSeq: 0, itemSeq: 0, turrets: [],
+        roomState: {}, intruders: {}, intruderSeq: 0, contamSeq: 0, itemSeq: 0, turrets: [], turretEntries: [],
         bag: [], fireLeft: 8, malfLeft: 8,
         // What the table has been TOLD (not what is true): «летим в пункт X», engine N whole/broken.
         claims: { destination: null, engines: {} }, lastComputerAction: null,
@@ -84,7 +84,11 @@ export function createGame(config) {
     const additional = shuffle(state, [...ADDITIONAL_TILES]).slice(0, aftermathRooms ? ADDITIONAL_IN_PLAY - 1 : ADDITIONAL_IN_PLAY);
     if (aftermathRooms) additional.push('defense');
     const tokens = shuffle(state, [...(rules === 'original' && state.enemySet === 'redux' ? ORIGINAL_EXPLORATION_TOKENS : EXPLORATION_TOKENS)]);
-    if (rules === 'original' && state.enemySet === 'redux') state.secret.turretStatuses = shuffle(state, ['inactive', 'all', 'intruders']);
+    if (rules === 'original' && state.enemySet === 'redux') {
+        // Each physical Turret has its own stack containing one of each Status; the top token is
+        // therefore an independent random choice, not a shared pool assigning one of each to the 3 Turrets.
+        state.secret.turretStatuses = Array.from({ length: 3 }, () => shuffle(state, ['inactive', 'all', 'intruders'])[0]);
+    }
     for (const r of Object.values(state.ship.rooms)) {
         const special = r.kind === 'cockpit' || r.kind === 'hibernatorium' || r.kind === 'engine';
         state.roomState[r.id] = { tile: null, explored: special, fire: false, malfunction: false, objects: [], token: null };

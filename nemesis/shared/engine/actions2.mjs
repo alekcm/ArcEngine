@@ -6,7 +6,7 @@ import { isAdultEquivalent } from './core.mjs';
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
-    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon, cardDef, removeSlime } from './core.mjs';
+    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon, cardDef, removeSlime, recordTurretEntry } from './core.mjs';
 import { ITEMS, dropLocked, canLoadWith, hasOpenQuest, connectedTo, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
 import { ORIGINAL_EVENT_BY_ID } from '../data/original-cards.mjs';
 import { eventTextFor } from '../data/event-text.mjs';
@@ -853,7 +853,7 @@ OPS['card.tacticalMove'] = (state, step) => {
 OPS['card.tacticalMove.go'] = (state, step) => {
     const p = player(state, step.player);
     const it = step.intr && state.intruders[step.intr];
-    if (it) { it.room = step.answer; log(state, intruderLabel(state, it) + ' следует за охотником.', 'combat'); }
+    if (it) { it.room = step.answer; recordTurretEntry(state, 'intruder', it.uid, step.answer); log(state, intruderLabel(state, it) + ' следует за охотником.', 'combat'); }
     next(state, { op: 'move.direct', player: p.id, dest: step.answer, noNoise: true, then: BACK });
 };
 
