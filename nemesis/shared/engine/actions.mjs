@@ -51,7 +51,8 @@ export function eclosionProcedure(state, p, { final = false } = {}) {
     p.larva = false;
     if (state.enemySet === 'chytrids') removeChySpore(state, p);
     killPlayer(state, p, 'вылупление личинки');
-    const it = state.enemySet === 'chytrids' ? spawnChytrid(state, 'stinkhorn', r) : spawnIntruder(state, 'adult', r);
+    const hatchType = state.rules === 'original' && state.enemySet === 'redux' ? 'crawler' : 'adult';
+    const it = state.enemySet === 'chytrids' ? spawnChytrid(state, 'stinkhorn', r) : spawnIntruder(state, hatchType, r);
     if (it && playersInRoom(state, r).length) next(state, { op: 'attack', intruder: it.uid, context: 'eclosion' });
 }
 
@@ -148,14 +149,14 @@ OPS['card.search'] = (state, step) => {
                     { id: 'here', label: 'В своей комнате (' + roomName(state, p.room) + ')' },
                     { id: 'laika', label: 'В комнате Лайки (' + roomName(state, p.laika) + ')' },
                 ]
-            }, { op: 'card.search.where', player: p.id });
+            }, { op: 'card.search.where', player: p.id, scavenging: !!step.scavenging });
             return;
         } else if (laikaHasItems) {
             next(state, { op: 'card.search.where', player: p.id, answer: 'laika' });
             return;
         }
     }
-    search(state, p, BACK);
+    search(state, p, BACK, p.room, { scavenging: !!step.scavenging });
 };
 OPS['card.search.where'] = (state, step) => {
     const p = player(state, step.player);
@@ -163,9 +164,9 @@ OPS['card.search.where'] = (state, step) => {
         const r = p.laika;
         p.laika = 'board';
         log(state, '🐕 Лайка возвращается к охотнице после поиска.', 'good');
-        search(state, p, BACK, r);
+        search(state, p, BACK, r, { scavenging: !!step.scavenging });
     } else {
-        search(state, p, BACK);
+        search(state, p, BACK, p.room, { scavenging: !!step.scavenging });
     }
 };
 OPS['card.weakSpot'] = (state, step) => {
@@ -267,7 +268,8 @@ OPS['card.reconnaissance.pick'] = (state, step) => {
     const r = step.answer.slice(5);
     p.knownTiles = p.knownTiles || {}; p.knownTiles[r] = state.secret.tiles[r];
     const tok = state.secret.tokens[r];
-    const text = 'Комната ' + r + ': ' + ROOM_TILES[state.secret.tiles[r]].name + '\nЖетон: ' + (tok ? tok.label : '—');
+    const tokenLabel = tok ? (typeof tok === 'object' ? (tok.label || tok.effect || 'жетон') : tok) : '—';
+    const text = 'Комната ' + r + ': ' + ROOM_TILES[state.secret.tiles[r]].name + '\nЖетон: ' + tokenLabel;
     const opts = [{ id: 'stay', label: 'Остаться' }];
     if (payableCards(p).length) opts.push({ id: 'go', label: 'Сбросить 1 карту и перейти туда без шума' });
     ask(state, { kind: 'choice', player: p.id, title: 'Разведка (только вы это видите)', text, options: opts }, { op: 'card.reconnaissance.go', player: p.id, dest: r });
@@ -281,7 +283,7 @@ OPS['card.scavenging'] = (state, step) => {
     const p = player(state, step.player);
     if (room(state, p.room).malfunction) { log(state, 'В комнате поломка — мародёрство невозможно.', 'minor'); next(state, BACK); return; }
     // The printed additional discard is already charged centrally by extraCost().
-    next(state, { op: 'card.search', player: p.id });
+    next(state, { op: 'card.search', player: p.id, scavenging: true });
 };
 
 // ---------------------------------------------------------------------------------------------

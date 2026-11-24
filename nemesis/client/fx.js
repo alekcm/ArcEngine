@@ -39,6 +39,12 @@ export class TableFX {
         piles.push(['feats', 'Подвиги', (view.feats || []).length]);
         const shared = view.enemySet === 'voidseeders' ? 'panic' : 'queen';
         piles.push([shared, DECK_LABELS[shared], (view.decks || {})[shared]]);
+        if (view.rules === 'original') {
+            for (const omitted of ['feats', ...(view.enemySet === 'voidseeders' ? [] : ['queen'])]) {
+                const index = piles.findIndex(pile => pile[0] === omitted);
+                if (index >= 0) piles.splice(index, 1);
+            }
+        }
         this.table.innerHTML = piles.map(([k, label, n]) =>
             '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k] || '#345') + '">' +
             (k === 'own' ? '<span class="pdisc">⤵</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');

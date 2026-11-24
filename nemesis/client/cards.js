@@ -124,7 +124,11 @@ const CHY_ATTACK_ART_ALIAS = {
 /** Event cards with illustrations in client/art/events/<eventId>.jpg. */
 const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection', 'podEjection', 'fireWave', 'flammable', 'generatorOverheats', 'hatching',
     'leavingShell', 'lifeSupport', 'lurking', 'malfunction', 'onTheHunt', 'protectAndServe', 'scentOfPrey', 'shortCircuit', 'systemFailure', 'queenAwakens'];
+const ORIGINAL_EVENT_ART = [null, 'eggProtection', 'hatching', 'queenAwakens', 'damage', 'lurking', 'onTheHunt', 'onTheHunt', 'scentOfPrey', 'malfunction', 'fireWave', 'leavingShell', 'breakingIn', 'protectAndServe', 'flammable', 'bulkheadsOpen', 'damagingFire', 'generatorOverheats', 'lifeSupport', 'podEjection', 'shortCircuit'];
+const ORIGINAL_ATTACK_ART = [null, 'scratch', 'scratch', 'scratch', 'scratch', 'claws', 'bite', 'bite', 'infecting', 'bloodSense', 'infecting', 'claws', 'claws', 'claws', 'bite', 'bite', 'infecting', 'fury', 'fury', 'tail', 'tail'];
 export function eventArt(id) {
+    const originalNumber = /^origEv(\d+)$/.exec(String(id));
+    if (originalNumber && ORIGINAL_EVENT_ART[Number(originalNumber[1])]) return 'art/events/' + ORIGINAL_EVENT_ART[Number(originalNumber[1])] + '.jpg';
     if (/^chyEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/event/' + (CHY_EVENT_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/event/' + id + '.jpg';
     if (/^carnoEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/event/' + id + '.jpg';
@@ -133,6 +137,8 @@ export function eventArt(id) {
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
 const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury', 'infecting', 'miss', 'scratch', 'tail'];
 export function attackArt(id) {
+    const originalNumber = /^origAtk(\d+)$/.exec(String(id));
+    if (originalNumber && ORIGINAL_ATTACK_ART[Number(originalNumber[1])]) return 'art/attack/' + ORIGINAL_ATTACK_ART[Number(originalNumber[1])] + '.jpg';
     if (/^chyAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/attack/' + (CHY_ATTACK_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/attack/' + id + '.jpg';
     if (/^carnoAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/attack/' + id + '.jpg';

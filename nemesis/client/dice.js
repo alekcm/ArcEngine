@@ -19,10 +19,18 @@ const NOISE10_FACES = ['1', '1', '2', '2', '3', '3', '4', '4', 'danger', 'silenc
 const COMBAT_FACES = ['crit', '2', '3', '3', '4', '4', '5', '5', '5', '6'];
 // The Battle Suit's printed Blue Combat die: two 2s, three 3s, two 4s, one 5, one 6 and a Critical.
 const BLUE_FACES = ['crit', '2', '2', '3', '3', '3', '4', '4', '5', '6'];
+// The ORIGINAL game's Battle die (Nemesis 2018, p. 18): a six-sided die with five printed results.
+// Mirrors ORIGINAL_COMBAT_DIE on the server.
+const ORIGINAL_FACES = ['miss', 'small', 'small', 'adult', 'one', 'two'];
 const ROLL_MS = 1400, SHOW_MS = 2000;
 const CANVAS = 240;
 
 function faceText(v) {
+    if (v === 'miss') return 'Промах';
+    if (v === 'small') return '1 рана (Личинка/Ползун)';
+    if (v === 'adult') return '1 рана (Личинка/Ползун/Охотник)';
+    if (v === 'one') return '1 рана';
+    if (v === 'two') return '2 раны';
     if (v === 'crit') return 'КРИТ';
     if (v === 'silence') return 'Тишина';
     if (v === 'danger') return 'Опасность';
@@ -33,10 +41,15 @@ function faceText(v) {
 function faceGlyph(v) {
     if (v === 'silence') return '';
     if (v === 'danger') return '!';
-    if (v === 'crit' || v === 'encounter') return '';   // painted by paintSkull / paintAlien
+    if (v === 'crit' || v === 'encounter' || v === 'miss' || v === 'small' || v === 'adult') return '';   // painted
     return String(v);
 }
-function dieTitle(die) { return die === 'noise' ? 'Кубик шума' : die === 'blue' ? 'Синий боевой кубик' : 'Боевой кубик'; }
+function dieTitle(die) {
+    if (die === 'noise') return 'Кубик шума';
+    if (die === 'blue') return 'Синий боевой кубик';
+    if (die === 'combatOriginal') return 'Боевой кубик (оригинальные правила)';
+    return 'Боевой кубик';
+}
 
 // Faces are painted, not typeset: a skull and an alien head drawn with arcs keep the die readable
 // on any machine (the emoji font used to decide what a Critical looked like) and match the
@@ -140,6 +153,26 @@ export function d10FaceVertexData(face) {
     return data;
 }
 
+/** The original Battle die is a cube: six square faces, one value each, in the printed order. */
+export function d6Faces() {
+    const Bx = B(), h = 0.62;
+    const dirs = [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]];
+    return dirs.map((d, i) => {
+        const n = new Bx.Vector3(d[0], d[1], d[2]);
+        const upHint = Math.abs(n.y) > 0.9 ? new Bx.Vector3(0, 0, 1) : new Bx.Vector3(0, 1, 0);
+        const right = Bx.Vector3.Cross(n, upHint).normalize();
+        const up = Bx.Vector3.Cross(right, n).normalize();
+        const c = n.scale(h);
+        return {
+            center: c, normal: n, right, up, inradius: h, value: ORIGINAL_FACES[i % ORIGINAL_FACES.length],
+            vertices: [
+                c.add(right.scale(h)).add(up.scale(h)), c.add(right.scale(h)).add(up.scale(-h)),
+                c.add(right.scale(-h)).add(up.scale(-h)), c.add(right.scale(-h)).add(up.scale(h)),
+            ],
+        };
+    });
+}
+
 /** Group a flat-shaded mesh's triangles into planar faces: [{center, normal, right, inradius}]. */
 export function extractFaces(mesh) {
     const P = mesh.getVerticesData(B().VertexBuffer.PositionKind), I = mesh.getIndices();
@@ -193,8 +226,8 @@ export class DiceUI {
         const h = new (B().HemisphericLight)('dh', new (B().Vector3)(0.3, 1, -0.6), scene); h.intensity = 0.8; h.groundColor = new (B().Color3)(0.25, 0.2, 0.2);
         const d = new (B().DirectionalLight)('dd', new (B().Vector3)(-0.5, -1, 0.7), scene); d.intensity = 0.8;
         this.engine = engine; this.scene = scene;
-        this.dice = { noise: this.makeDie(scene, 'noise'), noise10: this.makeDie(scene, 'noise10'), combat: this.makeDie(scene, 'combat'), blue: this.makeDie(scene, 'blue') };
-        this.dice.combat.root.setEnabled(false); this.dice.blue.root.setEnabled(false); this.dice.noise10.root.setEnabled(false);
+        this.dice = { noise: this.makeDie(scene, 'noise'), noise10: this.makeDie(scene, 'noise10'), combat: this.makeDie(scene, 'combat'), blue: this.makeDie(scene, 'blue'), combatOriginal: this.makeDie(scene, 'combatOriginal') };
+        this.dice.combat.root.setEnabled(false); this.dice.blue.root.setEnabled(false); this.dice.noise10.root.setEnabled(false); this.dice.combatOriginal.root.setEnabled(false);
         this.t = 0;
         engine.runRenderLoop(() => { if (this.el.classList.contains('hidden')) return; this.t += engine.getDeltaTime() / 1000; this.tick(); scene.render(); });
     }
@@ -246,7 +279,7 @@ export class DiceUI {
     makeAttackDie(scene, kind, root) {
         const body = new (B().TransformNode)('d10_body_' + kind, scene);
         body.parent = root; body.scaling.setAll(0.95);
-        const faces = d10Faces(kind);
+        const faces = kind === 'combatOriginal' ? d6Faces() : d10Faces(kind);
         const baseColor = kind === 'blue' ? '#1d6fb8' : kind === 'noise10' ? '#16161c' : '#b8262c';
         faces.forEach((face, i) => {
             const mesh = new (B().Mesh)('d10_face_' + i, scene);
@@ -270,6 +303,15 @@ export class DiceUI {
                 for (let s = 0; s < 3; s++) { ctx.beginPath(); ctx.moveTo(40 + s * 24, 32); ctx.quadraticCurveTo(52 + s * 24, 64, 36 + s * 24, 98); ctx.stroke(); }
             } else if (face.value === 'crit') {
                 paintSkull(ctx, 64, 66, 44, '#f7f2ea');
+            } else if (face.value === 'miss') {
+                // The original miss face: three claw marks.
+                ctx.strokeStyle = '#f7f2ea'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+                for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(38 + k * 22, 26); ctx.quadraticCurveTo(50 + k * 22, 62, 32 + k * 22, 100); ctx.stroke(); }
+            } else if (face.value === 'small' || face.value === 'adult') {
+                // One printed claw: the wound that only some intruders can suffer.
+                ctx.strokeStyle = '#f7f2ea'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+                ctx.beginPath(); ctx.moveTo(64, 22); ctx.quadraticCurveTo(88, 64, 64, 106); ctx.stroke();
+                if (face.value === 'adult') { ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(42, 30); ctx.quadraticCurveTo(60, 64, 42, 98); ctx.stroke(); }
             } else if (kind === 'noise10' && face.value === 'silence') {
                 paintCross(ctx, 64, 66, 34, '#f7f2ea');
             } else {
@@ -322,8 +364,9 @@ export class DiceUI {
     keyFor(die) { return die === 'noise' && this.noiseVariant ? 'noise10' : die; }
     setDie(die) {
         this.die = die; this.dieKey = this.keyFor(die);
-        this.el.classList.toggle('combat', die === 'combat'); this.el.classList.toggle('noise', die === 'noise');
+        this.el.classList.toggle('combat', die === 'combat' || die === 'combatOriginal'); this.el.classList.toggle('noise', die === 'noise');
         this.el.classList.toggle('blue', die === 'blue');
+        this.el.classList.toggle('original', die === 'combatOriginal');
         if (this.dice) for (const k of Object.keys(this.dice)) this.dice[k].root.setEnabled(k === this.dieKey);
     }
     cur() { return this.dice ? (this.dice[this.dieKey || this.die] || this.dice[this.die]) : null; }

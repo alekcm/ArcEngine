@@ -7,7 +7,7 @@ import { killVoid } from './voidseeders.mjs';
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeWound,
     removeFire, removeMalfunction, placeFire, placeMalfunction, drawCards, discardCard, isContam, gainContamination,
     loseHealth, handLimit, heavyCount, findRoomsByTile, intruderLabel, dropHeavy, corridorsOf, needDice, computerHere, HIBERNATION_TIME, removeIntruder,
-    askEngineKnown } from './core.mjs';
+    askEngineKnown, removeSlime } from './core.mjs';
 import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith, INTRUDER_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
@@ -89,15 +89,41 @@ OPS['item.freeUse'] = (state, step) => {
 };
 
 /** Search: one item per icon in the room, keep one. */
-export function searchRoom(state, p, then, roomId = p.room) {
+export function searchRoom(state, p, then, roomId = p.room, { scavenging = false, color } = {}) {
     const tile = tileOf(state, roomId);
     const icons = tile ? ROOM_TILES[tile].items : [];
     const drawn = [];
-    // Quiet: the drawn items are already on the table as a picker, no card has to fly anywhere.
-    for (const color of icons) { const c = drawItem(state, color, true); if (c) drawn.push(c); }
-    log(state, pname(p) + ' обыскивает комнату' + (roomId !== p.room ? ' (' + roomName(state, roomId) + ')' : '') + ' (' + icons.length + ' предм.).', 'action');
+    const originalBase = state.rules === 'original' && state.enemySet === 'redux';
+    const rs = state.roomState[roomId];
+    if (originalBase) {
+        if (!rs || !(rs.itemsLeft > 0) || tile === 'contaminated') {
+            log(state, 'В этой комнате больше нет доступных предметов для поиска.', 'minor');
+            next(state, then);
+            return;
+        }
+        const colors = [...new Set(icons)];
+        if (!color && colors.length > 1) {
+            ask(state, { kind: 'choice', player: p.id, title: 'Поиск: выберите цвет колоды предметов',
+                options: colors.map(c => ({ id: c, label: DECK_NAMES[c] || c })) },
+                { op: 'search.originalColor', player: p.id, then, roomId, scavenging });
+            return;
+        }
+        if (!scavenging) rs.itemsLeft--;
+        // Original Search draws two cards from one item deck matching an icon in the room, keeping one.
+        const deck = color || colors[0];
+        if (deck && colors.includes(deck)) for (let i = 0; i < 2; i++) { const c = drawItem(state, deck, true); if (c) drawn.push(c); }
+    } else {
+        // Quiet: the drawn items are already on the table as a picker, no card has to fly anywhere.
+        for (const color of icons) { const c = drawItem(state, color, true); if (c) drawn.push(c); }
+    }
+    log(state, pname(p) + ' обыскивает комнату' + (roomId !== p.room ? ' (' + roomName(state, roomId) + ')' : '') + ' (' + (originalBase ? 2 : icons.length) + ' предм.).', 'action');
     keepOneOf(state, p, drawn, 'items', then, p.armor && ITEMS[p.armor.item].vest ? 2 : 1);
 }
+OPS['search.originalColor'] = (state, step) => {
+    const p = player(state, step.player);
+    if (!p) return;
+    searchRoom(state, p, step.then, step.roomId, { scavenging: step.scavenging, color: step.answer });
+};
 
 // ---------------------------------------------------------------------------------------------
 // Using items
@@ -142,13 +168,17 @@ OPS['item.use'] = (state, step) => {
             for (const c of [...p.deck]) { p.deck.splice(p.deck.indexOf(c), 1); p.discard.push(c); }
             p.discard = p.discard.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
+            removeSlime(state, p);
             if (state.enemySet === 'chytrids' && removeChySpore(state, p)) log(state, 'Спора удалена.', 'good');
             removeCarnomorphMutation(state, p);
             log(state, pname(p) + ': автодок удалил все заражения.', 'good');
             p.passed = true; next(state, { op: 'turn.end' }); return;
         case 'medkit': consume(); healChoice(state, p, 3, back, 2); return;   // Serious Wound and/or 3 Health
-        case 'woundOrHeal2': consume(); healChoice(state, p, 2, back); return;
-        case 'removeContam1': consume(); removeOneContam(state, p); next(state, back); return;
+        case 'woundOrHeal2':
+            consume();
+            if (inst.item === 'stapler') removeSlime(state, p);
+            healChoice(state, p, 2, back); return;
+        case 'removeContam1': consume(); removeOneContam(state, p); removeSlime(state, p); next(state, back); return;
         case 'adrenaline': consume(); drawCards(state, p, 2); p.adrenalineTurn = true; log(state, pname(p) + ': любое число действий в этом ходу!', 'good'); next(state, back); return;
         case 'supportCrate': consume(); keepOneOf(state, p, drawSupport(state, 3), 'support', back); return;
         case 'toggleSelfDestruct': consume(); if (state.selfDestruct > 0) stopSelfDestruct(state); else startSelfDestruct(state); next(state, back); return;

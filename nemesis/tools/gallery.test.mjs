@@ -1,6 +1,6 @@
 // Room gallery (test ship) — checks the board the client opens from the lobby to look at every
 // room model. This is not a rules test: a normal game places only 11 basic + 5 additional tiles,
-// the gallery has to show *all* of them at once.
+// the gallery has to show *all* of them at once, including optional Aftermath tiles.
 // Run: node --test nemesis/tools/gallery.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ test('GAL-01: the test ship holds every room tile of the game exactly once', () 
     const ship = galleryShip();
     const ids = Object.keys(ship.rooms);
     assert.equal(ids.length, Object.keys(ROOM_TILES).length, 'room count = tile count');
-    assert.equal(ids.length, 25);
+    assert.equal(ids.length, 26);
     assert.deepEqual([...GALLERY_TILES].sort(), Object.keys(ROOM_TILES).sort());
     const tiles = ids.map(id => ship.galleryTiles[id]);
     assert.equal(new Set(tiles).size, tiles.length, 'no tile is placed twice');
@@ -26,8 +26,8 @@ test('GAL-02: the board is one connected grid where every room has two to four e
     const ship = galleryShip();
     const ids = Object.keys(ship.rooms);
     assert.equal(ship.mode, 'gallery');
-    // 5 x 5 grid: 5 horizontal and 4 vertical rows of links
-    assert.equal(Object.keys(ship.corridors).length, 5 * 4 + 4 * 5);
+    // The original 5x5 layout stays stable; the optional room is attached to the board at two joins.
+    assert.equal(Object.keys(ship.corridors).length, 43);
     for (const id of ids) {
         const deg = ship.rooms[id].exits.length;
         assert.ok(deg >= 2 && deg <= 4, 'room ' + id + ' has ' + deg + ' exits');

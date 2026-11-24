@@ -17,7 +17,7 @@ import url from 'node:url';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { createGame } from './shared/engine/setup.mjs';
-import { playableEnemySet } from './shared/dlc.mjs';
+import { playableEnemySet, validRulesMode, rulesModeOf, enemySetAllowed } from './shared/dlc.mjs';
 import { answer, claimDestination } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { CHARACTERS } from './shared/data/cards.mjs';
@@ -170,7 +170,7 @@ function upgrade(req, sock) {
 const game = {
     phase: 'lobby',                   // 'lobby' | 'playing'
     seats: [],                        // [{token, name, charId, colors, appearances, ready, socket|null}]
-    settings: { enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: true, alienMode: 'weaknesses', undoAnyone: false }, poses: {},
+    settings: { rules: 'redux', enemySet: 'redux', mode: 'original', seed: '', draft: false, adaptations: '3', noiseVariant: true, alienMode: 'weaknesses', aftermathRooms: false, undoAnyone: false }, poses: {},
     state: null,
     undo: [],                         // [{json, label}]
     history: [],                      // labels of accepted actions (for the undo list)
@@ -283,7 +283,18 @@ function onMessage(socket, m) {
             }
             if (typeof m.ready === 'boolean') seat.ready = m.ready;
             if (m.settings && isHost(socket)) {
-                if (typeof m.settings.enemySet === 'string' && playableEnemySet(m.settings.enemySet)) game.settings.enemySet = m.settings.enemySet;
+                // The ruleset is a hard gate: a DLC pack may only be chosen under the original rules.
+                if (typeof m.settings.rules === 'string' && validRulesMode(m.settings.rules)) {
+                    game.settings.rules = m.settings.rules;
+                    if (!enemySetAllowed(game.settings.enemySet, game.settings.rules)) game.settings.enemySet = 'redux';
+                }
+                if (typeof m.settings.enemySet === 'string' && playableEnemySet(m.settings.enemySet)) {
+                    // Choosing a pack is choosing the rules it belongs to: the packs are printed
+                    // against the original game, so a host who picks one without naming a ruleset
+                    // means the original rules.
+                    if (m.settings.rules === undefined && !enemySetAllowed(m.settings.enemySet, game.settings.rules)) game.settings.rules = 'original';
+                    if (enemySetAllowed(m.settings.enemySet, game.settings.rules)) game.settings.enemySet = m.settings.enemySet;
+                }
                 if (m.settings.mode === 'random' || m.settings.mode === 'original') game.settings.mode = m.settings.mode;
                 if (typeof m.settings.seed === 'string') game.settings.seed = m.settings.seed.slice(0, 32);
                 if (typeof m.settings.draft === 'boolean') game.settings.draft = m.settings.draft;
@@ -301,8 +312,8 @@ function onMessage(socket, m) {
             const seats = game.seats.filter(s => s.socket);
             if (seats.length < 1) return;
             game.seats = seats;
-            game.state = createGame({ enemySet: game.settings.enemySet, seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
-                adaptations: game.settings.adaptations, noiseVariant: game.settings.noiseVariant, weaknessMode: game.settings.alienMode === 'weaknesses',
+            game.state = createGame({ rules: game.settings.rules, enemySet: game.settings.enemySet, seed: game.settings.seed || String(Date.now()), mode: game.settings.mode, draft: game.settings.draft,
+                adaptations: game.settings.adaptations, noiseVariant: game.settings.noiseVariant, weaknessMode: game.settings.alienMode === 'weaknesses', aftermathRooms: game.settings.aftermathRooms,
                 players: seats.map(s => ({ name: s.name, charId: s.charId, colors: s.colors, parts: characterParts(s.charId, s.appearances[s.charId]) })),
                 ui: { bagClick: true, eventAck: true } });
             game.phase = 'playing'; game.undo = []; game.history = []; game.poses = {};
@@ -516,13 +527,16 @@ function onMessage(socket, m) {
                 socket.send({ t: 'notice', text: 'Не удалось загрузить сохранение.', kind: 'error' });
                 return;
             }
-            // Older Redux saves have no enemySet; incomplete DLC must not bypass the lobby guard.
-            if (!playableEnemySet(saveData.state.enemySet || 'redux')) {
+            // Older Redux saves have no rules field: they predate the split and are Redux by definition.
+            // The user chose not to support them, so a save that names an unknown ruleset is refused
+            // rather than guessed at.
+            const saveRules = saveData.state.rules === undefined ? 'redux' : rulesModeOf(saveData.state.rules);
+            if (!enemySetAllowed(saveData.state.enemySet || 'redux', saveRules)) {
                 socket.send({ t: 'notice', text: 'Дополнение из сохранения ещё недоступно.', kind: 'error' }); return;
             }
             game.state = saveData.state;
             game.phase = saveData.phase || 'playing';
-            game.settings = { ...game.settings, ...(saveData.settings || {}), enemySet: saveData.state.enemySet || 'redux' };
+            game.settings = { ...game.settings, ...(saveData.settings || {}), rules: saveRules, enemySet: saveData.state.enemySet || 'redux' };
             // Old saves may contain secret answers in historical labels; their undo stack is
             // not restored, so discard untrusted legacy history rather than broadcasting it.
             game.history = saveData.historyRedacted === true && Array.isArray(saveData.history) ? saveData.history : [];

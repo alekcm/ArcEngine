@@ -1,6 +1,7 @@
 import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, CHYTRID_WEAKNESSES, chytridEventText } from '/shared/data/chytrids.mjs';
 import { eventTextFor } from '/shared/data/event-text.mjs';
 import { bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mjs';
+import { enemySetsFor, enemySetName, RULES_MODES } from '/shared/dlc.mjs';
 // app.js — Nemesis client: lobby, HUD, prompts, hand, log, chat, undo. Talks to server.mjs over
 // WebSocket and renders the 3D board through scene3d.js.
 
@@ -11,15 +12,16 @@ import { characterColors } from './characters.js';
 import { characterPartSlots, characterParts } from '../shared/appearance.mjs';
 import { DiceUI } from './dice.js';
 import { TableFX } from './fx.js';
-import { itemDeckBadge, knowledgeTrack, larvaBadge } from './status-display.mjs';
+import { itemDeckBadge, knowledgeTrack, larvaBadge, slimeBadge } from './status-display.mjs';
 import * as Snd from './sound.js';
-import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
+import { cardArt, cardHtml, computerArt, describeCard, esc, itemArtHtml, itemLabel, itemTitle, objectiveArt, roomActionText, woundName, woundShort, eventArt, attackArt, panicArt, queenArt, itemArt } from './cards.js';
 import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, galleryShip, tileKeyedEdits } from '/shared/ship.mjs';
 import { ITEMS, INTRUDER_NAMES, COMPUTER_CARDS, OBJECTIVES, DESTINATION_NAMES, COORDINATE_CARDS, CHARACTERS, ADAPTATIONS, WEAKNESSES, FEATS, objectiveTextOf,
     EVENT_CARDS, ATTACK_CARDS, QUEEN_CARDS, WOUNDS, DECK_NAMES } from '/shared/data/cards.mjs';
 import { adaptationSlots, toughnessText } from './carnomorph-ui.mjs';
 import { CARNOMORPH_MUTATIONS, CARNOMORPH_ATTACK_CARDS } from '/shared/data/carnomorphs.mjs';
 import { CARNOMORPH_EVENT_CARDS, carnomorphEventText } from '/shared/data/carnomorph-events.mjs';
+import { ORIGINAL_EVENT_CARDS, ORIGINAL_ATTACK_CARDS } from '/shared/data/original-cards.mjs';
 import { VOID_ATTACK_CARDS, VOID_EVENT_CARDS, VOID_PANIC_CARDS, VOID_WEAKNESSES } from '/shared/data/voidseeders.mjs';
 
 const $ = id => document.getElementById(id);
@@ -94,13 +96,14 @@ const app = {
     charId: null, colors: {}, parts: {}, pendingParts: null, labWorkshop: false, name: '', ready: false, menuCollapsed: true,
     canUndo: false, canRollBack: false, bagShown: null, bagTimer: null, deckKind: 'event', altHeld: false,
     wp: null, itemPick: null, itemPickMin: false, gallery: false,
+    rules: 'redux',     // lobby ruleset the host has picked (mirrors L.settings.rules)
     hoverCard: null,    // card under the pointer: { kind: 'card', id } | { kind: 'item', uid }
     showing: null,      // the card currently shown to the table: { card, from, cid }
     showCid: '',        // id of my own show, so the server echo does not draw it twice
     showTimer: null,
 };
-const EVENT_BY_ID = Object.fromEntries([...EVENT_CARDS, ...CARNOMORPH_EVENT_CARDS, ...VOID_EVENT_CARDS, ...CHYTRID_EVENT_CARDS].map(e => [e.id, e]));
-const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(e => [e.id, e]));
+const EVENT_BY_ID = Object.fromEntries([...EVENT_CARDS, ...ORIGINAL_EVENT_CARDS, ...CARNOMORPH_EVENT_CARDS, ...VOID_EVENT_CARDS, ...CHYTRID_EVENT_CARDS].map(e => [e.id, e]));
+const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...ORIGINAL_ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(e => [e.id, e]));
 const PANIC_BY_ID = Object.fromEntries(VOID_PANIC_CARDS.map(c => [c.id, c]));
 let scene = null, preview = null, dice = null, tableFx = null;
 let galleryScene = null;   // lobby room gallery: its own small 3D scene, built on first open
@@ -347,7 +350,40 @@ function renderLobby() {
     for (const el of $('seatList').querySelectorAll('[data-kick]')) el.onclick = () => net.send({ t: 'lobby', kick: Number(el.dataset.kick) });
     // settings
     $('modeSelect').value = L.settings.mode; $('draftSelect').value = L.settings.draft === false ? '0' : '1'; if (document.activeElement !== $('seedInput')) $('seedInput').value = L.settings.seed || '';
-    if ($('enemySetSelect')) { $('enemySetSelect').value = L.settings.enemySet || 'redux'; $('enemySetSelect').disabled = !app.host; }
+    // The ruleset drives everything below it: which enemy sets exist and what the pack dropdown
+    // is allowed to offer. Rebuild the list instead of hiding options, so a stale choice can never
+    // survive a switch of rules.
+    const rules = L.settings.rules || 'redux';
+    app.rules = rules;
+    for (const el of document.querySelectorAll('#rulesPick .rules-opt')) {
+        const on = el.dataset.rules === rules;
+        el.setAttribute('aria-checked', on ? 'true' : 'false');
+        el.classList.toggle('locked', !app.host);
+        el.disabled = !app.host;
+    }
+    if ($('rulesHint')) $('rulesHint').textContent = rules === 'original'
+        ? 'Оригинальные правила: пять чужих, боевой кубик d6, слабости вместо адаптаций. Дополнения играются точно по их книгам.'
+        : 'Правила Redux: Чужие Redux, боевой кубик d10, подвиги и данные поля. Дополнения не используются.';
+    // Redux-only mechanics (Adaptations, the alternative weakness/evolution switch, the ten-face
+    // noise die) are not part of the original game and are taken off the lobby under these rules.
+    for (const el of document.querySelectorAll('.redux-only')) el.classList.toggle('hidden', rules !== 'redux');
+    const pick = $('enemySetSelect');
+    if (pick) {
+        const wanted = L.settings.enemySet || 'redux';
+        pick.innerHTML = enemySetsFor(rules).map(id => '<option value="' + id + '">' + esc(enemySetName(id, rules)) + '</option>').join('');
+        pick.value = enemySetsFor(rules).includes(wanted) ? wanted : enemySetsFor(rules)[0];
+        pick.disabled = !app.host;
+        const es = pick.value;
+        $('enemySetHint').textContent = es === 'redux'
+            ? (rules === 'original' ? 'Оригинальные чужие: Личинка, Ползун, Трутень, Охотник, Королева.' : 'Чужие Redux: Личинка, Взрослый, Дрон, Королева.')
+            : 'Дополнение играет по своему печатному правилнику.';
+    }
+    if ($('aftermathRoomsRow')) {
+        const available = rules === 'original' && (!pick || pick.value === 'redux');
+        $('aftermathRoomsRow').classList.toggle('hidden', !available);
+        $('aftermathRoomsSelect').value = L.settings.aftermathRooms ? '1' : '0';
+        $('aftermathRoomsSelect').disabled = !app.host || !available;
+    }
     if ($('adaptSelect')) $('adaptSelect').value = L.settings.adaptations !== undefined ? String(L.settings.adaptations) : '3';
     if ($('alienModeSelect')) $('alienModeSelect').value = L.settings.alienMode === 'weaknesses' ? 'weaknesses' : 'evolutions';
     if ($('noiseDieSelect')) $('noiseDieSelect').value = L.settings.noiseVariant ? 'safe' : 'standard';
@@ -596,6 +632,7 @@ $('galleryBtn').onclick = () => openGallery();
 $('galleryClose').onclick = () => closeGallery();
 $('startBtn').onclick = () => net.send({ t: 'start' });
 const sendSettings = () => net.send({ t: 'lobby', settings: {
+    rules: app.rules,
     mode: $('modeSelect').value,
     enemySet: $('enemySetSelect') ? $('enemySetSelect').value : 'redux',
     seed: $('seedInput').value,
@@ -604,7 +641,16 @@ const sendSettings = () => net.send({ t: 'lobby', settings: {
     alienMode: $('alienModeSelect') ? $('alienModeSelect').value : 'evolutions',
     undoAnyone: $('undoAnyoneSelect') ? $('undoAnyoneSelect').value === 'all' : false,
     noiseVariant: $('noiseDieSelect') ? $('noiseDieSelect').value === 'safe' : false,
+    aftermathRooms: $('aftermathRoomsSelect') ? $('aftermathRoomsSelect').value === '1' : false,
 } });
+for (const el of document.querySelectorAll('#rulesPick .rules-opt')) {
+    el.onclick = () => {
+        if (!app.host || el.dataset.rules === app.rules) return;
+        app.rules = el.dataset.rules;
+        // Optimistic: the lobby echoes the host's own choice back, so the picker answers at once.
+        net.send({ t: 'lobby', settings: { rules: app.rules, enemySet: enemySetsFor(app.rules)[0] } });
+    };
+}
 if ($('enemySetSelect')) $('enemySetSelect').onchange = sendSettings;
 $('modeSelect').onchange = sendSettings;
 $('seedInput').onchange = sendSettings;
@@ -612,6 +658,7 @@ $('draftSelect').onchange = sendSettings;
 if ($('adaptSelect')) $('adaptSelect').onchange = sendSettings;
 if ($('alienModeSelect')) $('alienModeSelect').onchange = sendSettings;
 if ($('noiseDieSelect')) $('noiseDieSelect').onchange = sendSettings;
+if ($('aftermathRoomsSelect')) $('aftermathRoomsSelect').onchange = sendSettings;
 if ($('undoAnyoneSelect')) $('undoAnyoneSelect').onchange = sendSettings;
 $('restartBtn').onclick = () => { if (app.host) net.send({ t: 'restart' }); else $('endOverlay').classList.add('hidden'); };
 
@@ -881,7 +928,7 @@ function renderSelfHud() {
         const armorBadge = me.armor && armorAt < 0 ? ' · 🛡 ' + esc(itemLabel(me.armor)) : '';
         const handC = me.handCount ?? (me.hand ? me.hand.length : 0);
         return '<div class="sh-player' + (isMe ? ' is-me' : '') + (me.health <= 1 ? ' dead' : '') + '" data-player-id="' + me.id + '" title="' + esc(me.charName || me.name) + ' — нажмите, чтобы открыть планшет">' +
-            '<div class="sh-head"><b>' + esc(me.charName || me.name) + (isMe ? ' (Вы)' : '') + '</b>' + larvaBadge(me) +
+            '<div class="sh-head"><b>' + esc(me.charName || me.name) + (isMe ? ' (Вы)' : '') + '</b>' + larvaBadge(me) + slimeBadge(me, app.view.rules) +
             '<small>' + esc(st) + ' · ❤️ ' + me.health + '/10 · 🂠 ' + handC + ' в руке' + armorBadge + '</small></div>' +
             '<div class="sh-hp">' + bar + lastCell + hpSkull(me) + '</div>' +
             '</div>';
@@ -947,6 +994,7 @@ function renderPlayers() {
             tags.push('<span class="tag purple" title="С уровня 3 безумие нельзя снизить ниже 3 обычными способами; увеличение выше 5 смертельно">🧠 безумие ' + p.madness + '/5' + typeLabel + '</span>');
         }
         if (p.larva) tags.push('<span class="tag purple">личинка</span>');
+        if (v.rules === 'original' && p.slime) tags.push('<span class="tag green" title="Тишина превращается в Опасность">🟢 слизь</span>');
         if (p.armor) tags.push('<span class="tag itag" title="' + esc(itemTitle(p.armor)) + '">' + itemArtHtml(p.armor) + '🛡 ' + esc(itemLabel(p.armor)) + (p.armor.item === 'probeArm' ? ' · жетонов свободно ' + (p.armor.charge ?? ITEMS.probeArm.markers) : '') + '</span>');
         if (p.tissue) tags.push('<span class="tag yellow">🧫 ткань ×' + p.tissue + '</span>');
         if (p.laika) tags.push('<span class="tag yellow">🐕 Лайка: ' + (p.laika === 'board' ? 'рядом' : 'в ' + esc(roomLabel(p.laika))) + '</span>');
@@ -1325,7 +1373,7 @@ function renderPilePopups(v) {
 
 /** Top-bar track: round/phase text, 15 time cells (blue from 8 down) and the 6-cell self-destruct track. */
 function renderTrack(v) {
-    let h = '<div class="tphase">Раунд ' + v.round + '<b>' + esc(PHASES[v.phase] || v.phase) + '</b></div><div class="trk time">';
+    let h = '<div class="tphase">Раунд ' + v.round + '<b>' + esc(PHASES[v.phase] || v.phase) + '</b><small>' + (v.rules === 'original' ? 'Оригинальные правила · 2018' : 'Правила Redux') + '</small></div><div class="trk time">';
     for (let i = 15; i >= 1; i--) h += '<div class="cell' + (i <= 8 ? ' blue' : '') + (i > v.time ? ' done' : '') + (i === v.time ? ' cur' : '') + '" title="Время: ' + i + '">' + i + '</div>';
     h += '</div>';
     if (v.selfDestruct > 0) {
@@ -1387,17 +1435,20 @@ function onRoomHover(id, x, y) {
     const me = v.players.find(p => p.id === app.me);
     const tile = rs.tile || (r.kind === 'cockpit' ? 'cockpit' : r.kind === 'hibernatorium' ? 'hibernatorium' : r.kind === 'engine' ? 'engine' : null);
     let html = '<b>' + esc(roomLabel(id)) + '</b>';
-    if (tile) html += '<div>' + esc(ROOM_TILES[tile].action) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
+    if (tile) html += '<div>' + esc(roomActionText(tile, v.enemySet)) + '</div><div class="dim">Предметы: ' + (ROOM_TILES[tile].items.map(c => ({ green: '🟢', red: '🔴', yellow: '🟡' })[c]).join('') || '—') + (ROOM_TILES[tile].computer ? ' · 💻 компьютер' : '') + '</div>';
     else if (me && me.knownTiles && me.knownTiles[id]) html += '<div class="dim">Вам известно: ' + esc(ROOM_TILES[me.knownTiles[id]].name) + '</div>';
     else html += '<div class="dim">??? — не разведана</div>';
     const flags = [];
     if (rs.chySpore) flags.push('🟢 споры'); if (rs.chyGerm) flags.push((rs.chyGerm.color === 'green' ? '🟩' : '🟪') + ' нарост: ' + rs.chyGerm.level); if (rs.chyMycelium) flags.push('🍄 мицелий');
     if (rs.fire) flags.push('🔥 огонь'); if (rs.malfunction) flags.push('⚠ поломка'); if (r.tech) flags.push('🕳 тех. вход');
+    const turret = v.rules === 'original' && (v.turrets || []).find(t => !t.destroyed && t.room === id);
+    if (turret) flags.push('🔫 турель' + (turret.status ? ' · ' + ({ inactive: 'неактивна', all: 'цель: все', intruders: 'цель: пришельцы' }[turret.status] || '') : ' · статус скрыт'));
     const intr = Object.values(v.intruders).filter(i => i.room === id);
     if (intr.length) flags.push('👾 ' + intr.map(i => INTRUDER_NAMES[i.type] + (i.hits ? '(' + i.hits + ')' : '')).join(', '));
     const objs = rs.objects.map(o => ({ corpse: 'труп', charCorpse: 'труп персонажа', carcass: 'туша', egg: 'яйцо' })[o.type]);
     if (objs.length) flags.push('📦 ' + objs.join(', '));
     if (tile === 'nest') flags.push('🥚 яиц: ' + v.nestEggs);
+    if (v.rules === 'original' && typeof rs.itemsLeft === 'number') flags.push('🔎 предметов для поиска: ' + rs.itemsLeft);
     const ppl = v.players.filter(p => p.room === id && (p.status === 'active' || p.status === 'hibernating') && !p.pod).map(p => p.name);
     if (ppl.length) flags.push('🧑 ' + ppl.join(', '));
     // Escape pods of this section: how many there are, whether they are open and who sits inside.
@@ -1475,7 +1526,7 @@ function onRoomClick(id) {
         const tile = roomTileOf(v, id), def = tile ? ROOM_TILES[tile] : null;
         const a = menuActionOf(menu, 'room');
         openWorldPop(roomLabel(id), def ? def.name : 'Комната ещё не исследована', [{
-            label: 'Действие комнаты:', sub: def ? def.action : 'Сначала разведайте комнату',
+            label: 'Действие комнаты:', sub: def ? roomActionText(tile, v.enemySet) : 'Сначала разведайте комнату',
             disabled: !a || !a.enabled, reason: a ? a.reason : 'Не ваш ход',
             do: () => act({ action: 'room' }),
         }], scene.screenOf('room', id));
@@ -2407,6 +2458,9 @@ function openDeck(kind, quiet) {
     app.deckKind = kind === 'owndisc' ? 'own' : (kind || 'event');
     const me = v.players.find(p => p.id === app.me);
     const tabs = ['computer', 'own', ...(v.enemySet === 'voidseeders' ? ['panic'] : ['queen']), 'event', 'attack', 'wound', 'feats'];
+    if (v.rules === 'original') {
+        for (const excluded of ['queen', 'feats']) if (v.enemySet !== 'voidseeders' || excluded !== 'queen') tabs.splice(tabs.indexOf(excluded), 1);
+    }
     const counts = { panic: (v.piles && v.piles.panic || []).length, event: (v.piles && v.piles.event || []).length,
         attack: (v.piles && v.piles.attack || []).length,
         queen: ((v.piles && v.piles.queen || []).length + (v.queenDeck || []).length),

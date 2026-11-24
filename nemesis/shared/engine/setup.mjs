@@ -1,12 +1,14 @@
 // setup.mjs — createGame(): builds the initial state from the lobby configuration.
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
-import { playableEnemySet } from '../dlc.mjs';
+import { playableEnemySet, enemySetAllowed, rulesModeOf } from '../dlc.mjs';
+import { bindAttackCards } from './original.mjs';
 import { initCarnomorphPack } from './carnomorph-setup.mjs';
 import { initVoidseeders } from './voidseeders.mjs';
 import { characterParts } from '../appearance.mjs';
-import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
+import { originalShip, randomShip, BASIC_TILES, ADDITIONAL_TILES, ADDITIONAL_IN_PLAY, EXPLORATION_TOKENS, ORIGINAL_EXPLORATION_TOKENS, roomOfKind } from '../ship.mjs';
 import { ATTACK_CARDS, EVENT_CARDS, WOUNDS, ITEMS, CHARACTERS, FIELD_DATA, COMPUTER_CARDS, OBJECTIVES, COORDINATE_CARDS, QUEEN_CARDS, FEATS, ADAPTATIONS, WEAKNESSES, COMMON_CARDS } from '../data/cards.mjs';
+import { ORIGINAL_ATTACK_CARDS, ORIGINAL_EVENT_CARDS } from '../data/original-cards.mjs';
 import { OPS, ask, log, next, run, pname, fx } from './core.mjs';
 import './turn.mjs';
 import './movement.mjs';
@@ -23,6 +25,7 @@ import './void-events.mjs';
 import './events.mjs';
 import './rooms.mjs';
 import './items.mjs';
+import './turrets.mjs';
 import './actions.mjs';
 import './actions2.mjs';
 import './actions3.mjs';
@@ -30,20 +33,27 @@ import './feats.mjs';
 import './fielddata.mjs';
 import './endgame.mjs';
 
+bindAttackCards(ATTACK_CARDS);
+
 export function createGame(config) {
+    // A DLC pack only exists under the original rules, so naming one settles the ruleset when the
+    // caller (a test, a save, a bot) does not say.
+    const rules = config.rules !== undefined ? rulesModeOf(config.rules)
+        : (config.enemySet && config.enemySet !== 'redux' ? 'original' : 'redux');
     const enemySet = config.enemySet ?? 'redux';
     if (!playableEnemySet(enemySet)) throw new RangeError('Enemy set is not playable: ' + enemySet);
+    if (!enemySetAllowed(enemySet, rules)) throw new RangeError('Enemy set ' + enemySet + ' is not playable under the ' + rules + ' rules');
     const seedStr = config.seed || String(Date.now());
     const state = {
-        version: 1, enemySet,
+        version: 1, enemySet, rules,
         seedStr, rng: seedFromString(seedStr),
         mode: config.mode === 'random' ? 'random' : 'original',
         round: 0, phase: 'setup',
         players: [], firstPlayer: 0, current: 0,
         queue: [], prompt: null, resume: null, promptSeq: 0,
         log: [], logSeq: 0,
-        secret: { tiles: {}, tokens: {}, contamInfected: {}, engines: [], coordinates: null },
-        roomState: {}, intruders: {}, intruderSeq: 0, contamSeq: 0, itemSeq: 0,
+        secret: { tiles: {}, tokens: {}, contamInfected: {}, engines: [], coordinates: null, turretStatuses: [] },
+        roomState: {}, intruders: {}, intruderSeq: 0, contamSeq: 0, itemSeq: 0, turrets: [],
         bag: [], fireLeft: 8, malfLeft: 8,
         // What the table has been TOLD (not what is true): «летим в пункт X», engine N whole/broken.
         claims: { destination: null, engines: {} }, lastComputerAction: null,
@@ -69,8 +79,12 @@ export function createGame(config) {
 
     // Room tiles
     const basic = shuffle(state, [...BASIC_TILES]);
-    const additional = shuffle(state, [...ADDITIONAL_TILES]).slice(0, ADDITIONAL_IN_PLAY);
-    const tokens = shuffle(state, [...EXPLORATION_TOKENS]);
+    const aftermathRooms = rules === 'original' && state.enemySet === 'redux' && !!config.aftermathRooms;
+    state.aftermathRooms = aftermathRooms;
+    const additional = shuffle(state, [...ADDITIONAL_TILES]).slice(0, aftermathRooms ? ADDITIONAL_IN_PLAY - 1 : ADDITIONAL_IN_PLAY);
+    if (aftermathRooms) additional.push('defense');
+    const tokens = shuffle(state, [...(rules === 'original' && state.enemySet === 'redux' ? ORIGINAL_EXPLORATION_TOKENS : EXPLORATION_TOKENS)]);
+    if (rules === 'original' && state.enemySet === 'redux') state.secret.turretStatuses = shuffle(state, ['inactive', 'all', 'intruders']);
     for (const r of Object.values(state.ship.rooms)) {
         const special = r.kind === 'cockpit' || r.kind === 'hibernatorium' || r.kind === 'engine';
         state.roomState[r.id] = { tile: null, explored: special, fire: false, malfunction: false, objects: [], token: null };
@@ -83,9 +97,13 @@ export function createGame(config) {
     state.secret.coordinates = pick(state, COORDINATE_CARDS).id;
 
     // Decks
-    for (const c of ATTACK_CARDS) for (let i = 0; i < c.count; i++) state.attackDeck.push(c.id);
+    if (rules === 'original') {
+        for (const c of ORIGINAL_ATTACK_CARDS) state.attackDeck.push(c.id);
+    } else {
+        for (const c of ATTACK_CARDS) for (let i = 0; i < c.count; i++) state.attackDeck.push(c.id);
+    }
     shuffle(state, state.attackDeck);
-    state.eventDeck = shuffle(state, EVENT_CARDS.map(e => e.id));
+    state.eventDeck = shuffle(state, (rules === 'original' ? ORIGINAL_EVENT_CARDS : EVENT_CARDS).map(e => e.id));
     for (const w of Object.keys(WOUNDS)) for (let i = 0; i < 3; i++) state.woundDeck.push(w);
     shuffle(state, state.woundDeck);
     for (const [key, it] of Object.entries(ITEMS)) {
@@ -93,16 +111,24 @@ export function createGame(config) {
         for (let i = 0; i < it.count; i++) state.itemDecks[it.deck].push(key);
     }
     for (const d of Object.values(state.itemDecks)) shuffle(state, d);
-    for (const k of Object.keys(FIELD_DATA)) state.fieldDataDeck.push('field.' + k + '#0');
-    shuffle(state, state.fieldDataDeck);
+    // Field Data is a Redux deck. The Computer Action deck stays in both rulesets: it is the app's
+    // rendering of the computer actions printed on the original room tiles.
+    if (rules === 'redux') {
+        for (const k of Object.keys(FIELD_DATA)) state.fieldDataDeck.push('field.' + k + '#0');
+        shuffle(state, state.fieldDataDeck);
+    }
     state.computerDeck = shuffle(state, Object.keys(COMPUTER_CARDS));
     revealComputerCard(state, true);
     state.queenDeck = shuffle(state, QUEEN_CARDS.map((c, i) => i));
-    state.feats = shuffle(state, Object.keys(FEATS)).slice(0, 6);
+    if (rules === 'original') state.queenDeck = [];
+    // Feats are a Redux addition; the original game has no feat pool at all.
+    state.feats = rules === 'redux' ? shuffle(state, Object.keys(FEATS)).slice(0, 6) : [];
     state.featsUsed = [];   // taken from the pool (played or discarded) — shown in the deck viewer
-    state.noiseVariant = !!config.noiseVariant;
+    // The original game owns one Noise die (twelve faces). The ten-face variant is a Redux option.
+    state.noiseVariant = rules === 'original' ? false : !!config.noiseVariant;
 
-    const adaptCfg = config.adaptations !== undefined ? String(config.adaptations) : '3';
+    // Adaptations are a Redux device. The original game always plays its eight Weakness cards.
+    const adaptCfg = rules === 'original' ? '0' : (config.adaptations !== undefined ? String(config.adaptations) : '3');
     if (adaptCfg === '0' || adaptCfg === 'none') {
         state.adaptations = [];
     } else if (adaptCfg === 'all') {
@@ -117,7 +143,7 @@ export function createGame(config) {
     // lie face down, one bound to each Laboratory research object. Analyzing the object in the
     // Lab reveals its Weakness (rooms.mjs). The hidden assignment lives in `secret`, so clients
     // only ever see `state.weaknesses` — the ones already revealed.
-    state.weaknessMode = !!config.weaknessMode;
+    state.weaknessMode = rules === 'original' ? true : !!config.weaknessMode;
     if (state.weaknessMode) {
         state.adaptations = [];
         state.weaknesses = [];
@@ -145,8 +171,14 @@ export function createGame(config) {
     state.setupPlayers = config.players.map(pc => ({ charId: pc.charId, colors: pc.colors || {}, parts: characterParts(pc.charId, pc.parts) }));
 
     // Bag & pods
-    state.bag = ['blank', 'larva', 'larva', 'larva', 'larva'];
-    for (let i = 0; i < 5 + n; i++) state.bag.push('adult');
+    if (rules === 'original') {
+        // Printed Setup (p. 6, step 10): 1 Blank, 4 Larva, 1 Creeper, 1 Queen, and 3 + 1-per-player Adults.
+        state.bag = ['blank', 'larva', 'larva', 'larva', 'larva', 'crawler', 'queen'];
+        for (let i = 0; i < 3 + n; i++) state.bag.push('adult');
+    } else {
+        state.bag = ['blank', 'larva', 'larva', 'larva', 'larva'];
+        for (let i = 0; i < 5 + n; i++) state.bag.push('adult');
+    }
     if (state.enemySet === 'carnomorphs') initCarnomorphPack(state);
     else if (state.enemySet === 'voidseeders') initVoidseeders(state);
     else if (state.enemySet === 'chytrids') initChytrids(state);
@@ -231,13 +263,15 @@ OPS['setup.finish'] = (state) => {
     state.round = 1;
     log(state, 'Игра началась. Корабль: ' + (state.mode === 'random' ? 'случайная компоновка' : 'оригинальный «Немезида»') + '. Первый игрок — ' + pname(state.players[state.firstPlayer]) + ' (Игрок 1).', 'event');
     log(state, 'Все персонажи просыпаются в Гибернатории.', 'info');
+    log(state, state.rules === 'original' ? 'Правила: оригинальная игра (2018).' : 'Правила: Redux.', 'event');
     if (state.enemySet === 'carnomorphs') log(state, '🧬 Адаптации карноморфов закрыты до появления соответствующих типов.', 'event');
     else if (state.enemySet === 'voidseeders') log(state, '🔬 Уязвимости кошмаров закрыты до исследования соответствующих объектов и безумия.', 'event');
     else if (state.enemySet === 'chytrids') log(state, '🔬 Уязвимости хитридов закрыты до исследования соответствующих объектов.', 'event');
     else if (state.weaknessMode) log(state, '🔬 Слабости чужих: 3 скрытые карты — человеческий труп, туша чужого и яйцо чужого хранят по одной. Анализируйте объекты в Лаборатории, чтобы открыть их.', 'event');
     else log(state, 'Активные адаптации чужих: ' + (state.adaptations.length ? state.adaptations.map(k => '«' + ADAPTATIONS[k].name + '»').join(', ') : 'отключены') + '.', 'event');
     if (state.noiseVariant) log(state, 'Кубик шума: d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).', 'event');
-    log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');
+    else log(state, 'Кубик шума: 12 граней (2 встречи, 1 опасность, 1 тишина).', 'event');
+    if (state.feats.length) log(state, 'Доступные подвиги: ' + state.feats.map(k => '«' + FEATS[k].name + '»').join(', ') + '.', 'info');
     next(state, { op: 'phase.player' });
 };
 

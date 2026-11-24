@@ -14,8 +14,14 @@ export function voidEventText(card) {
     return 'Движение: все кошмары — коридор ' + card.move.num + '. ' + card.text + ' ' + EVENT_NOISE_TEXT;
 }
 
+export function originalEventText(card) {
+    const types = ((card.move && card.move.types) || []).map(t => INTRUDER_NAMES[t] || t).join(', ');
+    return 'Движение (' + types + '): коридор ' + card.move.num + '. ' + card.text;
+}
+
 export function eventTextFor(ev) {
     if (!ev) return '';
+    if (String(ev.id).startsWith('origEv')) return originalEventText(ev);
     if (String(ev.id).startsWith('carnoEvent')) return carnomorphEventText(ev);
     if (String(ev.id).startsWith('voidEvent')) return voidEventText(ev);
     if (String(ev.id).startsWith('chyEvent')) return chytridEventText(ev);

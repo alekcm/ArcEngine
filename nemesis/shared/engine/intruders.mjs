@@ -6,6 +6,7 @@ import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomNa
 import { distances, roomOfKind } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { countAvailable, fieldExpAsk } from './movement.mjs';
+import { isOriginal, originalBagDevelopment, originalBagTokenMeaning, originalTimeStep } from './original.mjs';
 import { VOID_TYPES } from '../data/voidseeders.mjs';
 import { addVoidToken } from './void-bag.mjs';
 import { addCarnomorphToken, hasCarnomorphAdaptation } from './carnomorphs.mjs';
@@ -15,6 +16,20 @@ OPS['phase.intruder'] = (state) => {
     log(state, '— Фаза чужих —', 'phase');
     if (state.enemySet === 'carnomorphs') { next(state, { op: 'carnomorph.phaseStart' }); return; }
     if (state.enemySet === 'voidseeders') { next(state, { op: 'void.phaseStart' }); return; }
+    if (isOriginal(state)) {
+        // Original rules, p. 10: 4. Time -> 5. Intruder Attacks -> 6. Fire Damage -> 7. Event Card -> 8. Hive Development.
+        if (originalTimeStep(state)) return;
+        const steps = [];
+        const byPosition = (a, b) => (state.ship.rooms[a].y - state.ship.rooms[b].y) || (state.ship.rooms[a].x - state.ship.rooms[b].x) || a.localeCompare(b);
+        for (const id of Object.keys(state.ship.rooms).sort(byPosition)) {
+            if (!playersInRoom(state, id).length) continue;
+            const list = intrudersIn(state, id).sort((a, b) => INTRUDER_RANK[a.type] - INTRUDER_RANK[b.type]);
+            for (const it of list) steps.push({ op: 'attack', intruder: it.uid, context: 'phase' });
+        }
+        if (steps.length) log(state, 'Чужие атакуют персонажей в своих комнатах.', 'combat');
+        next(state, ...steps, { op: 'original.phaseFire' }, { op: 'phase.event' });
+        return;
+    }
     // 1. Burning
     if (state.enemySet === 'chytrids') burnChytrids(state);
     for (const [id, rs] of Object.entries(state.roomState)) {
@@ -181,9 +196,23 @@ OPS['bag.develop'] = (state, step) => {
     }
     if (!token) { log(state, 'Развитие мешка: мешок пуст.', 'minor'); return; }
     log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
+    if (isOriginal(state)) { originalDevelop(state, token); return; }
     if (!step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
     bagDevelopment(state, token);
 };
+/** Hive Development under the original rules (p. 11). Tokens leave the bag and only Adults go in. */
+function originalDevelop(state, token) {
+    const add = (type, n = 1) => {
+        let k = 0;
+        for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; }
+        if (k) log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event');
+    };
+    const res = originalBagDevelopment(state, token, add);
+    for (const line of res.notes) log(state, line, 'event');
+    if (state.bagLast) state.bagLast.effect = res.notes.join(' ');
+    next(state, ...res.steps);
+}
+
 export function bagDevelopment(state, token) {
     const added = [], notes = [];
     const add = (type, n = 1) => { let k = 0; for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; } if (k) { added.push(INTRUDER_NAMES[type] + ' ×' + k); log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event'); } };

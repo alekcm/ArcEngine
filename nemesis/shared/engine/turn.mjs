@@ -9,6 +9,7 @@ import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf, has
 import { ROOM_TILES } from '../ship.mjs';
 import { canFire } from './combat.mjs';
 import { mutationActionAvailability } from './carnomorph-mutations.mjs';
+import { isOriginal, originalDrawPhase } from './original.mjs';
 import { roomActionAvailable, roomActionCost } from './rooms.mjs';
 
 OPS['phase.player'] = (state) => {
@@ -16,6 +17,8 @@ OPS['phase.player'] = (state) => {
     for (const p of state.players) { p.passed = p.status !== 'active'; p.movedThisRound = false; p.firstShotUsed = false; p.rifleDrawUsed = false; p.adrenalineTurn = false; p.noAttacks = false; }
     state.turnCursor = -1;
     log(state, '— Раунд ' + state.round + ': фаза игроков —', 'phase');
+    // Original rules, p. 10: the round opens with every character drawing up to five cards.
+    if (isOriginal(state) && state.round > 1) originalDrawPhase(state);
     next(state, { op: 'turn.start' });
 };
 
@@ -153,6 +156,10 @@ function cardRequirement(state, p, d) {
     const rs = room(state, p.room), tile = tileOf(state, p.room);
     switch (d.effect) {
         case 'search': case 'scavenging': {
+            const originalBase = state.rules === 'original' && state.enemySet === 'redux';
+            const hasOriginalSearch = r => !!(r && state.roomState[r] && state.roomState[r].itemsLeft > 0 && tileOf(state, r) !== 'contaminated');
+            if (originalBase && !hasOriginalSearch(p.room)
+                && !(p.charId === 'bounty' && hasOpenQuest(p, 'canineUpgrades') && p.laika && p.laika !== 'board' && hasOriginalSearch(p.laika))) return 'В комнате закончились предметы';
             if (p.charId === 'bounty' && hasOpenQuest(p, 'canineUpgrades') && p.laika && p.laika !== 'board' && p.laika !== p.room) {
                 const laikaTile = tileOf(state, p.laika);
                 const laikaHasItems = laikaTile && ROOM_TILES[laikaTile].items.length > 0;
