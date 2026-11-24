@@ -56,7 +56,11 @@ export function eventLogLines(ev) {
         '📜 Событие: «' + ev.name + '».',
         'Движение: все ' + packName(ev) + ' — коридор ' + ev.move.num + '.',
         'Эффект: ' + ev.text,
+<<<<<<< HEAD
+        'Игроки также бросают кубик шума по правилам события.',
+=======
         'Бросок кубика: каждый персонаж делает бросок шума.',
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     ];
     const sentences = String(ev.text || '').split(/(?<=\.)\s+/).map(x => x.trim()).filter(Boolean);
     const isRoll = x => /бросок|встреч/i.test(x);
@@ -67,6 +71,7 @@ export function eventLogLines(ev) {
     lines.push('Движение чужих: ' + (move.length ? move.join(' ') : moveLine(ev)));
     if (effect.length) lines.push('Эффект: ' + effect.join(' '));
     lines.push(rollLabel(ev) + (roll.length ? roll.join(' ') : rollLine(ev)));
+    if (['carnomorphs', 'voidseeders', 'chytrids'].includes(ev.enemySet) || ev.id.startsWith('carno') || ev.id.startsWith('void') || ev.id.startsWith('chy')) lines.push('Игроки также бросают кубик шума по правилам события.');
     return lines.filter(Boolean);
 }
 
@@ -94,9 +99,14 @@ OPS['event.reveal'] = (state, step) => {
     const id = step.id, ev = eventById(state, id);
     state.lastEvent = id;
     state.lastEventN = (state.lastEventN || 0) + 1;
+<<<<<<< HEAD
+    const baseText = state.enemySet === 'chytrids' ? chytridEventText(ev) : ev.move && ev.move.types ? carnomorphEventText(ev) : ev.text;
+    const text = ['carnomorphs', 'voidseeders', 'chytrids'].includes(state.enemySet) ? baseText + '\n\nИгроки также бросают кубик шума по правилам события.' : baseText;
+=======
     const text = eventTextFor(ev);
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     fx(state, { type: 'event', card: id, name: ev.name, text });
-    log(state, state.enemySet === 'chytrids' ? '📜 Событие: «' + ev.name + '». ' + text : eventLogLines(ev).join('\n'), 'event');
+    log(state, state.enemySet === 'chytrids' ? '📜 Событие: «' + ev.name + '». ' + text + '\nИгроки также бросают кубик шума по правилам события.' : eventLogLines(ev).join('\n'), 'event');
     if (state.ui && state.ui.eventAck) {
         const waiting = state.players.filter(p => p.status === 'active' || p.status === 'hibernating').map(p => p.id);
         if (askAck(state, { title: 'Событие: «' + ev.name + '»', text, event: id, players: waiting },

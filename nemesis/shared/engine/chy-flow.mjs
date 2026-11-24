@@ -31,8 +31,12 @@ OPS['chy.encounter'] = (state, step) => {
     }
     const it = spawnChytrid(state, token.type, step.room);
     if (!it) return;
+<<<<<<< HEAD
+    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[it.type] + ' (значение жетона ' + token.value + '); жетон уходит в запас. Если в руке меньше ' + token.value + ' карт (с учётом слабости/эффектов хитридов), чужой сразу атакует.';
+=======
     if (state.bagLast) state.bagLast.effect = encounterLine(INTRUDER_NAMES[it.type], chySurpriseValue(state, token.value),
         hasChyWeakness(state, 'heightenedReadiness') ? '«Повышенная готовность»: порог −1.' : '');
+>>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     const then = { ...step, op: 'chy.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {

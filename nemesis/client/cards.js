@@ -1,14 +1,61 @@
 // cards.js — card / item descriptions and HTML rendering for the client (Russian text + icons).
 
 import { CHARACTERS, FIELD_DATA, ITEMS, WOUNDS } from '/shared/data/cards.mjs';
+import { ROOM_TILES } from '/shared/ship.mjs';
 
-export function describeCard(cardId) {
-    if (cardId.startsWith('contam#')) return { name: 'Заражение', text: 'Нельзя разыграть или сбросить для оплаты. Проверяется в Хирургии, Автодоком или картой «Отдых».', contam: true };
+export function describeCard(cardId, enemySet = 'redux') {
+    if (cardId.startsWith('contam#')) return { name: 'Заражение', text: 'Нельзя разыграть или сбросить для оплаты. Проверяется в Хирургии, Автодоке или картой «Отдых».', contam: true };
     const base = cardId.split('#')[0];
     const [owner, key] = base.split('.');
     if (owner === 'field') return Object.assign({ field: true }, FIELD_DATA[key]);
     const ch = CHARACTERS[owner];
-    return ch && ch.cards[key] ? ch.cards[key] : { name: cardId, text: '' };
+    const card = ch && ch.cards[key] ? ch.cards[key] : { name: cardId, text: '' };
+    if (key === 'rest' && enemySet === 'voidseeders') return { ...card, text: 'Процедура отдыха кошмаров: заражённые карты увеличивают безумие; можно уменьшить безумие и/или просканировать инфекции в руке.' };
+    if (key === 'rest' && enemySet === 'carnomorphs') return { ...card, text: 'Процедура отдыха карноморфов: проверьте заражённые карты в руке; за каждую заражённую получите фишку мутации, чистые карты удаляются из игры.' };
+    if (key === 'rest' && enemySet === 'chytrids') return { ...card, text: 'Процедура инфекции при хитридах: проверьте заражённые карты; чистые удаляются из игры, заражённые оставляют инфекцию, а вылупление вместо обычного чужого создаёт отросток хитрида и снимает спору.' };
+    return card;
+}
+
+export function roomActionText(tile, enemySet = 'redux') {
+    const room = ROOM_TILES[tile]; if (!room) return '';
+    const overrides = {
+        laboratory: {
+            voidseeders: 'Проанализируйте объект или безумие персонажа (уровень 3+): получите знания и раскройте уязвимость кошмаров.',
+            carnomorphs: 'Проанализируйте объект: получите знания и раскройте/удалите соответствующую адаптацию карноморфов.',
+            chytrids: 'Проанализируйте объект: получите знания и раскройте соответствующую слабость хитридов.'
+        },
+        surgery: {
+            voidseeders: 'Сбросьте карты из руки и колоды, удалите заражения из сброса и снизьте безумие до 3. Потеряйте 1 здоровье и спасуйте.',
+            carnomorphs: 'Сбросьте карты из руки и колоды; удалите заражения из сброса, личинку и карту мутации. Потеряйте 1 здоровье и спасуйте.',
+            chytrids: 'Сбросьте карты из руки и колоды; удалите заражения из сброса, личинку и спору хитрида. Потеряйте 1 здоровье и спасуйте.'
+        },
+        decon: {
+            voidseeders: 'Вместо дезинфекции выполните отдых кошмаров: уменьшите безумие и/или просканируйте заражения в руке.',
+            carnomorphs: 'Удалите заражения из руки и личинку; мутация карноморфа не удаляется.',
+            chytrids: 'Удалите заражения из руки, личинку и спору хитрида.'
+        },
+        cafeteria: { voidseeders: 'Восстановите 1 здоровье, затем выполните отдых кошмаров (снижение безумия и/или сканирование заражений).' },
+        containment: {
+            voidseeders: 'Поместите шепчущего в свободную комнату с входом в технический коридор; положите поломку в Изоляторе.',
+            carnomorphs: 'Поместите падальщика в свободную комнату с входом в технический коридор; положите поломку в Изоляторе.',
+            chytrids: 'Поместите отросток в свободную комнату с входом в технический коридор; положите поломку в Изоляторе.'
+        },
+    };
+    return (overrides[tile] || {})[enemySet] || room.action;
+}
+
+export function itemDescription(inst, enemySet = 'redux') {
+    if (!inst) return '';
+    const d = ITEMS[inst.item]; if (!d) return '';
+    if (inst.item === 'autodoc') {
+        const extra = enemySet === 'carnomorphs' ? ' Также удаляет карту мутации.' : enemySet === 'chytrids' ? ' Также удаляет спору хитрида.' : '';
+        return d.text + extra;
+    }
+    if (inst.item === 'surgeryKit') {
+        const extra = enemySet === 'carnomorphs' ? ' При карноморфах также удаляется карта мутации.' : '';
+        return d.text + extra;
+    }
+    return d.text || '';
 }
 
 export function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
@@ -60,10 +107,10 @@ export function itemArt(key) {
     return ART_ITEMS.includes(k) ? 'art/items/' + k + '.jpg' : null;
 }
 /** Thumbnail + hover preview (art, name, rules text) for an item instance; empty string when the item has no art. */
-export function itemArtHtml(inst) {
+export function itemArtHtml(inst, enemySet = 'redux') {
     const art = itemArt(inst.item); if (!art) return '';
     const d = ITEMS[inst.item];
-    return '<i class="ithumb" style="background-image:url(' + art + ')"></i><span class="ipop"><span class="ipart" style="background-image:url(' + art + ')"></span><b>' + esc(d.name) + '</b><span>' + esc(d.text || '') + '</span></span>';
+    return '<i class="ithumb" style="background-image:url(' + art + ')"></i><span class="ipop"><span class="ipart" style="background-image:url(' + art + ')"></span><b>' + esc(d.name) + '</b><span>' + esc(itemDescription(inst, enemySet)) + '</span></span>';
 }
 // Chytrid cards with the same name/effect share one illustration, even if their values differ.
 const CHY_EVENT_ART_ALIAS = { chyEvent5: 'chyEvent4', chyEvent15: 'chyEvent14' };
@@ -102,8 +149,8 @@ export function cardArt(cardId) {
     return ART_DECKS[owner] && ART_DECKS[owner].includes(key) ? 'art/' + owner + '/' + key + '.jpg' : null;
 }
 
-export function cardHtml(cardId, info, selected) {
-    const d = describeCard(cardId);
+export function cardHtml(cardId, info, selected, enemySet = 'redux') {
+    const d = describeCard(cardId, enemySet);
     const cls = ['card'];
     if (d.contam) cls.push('contam'); if (d.field) cls.push('field');
     if (info && info.enabled) cls.push('playable'); else if (info) cls.push('disabled');
@@ -130,12 +177,12 @@ export function itemLabel(inst) {
     if (inst.broken) s += ' [жетон поломки]';
     return s;
 }
-export function itemTitle(inst) {
+export function itemTitle(inst, enemySet = 'redux') {
     if (inst.item === 'cuffs' && (inst.flipped || (inst.charge ?? ITEMS.cuffs.markers) <= 0)) {
         return 'Лёгкий предмет (в рюкзаке). Нельзя передать или сбросить. Наручники сняты с ваших рук.';
     }
     const d = ITEMS[inst.item];
-    return d.text || '';
+    return itemDescription(inst, enemySet);
 }
 export function woundName(w) { return WOUNDS[w] ? WOUNDS[w].name : w; }
 // The health band in the corner gives a wound one narrow slot under its section — enough for a short
