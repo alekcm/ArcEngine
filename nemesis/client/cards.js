@@ -72,7 +72,7 @@ const ART_DECKS = {
     scientist: ['computerSkills', 'connection', 'demolition', 'duckAndCover', 'interruption', 'intranet', 'repairs', 'rest', 'riskAssessment', 'search'],
     medic: ['computerSkills', 'demolition', 'fieldSurgery', 'firstAid', 'interruption', 'neurotoxicGas', 'repairs', 'rest', 'search', 'synthesizedDrugs'],
     janitor: ['cleanUp', 'demolition', 'duckAndCover', 'emergencyKey', 'interruption', 'itShouldWork', 'maintenancePlan', 'repairs', 'rest', 'search'],
-    ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'protect', 'rest', 'roboticPunch', 'search'],
+    ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'justOneMoreThing', 'protect', 'rest', 'roboticPunch', 'search', 'stopIt'],
     labrat: ['demolition', 'feelOfDark', 'inconspicuous', 'interruption', 'repairs', 'rest', 'search', 'sensitiveHearing', 'shriek', 'weirdMetabolism'],
     sentry: ['defensePlan', 'demolition', 'facilityTour', 'interruption', 'repairs', 'rest', 'search', 'securityControl', 'stun', 'weakSpot'],
     convict: ['bash', 'catchThis', 'demolition', 'duckAndCover', 'interruption', 'intimidate', 'repairs', 'rest', 'search', 'shortTemper'],
@@ -95,13 +95,12 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
     'oculobe',
     // starting weapons and quest cards drawn for the item sheet (§47)
     'nailGun', 'labRatGun', 'needleGun', 'pilotShotgun', 'scientistPistol', 'wheelchair', 'battleSuit',
-    'bloodyCamouflage', 'canineUpgrades', 'intercom', 'shipCodes', 'cheatCodes', 'motionScanner', 'synthetic'];
+    'bloodyCamouflage', 'canineUpgrades', 'intercom', 'shipCodes', 'cheatCodes', 'motionScanner', 'synthetic',
+    // starter items with their own illustrations (§47)
+    'armGun', 'heavyArmor', 'karcher', 'pilotEvacKey', 'plasmaTorch', 'portableDevice', 'researchEquipment',
+    'sentrySmg', 'sixShooterCartridge', 'surgeryKit'];
 /** Starting items without their own illustration borrow the art of the card they replace. */
-const ART_ITEM_ALIAS = {
-    plasmaTorch: 'mechTools', karcher: 'wrench', surgeryKit: 'fieldKit', pilotEvacKey: 'evacKey',
-    portableDevice: 'navTablet', researchEquipment: 'sampleJar', armGun: 'energyPistol', synthetic: 'synthetic',
-    sentrySmg: 'smg', heavyArmor: 'armor', sixShooterCartridge: 'energyCharge',
-};
+const ART_ITEM_ALIAS = {};
 export function itemArt(key) {
     const k = ART_ITEM_ALIAS[key] || key;
     return ART_ITEMS.includes(k) ? 'art/items/' + k + '.jpg' : null;
