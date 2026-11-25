@@ -4,7 +4,7 @@
 // Run: node --test nemesis/tools/gallery.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, GALLERY_TILES, galleryShip, neighbors } from '../shared/ship.mjs';
+import { ROOM_TILES, BASIC_TILES, ADDITIONAL_TILES, VISUAL_TILES, GALLERY_TILES, galleryShip, neighbors } from '../shared/ship.mjs';
 
 const SPECIAL = ['cockpit', 'hibernatorium', 'engine'];
 
@@ -12,7 +12,7 @@ test('GAL-01: the test ship holds every room tile of the game exactly once', () 
     const ship = galleryShip();
     const ids = Object.keys(ship.rooms);
     assert.equal(ids.length, Object.keys(ROOM_TILES).length, 'room count = tile count');
-    assert.equal(ids.length, 26);
+    assert.equal(ids.length, 35);
     assert.deepEqual([...GALLERY_TILES].sort(), Object.keys(ROOM_TILES).sort());
     const tiles = ids.map(id => ship.galleryTiles[id]);
     assert.equal(new Set(tiles).size, tiles.length, 'no tile is placed twice');
@@ -22,12 +22,20 @@ test('GAL-01: the test ship holds every room tile of the game exactly once', () 
     for (const t of SPECIAL) assert.ok(tiles.includes(t), 'special tile missing: ' + t);
 });
 
+test('GAL-01b original-rule visuals live in the gallery, never in a real deal', () => {
+    assert.ok(VISUAL_TILES.length >= 9, 'all printed original rooms have a visual tile');
+    for (const tile of VISUAL_TILES) {
+        assert.ok(ROOM_TILES[tile].visualOnly, tile + ' is marked visual-only');
+        assert.ok(!BASIC_TILES.includes(tile) && !ADDITIONAL_TILES.includes(tile), tile + ' is not dealt');
+    }
+});
+
 test('GAL-02: the board is one connected grid where every room has two to four exits', () => {
     const ship = galleryShip();
     const ids = Object.keys(ship.rooms);
     assert.equal(ship.mode, 'gallery');
-    // The original 5x5 layout stays stable; the optional room is attached to the board at two joins.
-    assert.equal(Object.keys(ship.corridors).length, 43);
+    // The 5x5 layout stays stable; the 3x3 visual block adds 12 joins, plus one from the Aftermath berth.
+    assert.equal(Object.keys(ship.corridors).length, 56);
     for (const id of ids) {
         const deg = ship.rooms[id].exits.length;
         assert.ok(deg >= 2 && deg <= 4, 'room ' + id + ' has ' + deg + ' exits');
