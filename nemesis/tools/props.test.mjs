@@ -229,24 +229,17 @@ test('PR-09 airlock control has a pressure door with a wheel lock and a chevron 
     assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.16) < 1e-9 && Math.abs(x.opts.height - 0.1) < 1e-9).length, 2, 'два пульта');
 });
 
-test('PR-13 the turret control bay has a status wall, camera feeds and three firing stations', () => {
-    const m = build('defense');
-    const board = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 3.4) < 1e-9 && Math.abs(x.opts.height - 2.2) < 1e-9);
-    assert.equal(board.length, 1, 'одна доска статусов трёх турелей');
-    assert.ok(Math.hypot(board[0].position.x, board[0].position.z) > 4.8, 'доска висит на стене, а не в проходе');
-    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 0.36) < 1e-9).length, 3, 'три миниатюры турелей на доске');
-    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 0.17) < 1e-9).length, 3, 'три лампы статуса');
-    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.76) < 1e-9 && Math.abs(x.opts.height - 1.19) < 1e-9).length, 3, 'три экрана камер');
-    const desks = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.94) < 1e-9
-        && Math.abs(x.opts.height - 0.08) < 1e-9 && Math.abs(x.opts.depth - 0.52) < 1e-9);
-    assert.equal(desks.length, 3, 'три операторских пульта вокруг стола');
-    for (const d of desks) {
-        const r = Math.hypot(d.position.x, d.position.z);
-        assert.ok(r > 1.4 && r < 2.6, `пульт стоит кольцом вокруг стола, r=${r.toFixed(2)}`);
-    }
-    assert.ok(m.some(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 1.62) < 1e-9), 'стол управления турелями');
-    assert.ok(m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 0.02) < 1e-9).length >= 12, 'разметка секторов обстрела на полу');
-    assert.ok(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.7) < 1e-9 && Math.abs(x.opts.height - 0.35) < 1e-9).length >= 4, 'ящики с боеприпасами у верстака');
+test('PR-13 the turret control bay follows the printed three-cradle layout', () => {
+    const m = buildPropsOnly('defense');
+    const rings = m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 2.2) < 1e-9);
+    assert.equal(rings.length, 3, 'три круглых турельных гнезда на стенах');
+    for (const r of rings) assert.ok(Math.hypot(r.position.x, r.position.z) > 4.8, 'гнездо встроено в стену, а не в проходе');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.4) < 1e-9 && Math.abs(x.opts.height - 2.5) < 1e-9).length, 3, 'три ниши с силовыми кабелями');
+    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 3.4) < 1e-9).length, 1, 'шестиугольная командная плита в центре');
+    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 1.7) < 1e-9).length, 1, 'зелёный пульт у входа');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.7) < 1e-9 && Math.abs(x.opts.height - 0.09) < 1e-9).length, 2, 'два решётчатых панельных пола по бокам');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.3) < 1e-9 && Math.abs(x.opts.height - 0.9) < 1e-9).length, 1, 'шкаф под красным бордюром');
+    assert.ok(lastNode.wallSpots.length >= 4, 'три гнезда и шкаф занимают разные участки стены');
 });
 
 test('PR-14 the original Server Room is a rack aisle, not the Redux sphere chamber', () => {
@@ -279,17 +272,18 @@ test('PR-15 the Alarm System room has a dial console, a beacon and a ship-wide a
     assert.ok(m.filter(x => x.kind === 'box' && Math.abs(x.opts.height - 0.02) < 1e-9 && Math.abs(x.opts.width - 1) < 1e-9).length >= 7, 'шевроны на полу');
 });
 
-test('PR-16 the Workshop has a bench, two coil stations and a tool wall', () => {
+test('PR-16 the Workshop follows the printed fabrication machine and vent bulkheads', () => {
     const m = buildPropsOnly('workshop');
-    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.9) < 1e-9 && Math.abs(x.opts.height - 0.1) < 1e-9).length, 1, 'верстак');
-    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.5) < 1e-9 && Math.abs(x.opts.height - 0.24) < 1e-9).length, 1, 'тиски на верстаке');
-    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.3) < 1e-9 && Math.abs(x.opts.height - 1.25) < 1e-9).length, 2, 'две зарядные станции');
-    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.74) < 1e-9 && Math.abs(x.opts.height - 0.08) < 1e-9).length, 6, 'светящиеся кольца станций');
-    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.18) < 1e-9 && Math.abs(x.opts.height - 3.1) < 1e-9).length, 1, 'колонна подъёмного крана');
-    const pegboard = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 3) < 1e-9 && Math.abs(x.opts.height - 1.8) < 1e-9);
-    assert.equal(pegboard.length, 1, 'доска с инструментами');
-    assert.ok(Math.hypot(pegboard[0].position.x, pegboard[0].position.z) > 5.0, 'доска висит на стене');
-    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.3) < 1e-9 && Math.abs(x.opts.height - 1.8) < 1e-9).length, 1, 'шкаф у стены');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.9) < 1e-9 && Math.abs(x.opts.height - 0.9) < 1e-9).length, 1, 'корпус станка в центре');
+    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.28) < 1e-9 && Math.abs(x.opts.height - 2.58) < 1e-9).length, 2, 'две светящиеся трубы станка');
+    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.6) < 1e-9 && Math.abs(x.opts.height - 0.08) < 1e-9).length, 2, 'круглые манометры по концам станка');
+    const bulkheads = m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 2.6) < 1e-9 && Math.abs(x.opts.height - 2.0) < 1e-9);
+    assert.equal(bulkheads.length, 2, 'две зелёные вентиляционные перегородки по бокам');
+    for (const b of bulkheads) assert.ok(Math.hypot(b.position.x, b.position.z) > 4.8, 'перегородка у стены, а не в проходе');
+    assert.equal(m.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.9) < 1e-9).length, 2, 'два излучателя у входа');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.09) < 1e-9 && Math.abs(x.opts.height - 0.04) < 1e-9).length, 7, 'решётки на полу перед входом');
+    assert.equal(m.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.65) < 1e-9 && Math.abs(x.opts.height - 0.04) < 1e-9).length, 2, 'красные направляющие вдоль решётки');
+    assert.ok(!m.some(x => x.kind === 'cyl' && Math.abs(x.opts.height - 3.1) < 1e-9), 'печатный тайл не показывает подъёмный кран');
 });
 
 test('PR-17 the original base-game rooms have their own furniture, not Redux stand-ins', () => {
@@ -304,8 +298,11 @@ test('PR-17 the original base-game rooms have their own furniture, not Redux sta
     assert.equal(cabins.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameter - 1.5) < 1e-9).length, 1, 'круглый иллюминатор');
 
     const slime = buildPropsOnly('slimeRoom');
-    assert.equal(slime.filter(x => x.kind === 'cyl' && Math.abs(x.opts.diameterTop - 0.58) < 1e-9).length, 4, 'четыре слизистых мешка');
-    assert.ok(slime.filter(x => x.kind === 'sphere').length >= 20, 'слизь стекает по стенам и полу');
+    assert.ok(slime.filter(x => x.kind === 'sphere').length >= 60, 'слизь — одна сплошная масса из перекрывающихся лепестков');
+    assert.equal(slime.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 0.035) < 1e-9 && Math.abs(x.opts.height - 0.025) < 1e-9).length, 5, 'пять нитей паутины вдоль пола');
+    assert.equal(slime.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 4.2) < 1e-9 && Math.abs(x.opts.height - 0.025) < 1e-9).length, 5, 'пять пересекающих нитей');
+    assert.equal(slime.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1.5) < 1e-9 && Math.abs(x.opts.height - 0.08) < 1e-9).length, 4, 'четыре разорванных решётки по краям');
+    assert.ok(!slime.some(x => x.kind === 'box' && Math.abs(x.opts.width - 0.7) < 1e-9 && Math.abs(x.opts.height - 0.35) < 1e-9), 'на печатном тайле нет ящиков с боеприпасами');
 
     const door = buildPropsOnly('doorLock');
     assert.equal(door.filter(x => x.kind === 'box' && Math.abs(x.opts.width - 1) < 1e-9 && Math.abs(x.opts.height - 2.4) < 1e-9).length, 2, 'две створки гермодвери');
