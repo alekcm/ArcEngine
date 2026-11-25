@@ -72,7 +72,7 @@ const ART_DECKS = {
     scientist: ['computerSkills', 'connection', 'demolition', 'duckAndCover', 'interruption', 'intranet', 'repairs', 'rest', 'riskAssessment', 'search'],
     medic: ['computerSkills', 'demolition', 'fieldSurgery', 'firstAid', 'interruption', 'neurotoxicGas', 'repairs', 'rest', 'search', 'synthesizedDrugs'],
     janitor: ['cleanUp', 'demolition', 'duckAndCover', 'emergencyKey', 'interruption', 'itShouldWork', 'maintenancePlan', 'repairs', 'rest', 'search'],
-    ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'protect', 'rest', 'roboticPunch', 'search'],
+    ceo: ['backupBattery', 'command', 'computerSkills', 'demolition', 'fastRepairs', 'interruption', 'justOneMoreThing', 'protect', 'rest', 'roboticPunch', 'search', 'stopIt'],
     labrat: ['demolition', 'feelOfDark', 'inconspicuous', 'interruption', 'repairs', 'rest', 'search', 'sensitiveHearing', 'shriek', 'weirdMetabolism'],
     sentry: ['defensePlan', 'demolition', 'facilityTour', 'interruption', 'repairs', 'rest', 'search', 'securityControl', 'stun', 'weakSpot'],
     convict: ['bash', 'catchThis', 'demolition', 'duckAndCover', 'interruption', 'intimidate', 'repairs', 'rest', 'search', 'shortTemper'],
@@ -95,13 +95,12 @@ const ART_ITEMS = ['synthFood', 'stimulants', 'caffeine', 'autodoc', 'medkit', '
     'oculobe',
     // starting weapons and quest cards drawn for the item sheet (§47)
     'nailGun', 'labRatGun', 'needleGun', 'pilotShotgun', 'scientistPistol', 'wheelchair', 'battleSuit',
-    'bloodyCamouflage', 'canineUpgrades', 'intercom', 'shipCodes', 'cheatCodes', 'motionScanner', 'synthetic'];
+    'bloodyCamouflage', 'canineUpgrades', 'intercom', 'shipCodes', 'cheatCodes', 'motionScanner', 'synthetic',
+    // starter items with their own illustrations (§47)
+    'armGun', 'heavyArmor', 'karcher', 'pilotEvacKey', 'plasmaTorch', 'portableDevice', 'researchEquipment',
+    'sentrySmg', 'sixShooterCartridge', 'surgeryKit'];
 /** Starting items without their own illustration borrow the art of the card they replace. */
-const ART_ITEM_ALIAS = {
-    plasmaTorch: 'mechTools', karcher: 'wrench', surgeryKit: 'fieldKit', pilotEvacKey: 'evacKey',
-    portableDevice: 'navTablet', researchEquipment: 'sampleJar', armGun: 'energyPistol', synthetic: 'synthetic',
-    sentrySmg: 'smg', heavyArmor: 'armor', sixShooterCartridge: 'energyCharge',
-};
+const ART_ITEM_ALIAS = {};
 export function itemArt(key) {
     const k = ART_ITEM_ALIAS[key] || key;
     return ART_ITEMS.includes(k) ? 'art/items/' + k + '.jpg' : null;
@@ -124,21 +123,31 @@ const CHY_ATTACK_ART_ALIAS = {
 /** Event cards with illustrations in client/art/events/<eventId>.jpg. */
 const ART_EVENTS = ['breakingIn', 'bulkheadsOpen', 'damage', 'damagingFire', 'eggProtection', 'podEjection', 'fireWave', 'flammable', 'generatorOverheats', 'hatching',
     'leavingShell', 'lifeSupport', 'lurking', 'malfunction', 'onTheHunt', 'protectAndServe', 'scentOfPrey', 'shortCircuit', 'systemFailure', 'queenAwakens'];
+const ORIGINAL_EVENT_ART = [null, 'eggProtection', 'hatching', 'queenAwakens', 'damage', 'lurking', 'onTheHunt', 'onTheHunt', 'scentOfPrey', 'malfunction', 'fireWave', 'leavingShell', 'breakingIn', 'protectAndServe', 'flammable', 'bulkheadsOpen', 'damagingFire', 'generatorOverheats', 'lifeSupport', 'podEjection', 'shortCircuit'];
+const ORIGINAL_ATTACK_ART = [null, 'scratch', 'scratch', 'scratch', 'scratch', 'claws', 'bite', 'bite', 'infecting', 'bloodSense', 'infecting', 'claws', 'claws', 'claws', 'bite', 'bite', 'infecting', 'fury', 'fury', 'tail', 'tail'];
 export function eventArt(id) {
+    const originalNumber = /^origEv(\d+)$/.exec(String(id));
+    if (originalNumber && ORIGINAL_EVENT_ART[Number(originalNumber[1])]) return 'art/events/' + ORIGINAL_EVENT_ART[Number(originalNumber[1])] + '.jpg';
     if (/^chyEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/event/' + (CHY_EVENT_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/event/' + id + '.jpg';
     if (/^carnoEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/event/' + id + '.jpg';
+    if (/^rxEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/redux/event/' + id + '.jpg';
     return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null;
 }
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
 const ART_ATTACK = ['bite', 'bloodSense', 'claws', 'fury', 'infecting', 'miss', 'scratch', 'tail'];
 export function attackArt(id) {
+    const originalNumber = /^origAtk(\d+)$/.exec(String(id));
+    if (originalNumber && ORIGINAL_ATTACK_ART[Number(originalNumber[1])]) return 'art/attack/' + ORIGINAL_ATTACK_ART[Number(originalNumber[1])] + '.jpg';
     if (/^chyAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/attack/' + (CHY_ATTACK_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/attack/' + id + '.jpg';
     if (/^carnoAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/attack/' + id + '.jpg';
+    const reduxAttack = /^rxAtk-([a-zA-Z]+)-\d+$/.exec(String(id));
+    if (reduxAttack) return 'art/carnomorph/redux/attack/' + reduxAttack[1] + '.jpg';
     const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null;
 }
 export function panicArt(id) { return /^voidPanic(?:[1-9]|1[0-9]|20)$/.test(id) ? 'art/voidseeders/panic/' + id + '.jpg' : null; }
+export function butcherArt() { return 'art/carnomorph/redux/butcher.jpg'; }
 /** Shared illustrations: every Queen card uses one art, Computer cards one (Lock-down its red variant), objectives one per kind. */
 export function queenArt() { return 'art/misc/queen.jpg'; }
 export function computerArt(id) { return id === 'lockdown' ? 'art/misc/lockdown.jpg' : 'art/misc/computer.jpg'; }

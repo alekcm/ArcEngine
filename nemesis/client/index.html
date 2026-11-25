@@ -27,14 +27,27 @@
                 <div id="seatList" class="seat-list"></div>
                 <h3>Настройки партии</h3>
                 <div id="hostSettings">
+                    <div class="rules-block">
+                        <div class="rules-title">ПРАВИЛА ИГРЫ</div>
+                        <div id="rulesPick" class="rules-pick" role="radiogroup" aria-label="Правила игры">
+                            <button type="button" class="rules-opt" data-rules="original" role="radio" aria-checked="false">
+                                <b>Оригинальные правила</b>
+                                <small>Игра 2018 года · пять чужих · дополнения точно по их книгам</small>
+                            </button>
+                            <button type="button" class="rules-opt" data-rules="redux" role="radio" aria-checked="true">
+                                <b>Правила Redux</b>
+                                <small>Обновлённые правила · только Чужие Redux, без дополнений</small>
+                            </button>
+                        </div>
+                        <p id="rulesHint" class="hint">Правила Redux: стандартный набор, без дополнений.</p>
+                    </div>
                     <div class="row"><label>Набор врагов</label>
                         <select id="enemySetSelect" aria-describedby="enemySetHint">
                             <option value="redux" selected>Чужие Redux</option>
-                            <option value="carnomorphs">Карноморфы</option>
-                            <option value="voidseeders">Кошмары</option>
-                            <option value="chytrids">Хитриды</option>
                         </select></div>
                     <p id="enemySetHint" class="hint">Выберите набор врагов для партии.</p>
+                    <div id="aftermathRoomsRow" class="row hidden"><label for="aftermathRoomsSelect">Комнаты «Последствий»</label>
+                        <select id="aftermathRoomsSelect"><option value="0">Не добавлять новые комнаты</option><option value="1">Добавить комнату «Отсек обороны»</option></select></div>
                     <div class="row"><label>Карта</label>
                         <select id="modeSelect">
                             <option value="original">Оригинальный корабль</option>
@@ -42,12 +55,12 @@
                         </select></div>
                     <div class="row"><label>Зерно (необязательно)</label><input id="seedInput" maxlength="32" placeholder="любая строка"></div>
                     <div class="row"><label>Драфт персонажей</label><select id="draftSelect"><option value="1">По правилам: 3 карты → выбрать 1</option><option value="0" selected>Без драфта: персонаж из лобби</option></select></div>
-                    <div class="row"><label>Эволюции чужих</label>
+                    <div class="row redux-only"><label>Эволюции чужих</label>
                         <select id="alienModeSelect">
                             <option value="weaknesses" selected>Стандарт — Слабости: 3 скрытые карты, анализ в Лаборатории открывает их</option>
                             <option value="evolutions">Альтернатива — Адаптации: активны со старта, анализ удаляет</option>
                         </select></div>
-                    <div class="row"><label>Адаптации чужих</label>
+                    <div class="row redux-only"><label>Адаптации чужих</label>
                         <select id="adaptSelect">
                             <option value="3" selected>Стандарт: 3 случайные адаптации</option>
                             <option value="0">Отключены: без адаптаций (легче)</option>
@@ -60,7 +73,7 @@
                             <option value="host" selected>Только ведущий</option>
                             <option value="all">Любой игрок</option>
                         </select></div>
-                    <div class="row"><label>Кубик шума</label>
+                    <div class="row redux-only"><label>Кубик шума</label>
                         <select id="noiseDieSelect">
                             <option value="safe" selected>Стандарт — d10: без встреч (когти — Опасность, ✕ — Тишина)</option>
                             <option value="standard">Альтернатива — 12 граней: 2 встречи, 1 опасность, 1 тишина</option>

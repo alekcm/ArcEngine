@@ -84,7 +84,7 @@ test('DECKS-01 my deck is a set for my eyes only, and the computer/Queen decks a
 });
 
 test('DECKS-02 the viewer is one row of cards with the deck choice above it', () => {
-    assert.match(APP, /const tabs = \['computer', 'own', \.\.\.\(v\.enemySet === 'voidseeders' \? \['panic'\] : \['queen'\]\), 'event', 'attack', 'wound', 'feats'\];/);
+    assert.match(APP, /const tabs = \['computer', 'own', \.\.\.\(v\.carnomorphRedux \? \['butcher'\] : v\.enemySet === 'voidseeders' \? \['panic'\] : \['queen'\]\), 'event', 'attack', 'wound', 'feats'\];/);
     // the tabs are printed above the row, never below it
     assert.match(APP, /'<div class="deck-tabs">' \+ tabs\.map/);
     assert.match(APP, /'<div class="deck-row">' \+ cards\.map/);

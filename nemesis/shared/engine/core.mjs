@@ -26,6 +26,10 @@ export function run(state) {
         // Safety net: a chain can be cut short (e.g. the acting character died mid-action).
         // Fall back to the natural continuation of the current phase.
         if (!state.prompt && !state.queue.length && !state.result) {
+            if (state.pendingFleeAttacks && state.pendingFleeAttacks.length) {
+                state.queue.push(state.pendingFleeAttacks.shift());
+                continue;
+            }
             const cont = { player: 'turn.end', intruder: 'phase.event', event: 'event.finish', cleanup: 'phase.player' }[state.phase];
             if (cont && step.op !== cont) state.queue.push({ op: cont });
         }
@@ -213,12 +217,36 @@ export const NOISE_DIE = [1, 1, 2, 2, 3, 3, 4, 4, 'silence', 'danger', 'encounte
 // in `dice.rolled` below must draw from it too, or the table keeps rolling the other die (the old bug).
 export const NOISE_DIE_SAFE = [1, 1, 2, 2, 3, 3, 4, 4, 'danger', 'silence'];
 export const COMBAT_DIE = ['crit', 2, 3, 3, 4, 4, 5, 5, 5, 6];
+/** The Battle die of the ORIGINAL game (p. 18 & Dice_Combat(Rounded).png): six faces, five symbols.
+ *  1× miss (blank), 2× small (1 Wound to Larva/Creeper), 1× adult (1 Wound to Larva/Creeper/Adult),
+ *  1× one (1 Wound to any), 1× two (2 Wounds when Shooting, 1 Wound in Melee). */
+export const ORIGINAL_COMBAT_DIE = ['miss', 'small', 'small', 'adult', 'one', 'two'];
+export const ORIGINAL_FACE_TEXT = { miss: 'Промах', small: '1 рана (Личинка/Ползун)', adult: '1 рана (Личинка/Ползун/Взрослый)', one: '1 рана', two: '2 раны' };
+/** True while the table plays the original rules rather than Redux. */
+export function isOriginal(state) { return state.rules === 'original'; }
+/** The five intruders of the original game and their token Surprise-Attack values (p. 18, p. 20). */
+export const ORIGINAL_INTRUDERS = Object.freeze({
+    larva:   Object.freeze({ name: 'Личинка',  wounds: 1, diesOnOneWound: true }),
+    crawler: Object.freeze({ name: 'Ползун',   wounds: 1 }),
+    adult:   Object.freeze({ name: 'Взрослый', wounds: 3 }),
+    drone:   Object.freeze({ name: 'Дрон',     wounds: 4 }),
+    queen:   Object.freeze({ name: 'Королева', wounds: 4 }),
+});
+/** The Battle die a character rolls under the current ruleset. */
+export function combatDieFor(state, p) {
+    // The original Battle die belongs to the base game only: the expansions keep the Redux die
+    // (numbers and crits) that their own dice checks are written against.
+    if (isOriginal(state) && state.enemySet === 'redux') return ORIGINAL_COMBAT_DIE;
+    return p && p.armor && p.armor.item === 'battleSuit' ? BLUE_DIE : COMBAT_DIE;
+}
+/** The Noise die of the current ruleset (the original game only owns the twelve-face die). */
+export function noiseDieFor(state) { return isOriginal(state) ? NOISE_DIE : (state.noiseVariant ? NOISE_DIE_SAFE : NOISE_DIE); }
 /** The Battle Suit's "special Blue Combat die", as printed on its own face sheet: two 2s, three 3s,
  *  two 4s, one 5, one 6 and one Critical. */
 export const BLUE_DIE = ['crit', 2, 2, 3, 3, 3, 4, 4, 5, 6];
-const DIE_BY_ID = { noise: NOISE_DIE, blue: BLUE_DIE, combat: COMBAT_DIE };
-/** Prompt/log id of a die: 'noise', 'blue' or 'combat'. */
-export function dieId(die) { return (die === NOISE_DIE || die === NOISE_DIE_SAFE) ? 'noise' : die === BLUE_DIE ? 'blue' : 'combat'; }
+const DIE_BY_ID = { noise: NOISE_DIE, blue: BLUE_DIE, combat: COMBAT_DIE, combatOriginal: ORIGINAL_COMBAT_DIE };
+/** Prompt/log id of a die: 'noise', 'blue', 'combat' or 'combatOriginal'. */
+export function dieId(die) { return (die === NOISE_DIE || die === NOISE_DIE_SAFE) ? 'noise' : die === BLUE_DIE ? 'blue' : die === ORIGINAL_COMBAT_DIE ? 'combatOriginal' : 'combat'; }
 export const HIBERNATION_TIME = 8;
 export const SELF_DESTRUCT_LENGTH = 6;  // 1-3 stoppable, 4-5 yellow (pods unlock), 6 red = boom
 
@@ -277,6 +305,13 @@ export function itemDef(uid, p) {
 export function activePlayers(state) { return state.players.filter(p => p.status === 'active'); }
 export function playersInRoom(state, roomId) { return state.players.filter(p => p.status === 'active' && p.room === roomId && !p.pod); }
 export function intrudersIn(state, roomId) { return Object.values(state.intruders).filter(i => i.room === roomId); }
+/** Record a figure entering a room so active Aftermath Turrets can resolve entrants in the Fire Damage step. */
+export function recordTurretEntry(state, kind, id, roomId) {
+    if (state.rules !== 'original' || state.enemySet !== 'redux' || !roomId) return;
+    state.turretEntries ||= [];
+    if (!state.turretEntries.some(e => e.kind === kind && e.id === id && e.room === roomId))
+        state.turretEntries.push({ kind, id, room: roomId });
+}
 /** The Military Taser can only affect a figure in the user's room. */
 export function taserTargets(state, p) {
     return { intruders: intrudersIn(state, p.room), players: playersInRoom(state, p.room).filter(o => o.hand.length) };
@@ -314,7 +349,11 @@ export function maxAllowedHealth(p) {
 }
 export function handLimit(p) { return (p.wounds.includes('arm') ? 1 : 2) + (p.ductTaped || 0); }
 export function heavyCount(p) {
-    let n = p.heavy.length;
+    let freeFood = p.mutationRedux && p.mutationCard === 'gastric' ? 1 : 0;
+    let n = p.heavy.filter(h => {
+        if (freeFood && (h.type === 'carcass' || h.type === 'egg')) { freeFood--; return false; }
+        return true;
+    }).length;
     const hasRanged = p.items.some(i => ITEMS[i.item].weapon);
     for (const i of p.items) {
         const d = ITEMS[i.item];
@@ -558,7 +597,11 @@ export function handSlots(state, p) {
         if (d.bayonet && p.items.some(o => ITEMS[o.item].weapon)) continue;   // shares the ranged weapon slot
         put('item:' + i.uid, d.name, 'item', d.twoSlots);
     }
-    p.heavy.forEach((h, idx) => put('heavy:' + idx, HEAVY_NAMES[h.type] || h.type, 'object', false));
+    let freeFood = p.mutationRedux && p.mutationCard === 'gastric' ? 1 : 0;
+    p.heavy.forEach((h, idx) => {
+        if (freeFood && (h.type === 'carcass' || h.type === 'egg')) { freeFood--; return; }
+        put('heavy:' + idx, HEAVY_NAMES[h.type] || h.type, 'object', false);
+    });
     const limit = handLimit(p);
     const out = [];
     for (let k = 0; k < limit; k++) out.push(slots[k] || { ref: null, name: '', kind: 'empty' });
@@ -692,13 +735,32 @@ export function destroyShip(state, why) {
 export function isAdultEquivalent(state, it) { return !!it && it.type === (state.enemySet === 'carnomorphs' ? 'shambler' : state.enemySet === 'voidseeders' ? 'whisperer' : state.enemySet === 'chytrids' ? 'stinkhorn' : 'adult'); }
 
 export function spawnIntruder(state, type, roomId) {
-    const onBoard = Object.values(state.intruders).filter(i => i.type === type).length + (type === 'larva' ? state.players.filter(p => p.larva).length : 0);
-    const limit = { larva: 8, adult: 12, drone: 12, queen: 1, metagorger: 8, shambler: 8, breeder: 3, butcher: 1, lurker: 6, whisperer: 4, creeper: 1, despoiler: 1, lair: 3, stinkhorn: 8, deathcap: 3, chyQueen: 1 }[type];
+    let onBoard = Object.values(state.intruders).filter(i => i.type === type).length + (type === 'larva' ? state.players.filter(p => p.larva).length : 0);
+    const origBase = isOriginal(state) && state.enemySet === 'redux';
+    const limit = (origBase
+        ? { larva: 8, crawler: 3, adult: 8, drone: 2, queen: 1 }
+        : { larva: 8, crawler: 3, adult: 12, drone: 12, queen: 1, metagorger: 8, shambler: 8, breeder: 3, fleshbeast: 3, butcher: 1, lurker: 6, whisperer: 4, creeper: 1, despoiler: 1, lair: 3, stinkhorn: 8, deathcap: 3, chyQueen: 1 })[type];
     if (limit === undefined) throw new RangeError('Unknown intruder type: ' + type);
+    // Original p. 15: when placing an Adult and all 8 Adult miniatures are on the board, non-combat Adults retreat into the bag first.
+    if (origBase && type === 'adult' && onBoard >= limit) {
+        const freeAdults = Object.values(state.intruders).filter(i => i.type === 'adult' && !playersInRoom(state, i.room).length);
+        if (freeAdults.length) {
+            for (const a of freeAdults) {
+                removeIntruder(state, a.uid, false);
+                if (state.bag.filter(t => t === 'adult').length < 12) state.bag.push('adult');
+            }
+            log(state, 'Все миниатюры Взрослых были на поле: Взрослые вне боя отступают в вентиляцию (' + freeAdults.length + ').', 'event');
+            onBoard = Object.values(state.intruders).filter(i => i.type === 'adult').length;
+        }
+    }
     if (onBoard >= limit) { log(state, 'Миниатюры «' + INTRUDER_NAMES[type] + '» закончились — чужой не появляется.', 'minor'); return null; }
     if ((type === 'queen' && state.queenDead) || (type === 'butcher' && state.carnomorphButcherDead) || (type === 'despoiler' && state.voidDespoilerDead) || (type === 'chyQueen' && state.chyQueenDead)) return null;
     const uid = 'i' + (++state.intruderSeq);
-    state.intruders[uid] = { uid, type, room: roomId, hits: 0 };
+    // `value` is the number printed on the bag token: the intruder's toughness under the original
+    // rules, and the number the Sneak Attack rule compares a hand of cards against.
+    const toughness = origBase && ORIGINAL_INTRUDERS[type] ? ORIGINAL_INTRUDERS[type].wounds : undefined;
+    state.intruders[uid] = { uid, type, room: roomId, hits: 0, ...(toughness !== undefined ? { value: toughness } : {}) };
+    recordTurretEntry(state, 'intruder', uid, roomId);
     fx(state, { type: 'spawn', intruder: type, room: roomId });
     log(state, '👾 ' + INTRUDER_NAMES[type] + ' появляется: ' + roomName(state, roomId) + '.', 'event');
     return state.intruders[uid];
@@ -706,13 +768,27 @@ export function spawnIntruder(state, type, roomId) {
 export function removeIntruder(state, uid, leaveCarcass) {
     const it = state.intruders[uid];
     if (!it) return;
-    if (leaveCarcass && (it.type === 'adult' || it.type === 'drone')) { room(state, it.room).objects.push({ type: 'carcass' }); state.carcassCount = (state.carcassCount || 0) + 1; }
+    if (leaveCarcass && (it.type === 'adult' || it.type === 'drone' || it.type === 'crawler' || (isOriginal(state) && it.type === 'queen'))) {
+        room(state, it.room).objects.push({ type: 'carcass' });
+        state.carcassCount = (state.carcassCount || 0) + 1;
+    }
     delete state.intruders[uid];
 }
 export function intruderLabel(state, it) {
-    return INTRUDER_NAMES[it.type] + (it.type === 'queen' ? ' (ранений ' + state.queenHits + ')' : it.hits ? ' (ранений ' + it.hits + ')' : '');
+    return INTRUDER_NAMES[it.type] + (!isOriginal(state) && it.type === 'queen' ? ' (ранений ' + state.queenHits + ')' : it.hits ? ' (ранений ' + it.hits + ')' : '');
 }
-export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, larva: 3, butcher: 0, breeder: 1, shambler: 2, metagorger: 3, chyQueen: 0, deathcap: 1, stinkhorn: 2 };
+export function giveSlime(state, p) {
+    if (!isOriginal(state) || state.enemySet !== 'redux' || !p || p.status !== 'active' || p.slime) return;
+    p.slime = true;
+    log(state, '🟢 ' + pname(p) + ' получает маркер слизи.', 'bad');
+}
+export function removeSlime(state, p) {
+    if (!isOriginal(state) || state.enemySet !== 'redux' || !p || !p.slime) return false;
+    delete p.slime;
+    log(state, '🟢 ' + pname(p) + ': маркер слизи удалён.', 'good');
+    return true;
+}
+export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, crawler: 3, larva: 4, butcher: 0, breeder: 1, fleshbeast: 1, shambler: 2, metagorger: 3, chyQueen: 0, deathcap: 1, stinkhorn: 2 };
 /** Is the given intruder Adaptation currently active? */
 export function hasAdapt(state, key) { return !!(state.adaptations && state.adaptations.includes(key)); }
 /** Is the given intruder Weakness already revealed (weakness variant)? Hidden ones stay inactive. */
@@ -751,12 +827,19 @@ OPS['dice.rolled'] = (state, step) => {
     // The alternative noise die lives outside DIE_BY_ID (both dice report id 'noise'), so the
     // variant must be picked here — otherwise interactive rolls silently use the standard die
     // and Encounter faces keep appearing in the "no encounters" variant.
-    const die = (step.die === 'noise' && state.noiseVariant) ? NOISE_DIE_SAFE : (DIE_BY_ID[step.die] || COMBAT_DIE);
+    const die = step.die === 'noise' ? noiseDieFor(state) : (DIE_BY_ID[step.die] || COMBAT_DIE);
     state.pendingRoll = { die: step.die, value: die[randInt(state, die.length)] };
     state.pendingRollPlayer = step.player;
     next(state, step.then);
 };
-export function fmtRoll(v) { return v === 'crit' ? 'КРИТ' : v === 'silence' ? 'Тишина' : v === 'danger' ? 'Опасность' : v === 'encounter' ? 'Встреча' : String(v); }
+export function fmtRoll(v) {
+    if (v === 'crit') return 'КРИТ';
+    if (v === 'silence') return 'Тишина';
+    if (v === 'danger') return 'Опасность';
+    if (v === 'encounter') return 'Встреча';
+    if (ORIGINAL_FACE_TEXT[v] !== undefined) return ORIGINAL_FACE_TEXT[v];
+    return String(v);
+}
 
 /** Printed meaning of a bag token (p. 9). The Queen token changes once the Queen is dead. */
 export const BAG_TOKEN_MEANING = {
@@ -773,6 +856,14 @@ export const BAG_TOKEN_MEANING_DEAD_QUEEN = {
     drone: 'Дрон (Королева мертва): добавить в мешок 1 жетон личинки; жетон дрона вернуть в запас.',
     queen: 'Королева мертва: добавить в мешок 1 жетон дрона и убрать жетон Королевы из игры.',
 };
+export const ORIGINAL_BAG_MEANING = Object.freeze({
+    blank:   'Пустой жетон: добавить в мешок 1 взрослого из запаса и вернуть пустой жетон в мешок.',
+    larva:   'Личинка: убрать жетон в запас и добавить в мешок 1 жетон взрослого.',
+    crawler: 'Ползун: убрать жетон в запас и добавить в мешок 1 жетон дрона (Охотника).',
+    adult:   'Взрослый: каждый персонаж вне боя бросает кубик шума; жетон возвращается в мешок.',
+    drone:   'Дрон (Охотник): каждый персонаж вне боя бросает кубик шума; жетон возвращается в мешок.',
+    queen:   'Королева: если в Гнезде есть персонаж — выставить туда Королеву (Контакт); иначе +1 яйцо в Гнездо и вернуть жетон в мешок.',
+});
 export function bagTokenMeaning(state, token) {
     if (state.enemySet === 'voidseeders') {
         if (token === 'blank') return 'Пустой жетон кошмаров: эффект зависит от причины вытягивания.';
@@ -790,6 +881,7 @@ export function bagTokenMeaning(state, token) {
         if (token && typeof token === 'object') return 'Жетон карноморфа со значением ' + token.value + ': эффект зависит от причины вытягивания.';
         return '';
     }
+    if (isOriginal(state)) return ORIGINAL_BAG_MEANING[token] || '';
     const table = state.queenDead ? BAG_TOKEN_MEANING_DEAD_QUEEN : BAG_TOKEN_MEANING;
     return table[token] || '';
 }

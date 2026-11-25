@@ -53,6 +53,31 @@ export const ROOM_TILES = {
                     action: 'Используйте действие комнаты любой 1 другой разведанной комнаты с компьютером (даже с поломкой). Откройте новую карту компьютера; «Блокировку» разыграйте в этой комнате.' },
     storage:      { name: 'Склад',                     slot: '2', items: ['red', 'red', 'red'],computer: false,
                     action: 'Возьмите по 1 предмету каждого цвета, оставьте 1. Затем бросок шума.' },
+    defense:      { name: 'Отсек обороны',             slot: '2', items: [], computer: false, aftermathOnly: true,
+                    action: 'Измените статус любой турели на поле.' },
+
+    // Visual-only rooms printed for the original rules: Aftermath's four new tiles plus the base-game
+    // rooms that have no Redux counterpart. They are never dealt by the engine (it still uses the
+    // Redux tile pool) — the gallery and the prop test build them, and original games swap in the
+    // server version. Actions are kept so a gallery room shows its printed icons and Computer mark.
+    alarmControl: { name: 'Система оповещения',        slot: 'visual', items: ['green', 'red'], computer: true, visualOnly: true,
+                    action: 'Включите аварийное оповещение.' },
+    workshop:     { name: 'Мастерская',                slot: 'visual', items: ['red', 'yellow', 'green'], computer: false, visualOnly: true,
+                    action: 'Создайте предмет.' },
+    originalServer:{ name: 'Серверная (оригинал)',     slot: 'visual', items: ['yellow', 'yellow', 'yellow'], computer: true, visualOnly: true,
+                    action: 'Используйте действие любой другой разведанной комнаты с компьютером.' },
+    shower:       { name: 'Душевая',                  slot: 'visual', items: ['yellow', 'green'], computer: false, visualOnly: true,
+                    action: 'Примите душ: сбросьте маркер Слизи и отсканируйте карты Заражения.' },
+    cabins:       { name: 'Каюты',                    slot: 'visual', items: ['yellow', 'green'], computer: false, visualOnly: true,
+                    action: 'Переместите жетон экипажа.' },
+    slimeRoom:    { name: 'Комната, покрытая Слизью', slot: 'visual', items: [], computer: false, visualOnly: true,
+                    action: 'Пассивно: получив предмет здесь, получите Заражение.' },
+    doorLock:     { name: 'Система блокировки дверей', slot: 'visual', items: ['red', 'green'], computer: false, visualOnly: true,
+                    action: 'Закройте или разблокируйте дверь в комнату.' },
+    observation:  { name: 'Комната наблюдения',       slot: 'visual', items: ['red'], computer: true, visualOnly: true,
+                    action: 'Посмотрите 1 жетон Исследования.' },
+    radioRoom:    { name: 'Радиорубка',               slot: 'visual', items: ['yellow'], computer: true, visualOnly: true,
+                    action: 'Отправить сигнал.' },
 
     cockpit:      { name: 'Рубка',                     slot: 'special', items: [], computer: true,
                     action: 'Проверить координаты ИЛИ изменить пункт назначения.' },
@@ -63,11 +88,42 @@ export const ROOM_TILES = {
 };
 
 export const BASIC_TILES = Object.keys(ROOM_TILES).filter(k => ROOM_TILES[k].slot === '1');
-export const ADDITIONAL_TILES = Object.keys(ROOM_TILES).filter(k => ROOM_TILES[k].slot === '2');
+export const ADDITIONAL_TILES = Object.keys(ROOM_TILES).filter(k => ROOM_TILES[k].slot === '2' && !ROOM_TILES[k].aftermathOnly);
+export const AFTERMATH_ADDITIONAL_TILES = [...ADDITIONAL_TILES, ...Object.keys(ROOM_TILES).filter(k => ROOM_TILES[k].slot === '2' && ROOM_TILES[k].aftermathOnly)];
 export const ADDITIONAL_IN_PLAY = 5;
+// Rooms with art but no rules slot: they exist for the gallery and the 3D prop test only.
+export const VISUAL_TILES = Object.keys(ROOM_TILES).filter(k => ROOM_TILES[k].visualOnly);
 
 export const EXPLORATION_TOKENS = [
     ...Array(8).fill('malfunction'), 'fire', 'fire', 'corpse', 'corpse', 'door', 'door', 'door', 'door',
+];
+
+export const ORIGINAL_EXPLORATION_TOKENS = [
+    // Original exploration tokens include three Turrets with their printed Search counters.
+    // The Aftermath p. 5 no-counter rule applies to Epilogue research tokens, not these base-game tokens.
+    { effect: 'turret', items: 1, label: 'Турель (1 предм.)' },
+    { effect: 'turret', items: 2, label: 'Турель (2 предм.)' },
+    { effect: 'turret', items: 3, label: 'Турель (3 предм.)' },
+    { effect: 'silence', items: 1, label: 'Тишина (1 предм.)' },
+    { effect: 'silence', items: 1, label: 'Тишина (1 предм.)' },
+    { effect: 'danger', items: 2, label: 'Опасность (2 предм.)' },
+    { effect: 'danger', items: 3, label: 'Опасность (3 предм.)' },
+    { effect: 'slime', items: 3, label: 'Слизь (3 предм.)' },
+    { effect: 'slime', items: 4, label: 'Слизь (4 предм.)' },
+    { effect: 'fire', items: 1, label: 'Пожар (1 предм.)' },
+    { effect: 'fire', items: 2, label: 'Пожар (2 предм.)' },
+    { effect: 'door', items: 1, label: 'Дверь (1 предм.)' },
+    { effect: 'door', items: 2, label: 'Дверь (2 предм.)' },
+    { effect: 'door', items: 3, label: 'Дверь (3 предм.)' },
+    { effect: 'door', items: 4, label: 'Дверь (4 предм.)' },
+    { effect: 'malfunction', items: 1, label: 'Поломка (1 предм.)' },
+    { effect: 'malfunction', items: 1, label: 'Поломка (1 предм.)' },
+    { effect: 'malfunction', items: 2, label: 'Поломка (2 предм.)' },
+    { effect: 'malfunction', items: 2, label: 'Поломка (2 предм.)' },
+    { effect: 'malfunction', items: 2, label: 'Поломка (2 предм.)' },
+    { effect: 'malfunction', items: 2, label: 'Поломка (2 предм.)' },
+    { effect: 'malfunction', items: 3, label: 'Поломка (3 предм.)' },
+    { effect: 'malfunction', items: 4, label: 'Поломка (4 предм.)' },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -771,20 +827,29 @@ function tryRandomShip(holder) {
 
 // ---------------------------------------------------------------------------------------------
 // Test ship for the room gallery. A normal game lays out only 11 basic + 5 additional tiles, so
-// many rooms never appear on the table. This board holds *every* tile of the game at once — a 5x5
-// grid (specials first, then basic, then additional) with straight corridors between neighbours.
-// The rules never build it: the client opens it from the lobby to inspect every room model.
+// many rooms never appear on the table. This board holds *every* tile at once — the original 5x5
+// grid, the optional Aftermath room and the original-rule visual rooms. The rules never build it:
+// the client opens it from the lobby to inspect every room model.
 // ---------------------------------------------------------------------------------------------
 const SPECIAL_TILES = ['cockpit', 'hibernatorium', 'engine'];
-const GALLERY_ALL = [...SPECIAL_TILES, ...BASIC_TILES, ...ADDITIONAL_TILES];
+const GALLERY_ALL = [...SPECIAL_TILES, ...BASIC_TILES, ...AFTERMATH_ADDITIONAL_TILES, ...VISUAL_TILES];
 export const GALLERY_TILES = GALLERY_ALL.slice();
 const GALLERY_COLS = 5;
 const GALLERY_GAP_X = 230, GALLERY_GAP_Y = 210;
+// row, column of the visual-only rooms beyond the original board: a 3x3 block hanging off the
+// Aftermath berth. Joining them to each other leaves every room of the 5x5 grid untouched.
+const EXTRA_SPOTS = [[2, 6], [3, 6], [4, 6], [2, 7], [3, 7], [4, 7], [2, 8], [3, 8], [4, 8]];
 
 export function galleryShip() {
     const roomsSpec = [], tiles = {}, tech = [], engineNumbers = {}, at = {};
     GALLERY_ALL.forEach((tile, i) => {
-        const ry = Math.floor(i / GALLERY_COLS), rx = i % GALLERY_COLS;
+        // Preserve the old 5x5 gallery room ids so saved board-edit keys still map to the same tile.
+        // The Aftermath room keeps its old berth at (2,5). The original-rule visuals form a 3x3 block
+        // beside it, joined only among themselves and to that berth: no room of the 5x5 grid gains
+        // or loses an exit, so the saved board edits of those rooms stay valid.
+        const extra = i < 26 ? -1 : i - 26;
+        const ry = extra < 0 ? (i === 25 ? 2 : Math.floor(i / GALLERY_COLS)) : EXTRA_SPOTS[extra][0];
+        const rx = extra < 0 ? (i === 25 ? GALLERY_COLS : i % GALLERY_COLS) : EXTRA_SPOTS[extra][1];
         const id = String(i + 1).padStart(3, '0');
         const kind = SPECIAL_TILES.includes(tile) ? tile : BASIC_TILES.includes(tile) ? 'slot1' : 'slot2';
         roomsSpec.push([id, kind, rx * GALLERY_GAP_X, ry * GALLERY_GAP_Y]);
@@ -798,6 +863,10 @@ export function galleryShip() {
         const [ry, rx] = key.split(',').map(Number);
         if (at[ry + ',' + (rx + 1)]) edges.push([id, at[ry + ',' + (rx + 1)]]);   // left → right
         if (at[(ry + 1) + ',' + rx]) edges.push([id, at[(ry + 1) + ',' + rx]]);   // top → bottom
+    }
+    if (at['2,5']) {
+        // The original Aftermath berth keeps its two diagonal joins into the 5x5 board.
+        edges.push([at['1,4'], at['2,5']], [at['2,5'], at['3,4']]);
     }
     const ship = buildShip(roomsSpec, edges, tech, engineNumbers, 'gallery');
     ship.galleryTiles = tiles;                        // room id → tile key (the ids are layout order)

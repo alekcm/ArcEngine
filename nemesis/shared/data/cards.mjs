@@ -12,30 +12,30 @@ const clawsDrone = [{ op: 'dieIf', state: 'heavy' }, { op: 'if', state: 'injured
 const tailDrone = [{ op: 'dieIf', state: 'injuredOrWorse' }, wound(1)];
 
 export const ATTACK_CARDS = [
-    { id: 'bite', name: 'Укус', count: 6, text: 'Если вы тяжело ранены — вы погибаете. Иначе получите 1 тяжёлую травму.',
+    { id: 'bite', name: 'Укус', count: 6, wound: 2, text: 'Если вы тяжело ранены — вы погибаете. Иначе получите 1 тяжёлую травму.',
       adult: [{ op: 'dieIf', state: 'heavy' }, wound(1)], drone: 'adult', queen: 'adult' },
-    { id: 'bloodSense', name: 'Чутьё крови', count: 1, text: 'Взрослый: потеряйте 2 здоровья. Дрон/Королева: потеряйте 2 здоровья; если вы перемещались, чужой следует за вами.',
+    { id: 'bloodSense', name: 'Чутьё крови', count: 1, wound: 1, text: 'Взрослый: потеряйте 2 здоровья. Дрон/Королева: потеряйте 2 здоровья; если вы перемещались, чужой следует за вами.',
       adult: [dmg(2)], drone: [dmg(2), { op: 'followIfMoving' }], queen: 'drone' },
-    { id: 'claws1', name: 'Смертоносные когти', count: 1, text: 'Взрослый: −1 здоровье. Дрон: тяжело ранен — гибель; ранен — 1 травма; иначе 2 травмы. Королева: −2 здоровья.',
+    { id: 'claws1', name: 'Смертоносные когти', count: 1, wound: 2, text: 'Взрослый: −1 здоровье. Дрон: тяжело ранен — гибель; ранен — 1 травма; иначе 2 травмы. Королева: −2 здоровья.',
       adult: [dmg(1)], drone: clawsDrone, queen: [dmg(2)] },
-    { id: 'claws2', name: 'Смертоносные когти', count: 1, text: 'Взрослый: −2 здоровья. Дрон: тяжело ранен — гибель; ранен — 1 травма; иначе 2 травмы. Королева: −3 здоровья.',
+    { id: 'claws2', name: 'Смертоносные когти', count: 1, wound: 2, text: 'Взрослый: −2 здоровья. Дрон: тяжело ранен — гибель; ранен — 1 травма; иначе 2 травмы. Королева: −3 здоровья.',
       adult: [dmg(2)], drone: clawsDrone, queen: [dmg(3)] },
-    { id: 'claws3', name: 'Смертоносные когти', count: 1, text: 'Взрослый: −1 здоровье и заражение. Дрон: тяжело ранен — гибель; ранен — 1 травма; иначе 2 травмы. Королева: −2 здоровья и заражение.',
+    { id: 'claws3', name: 'Смертоносные когти', count: 1, wound: 2, text: 'Взрослый: −1 здоровье и заражение. Дрон: тяжело ранен — гибель; ранен — 1 травма; иначе 2 травмы. Королева: −2 здоровья и заражение.',
       adult: [dmg(1), contam()], drone: clawsDrone, queen: [dmg(2), contam()] },
-    { id: 'fury1', name: 'Ярость', count: 1, text: 'Взрослый: −2 здоровья и заражение. Дрон/Королева: все тяжело раненные в комнате гибнут, остальные получают по 1 травме.',
+    { id: 'fury1', name: 'Ярость', count: 1, wound: 1, text: 'Взрослый: −2 здоровья и заражение. Дрон/Королева: все тяжело раненные в комнате гибнут, остальные получают по 1 травме.',
       adult: [dmg(2), contam()], drone: [{ op: 'furyRoom' }], queen: 'drone' },
-    { id: 'fury2', name: 'Ярость', count: 1, text: 'Взрослый: −1 здоровье и заражение. Дрон/Королева: все тяжело раненные в комнате гибнут, остальные получают по 1 травме.',
+    { id: 'fury2', name: 'Ярость', count: 1, wound: 1, text: 'Взрослый: −1 здоровье и заражение. Дрон/Королева: все тяжело раненные в комнате гибнут, остальные получают по 1 травме.',
       adult: [dmg(1), contam()], drone: [{ op: 'furyRoom' }], queen: 'drone' },
-    { id: 'infecting', name: 'Заражение', count: 1, text: 'Взрослый/Дрон: −2 здоровья. Королева: заражение; если нет личинки — получите личинку.',
+    { id: 'infecting', name: 'Заражение', count: 1, wound: 1, text: 'Взрослый/Дрон: −2 здоровья. Королева: заражение; если нет личинки — получите личинку.',
       adult: [dmg(2)], drone: 'adult', queen: [contam(), { op: 'larva' }] },
-    { id: 'miss', name: 'Промах', count: 1, text: 'Ничего не происходит. Перемешайте колоду атак.', adult: [{ op: 'miss' }], drone: 'adult', queen: 'adult' },
-    { id: 'scratch1', name: 'Царапина', count: 1, text: '−1 здоровье.', adult: [dmg(1)], drone: 'adult', queen: 'adult' },
-    { id: 'scratch2', name: 'Царапина', count: 1, text: '−1 здоровье и заражение.', adult: [dmg(1), contam()], drone: 'adult', queen: 'adult' },
-    { id: 'scratch3', name: 'Царапина', count: 1, text: '−2 здоровья.', adult: [dmg(2)], drone: 'adult', queen: 'adult' },
-    { id: 'scratch4', name: 'Царапина', count: 1, text: 'Заражение.', adult: [contam()], drone: 'adult', queen: 'adult' },
-    { id: 'tail1', name: 'Удар хвостом', count: 1, text: 'Взрослый: −1 здоровье и заражение. Дрон/Королева: ранен или хуже — гибель; иначе 1 травма.',
+    { id: 'miss', name: 'Промах', count: 1, wound: 1, text: 'Ничего не происходит. Перемешайте колоду атак.', adult: [{ op: 'miss' }], drone: 'adult', queen: 'adult' },
+    { id: 'scratch1', name: 'Царапина', count: 1, wound: 1, text: '−1 здоровье.', adult: [dmg(1)], drone: 'adult', queen: 'adult' },
+    { id: 'scratch2', name: 'Царапина', count: 1, wound: 1, text: '−1 здоровье и заражение.', adult: [dmg(1), contam()], drone: 'adult', queen: 'adult' },
+    { id: 'scratch3', name: 'Царапина', count: 1, wound: 2, text: '−2 здоровья.', adult: [dmg(2)], drone: 'adult', queen: 'adult' },
+    { id: 'scratch4', name: 'Царапина', count: 1, wound: 1, text: 'Заражение.', adult: [contam()], drone: 'adult', queen: 'adult' },
+    { id: 'tail1', name: 'Удар хвостом', count: 1, wound: 2, text: 'Взрослый: −1 здоровье и заражение. Дрон/Королева: ранен или хуже — гибель; иначе 1 травма.',
       adult: [dmg(1), contam()], drone: tailDrone, queen: 'drone' },
-    { id: 'tail2', name: 'Удар хвостом', count: 1, text: 'Взрослый: заражение. Дрон/Королева: ранен или хуже — гибель; иначе 1 травма.',
+    { id: 'tail2', name: 'Удар хвостом', count: 1, wound: 2, text: 'Взрослый: заражение. Дрон/Королева: ранен или хуже — гибель; иначе 1 травма.',
       adult: [contam()], drone: tailDrone, queen: 'drone' },
 ];
 
@@ -921,9 +921,12 @@ export const QUEEN_CARDS = QUEEN_FACES.flatMap(c => Array.from({ length: c.copie
 })));
 
 
-export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто',
-    metagorger: 'Глодатель', shambler: 'Падальщик', breeder: 'Свежеватель', butcher: 'Мясник',
+// `crawler` (Ползун) exists only in the original ruleset; a Redux table never meets one.
+export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто', crawler: 'Ползун',
+    metagorger: 'Глодатель', shambler: 'Падальщик', breeder: 'Свежеватель', fleshbeast: 'Мясной зверь', butcher: 'Мясник',
     lurker: 'Таящийся', whisperer: 'Шепчущий', creeper: 'Крадущийся', despoiler: 'Гнетущий', lair: 'Логово', stinkhorn: 'Отросток', deathcap: 'Шляпка', chyQueen: 'Королева хитридов' };
-export const INTRUDER_SUPPLY = { larva: 8, adult: 12, drone: 12, queen: 1 };
+export const INTRUDER_SUPPLY = { larva: 8, crawler: 3, adult: 12, drone: 12, queen: 1 };
 /** Intruder token pools (Queen Health card «add up to 3 Queen tokens» implies 3 Queen tokens). */
-export const INTRUDER_TOKENS = { blank: 1, larva: 8, adult: 12, drone: 12, queen: 3 };
+export const INTRUDER_TOKENS = { blank: 1, larva: 8, crawler: 3, adult: 12, drone: 12, queen: 3 };
+export const ORIGINAL_INTRUDER_TOKENS = { blank: 1, larva: 8, crawler: 3, adult: 12, drone: 2, queen: 1 };
+export { ORIGINAL_ATTACK_CARDS, ORIGINAL_EVENT_CARDS, ORIGINAL_ATTACK_BY_ID, ORIGINAL_EVENT_BY_ID } from './original-cards.mjs';

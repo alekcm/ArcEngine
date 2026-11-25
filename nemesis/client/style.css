@@ -473,6 +473,7 @@ body.pl-collapsed #prompt:not(.hidden) ~ #menuToggle { left: 34px; }
 @keyframes sd-blink { from { filter: brightness(.7); } to { filter: brightness(1.3); } }
 #track .tphase { font-size: 11px; color: var(--dim); line-height: 1.1; min-width: 70px; }
 #track .tphase b { display: block; color: #fff; font-size: 12px; }
+#track .tphase small { display: block; color: var(--acc); font-size: 9px; letter-spacing: .2px; margin-top: 2px; }
 #muteBtn.off { opacity: .5; text-decoration: line-through; }
 
 /* ---- save / load overlay ---- */
@@ -898,7 +899,7 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
 .knowledge-cell.reward { border-color: #d5a83b; color: #ffdb77; }
 .knowledge-cell.reward.on { background: #a36e13; color: #fff; }
 .knowledge-cell.here { box-shadow: 0 0 0 2px #fff2b5; }
-.sh-larva { flex: none; font-size: 14px; line-height: 1; cursor: help; }
+.sh-larva, .sh-slime { flex: none; font-size: 14px; line-height: 1; cursor: help; }
 .lockdown-alert { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 200; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 16px 24px; border: 2px solid #ed5b59; border-radius: 10px; background: #210e10f5; color: #ffd3cd; box-shadow: 0 0 35px #ed4b4b99; text-align: center; font-size: clamp(16px, 3vw, 24px); font-weight: 800; pointer-events: none; }
 
 /* ---- empty hand: the pass button takes the fan's place ---- */
@@ -937,3 +938,21 @@ body.tb-collapsed #tableToggle { bottom: 4px; }
     stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .gi-dot { stroke: none; }
 .tag .gi, .itag .gi { margin-right: 2px; }
+
+/* ---------------- rules picker (lobby) ---------------- */
+/* The choice of ruleset is the first thing a host settles, so it sits above every other setting
+   and reads as two big cards rather than a dropdown. */
+.rules-block { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.rules-title { color: var(--acc); font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+.rules-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rules-opt { text-align: left; padding: 10px 12px; border-radius: 8px; cursor: pointer; background: #101823;
+    border: 2px solid var(--line); color: var(--txt); display: flex; flex-direction: column; gap: 3px; }
+.rules-opt b { font-size: 13px; letter-spacing: 0.4px; }
+.rules-opt small { color: var(--dim); font-size: 11px; line-height: 1.35; }
+.rules-opt:hover { border-color: #4a6488; background: #16202e; }
+.rules-opt[aria-checked="true"] { border-color: var(--acc); background: #241d10; box-shadow: 0 0 0 1px var(--acc) inset; }
+.rules-opt[aria-checked="true"] b { color: var(--acc); }
+.rules-opt[aria-checked="true"] small { color: #c8b48a; }
+.rules-opt:disabled { cursor: default; opacity: 0.75; }
+.rules-opt.locked[aria-checked="true"] { opacity: 1; }
+#rulesHint { margin: 8px 0 0; line-height: 1.45; }

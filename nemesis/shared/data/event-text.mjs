@@ -4,6 +4,7 @@
 // their own movement icons in the data, but the table sees the Redux wording («все чужие», «каждый
 // персонаж делает бросок шума»), so the text is produced here instead of in each client branch.
 import { carnomorphEventText } from './carnomorph-events.mjs';
+import { RX_CARNOMORPH_EVENT_BY_ID, rxCarnomorphEventText } from './carnomorphs-redux.mjs';
 import { chytridEventText } from './chytrids.mjs';
 import { INTRUDER_NAMES } from './cards.mjs';
 
@@ -14,9 +15,16 @@ export function voidEventText(card) {
     return 'Движение: все кошмары — коридор ' + card.move.num + '. ' + card.text + ' ' + EVENT_NOISE_TEXT;
 }
 
+export function originalEventText(card) {
+    const types = ((card.move && card.move.types) || []).map(t => INTRUDER_NAMES[t] || t).join(', ');
+    return 'Движение (' + types + '): коридор ' + card.move.num + '. ' + card.text;
+}
+
 export function eventTextFor(ev) {
     if (!ev) return '';
+    if (String(ev.id).startsWith('origEv')) return originalEventText(ev);
     if (String(ev.id).startsWith('carnoEvent')) return carnomorphEventText(ev);
+    if (RX_CARNOMORPH_EVENT_BY_ID[ev.id]) return rxCarnomorphEventText(ev);
     if (String(ev.id).startsWith('voidEvent')) return voidEventText(ev);
     if (String(ev.id).startsWith('chyEvent')) return chytridEventText(ev);
     return ev.text;

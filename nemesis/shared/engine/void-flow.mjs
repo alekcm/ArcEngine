@@ -23,12 +23,8 @@ OPS['void.encounter'] = (state, step) => {
     if (!p || p.status !== 'active' || p.room !== step.room) return;
     const requested = encounterVoidType(state, p), it = spawnVoid(state, requested, step.room, true);
     if (!it) { log(state, 'Нет доступных фигурок кошмаров для столкновения.', 'minor'); return; }
-<<<<<<< HEAD
-    if (state.bagLast) state.bagLast.effect = 'Появляется ' + INTRUDER_NAMES[it.type] + ' (значение жетона ' + token.value + '); жетон убран из игры. Если в руке меньше ' + token.value + ' карт, кошмар сразу атакует.';
-=======
     if (state.bagLast) state.bagLast.effect = encounterLine(INTRUDER_NAMES[it.type], voidSurpriseValue(state, token.value),
         hasVoidWeakness(state, 'dangerReaction') ? '«Реакция на опасность»: порог −1.' : '');
->>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     const then = { ...step, op: 'void.encounterSurprise', intruder: it.uid };
     const holder = playersInRoom(state, step.room).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));
     if (holder && !step.noPredict) {

@@ -2,21 +2,26 @@ import { isAdultEquivalent } from './core.mjs';
 // combat.mjs — intruder attacks, shooting, melee, hits and the Queen's health deck.
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, healthState, loseHealth, gainWound,
-    gainContamination, killPlayer, discardCard, COMBAT_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK,
+    gainContamination, killPlayer, discardCard, COMBAT_DIE, BLUE_DIE, roll, fmtRoll, needDice, fx, removeIntruder, intruderLabel, INTRUDER_RANK, combatDieFor, isOriginal,
     drawCards, placeFire, placeNoise, cardDef, orderIndex, hasAdapt, hasWeak, placeMalfunction, removeCardFromGame, infectLarva, heavyCount, handLimit,
-    handSlots, dropHeavy, BLUE_DIE, dieId, breakWeapon, isContam } from './core.mjs';
+    handSlots, dropHeavy, dieId, breakWeapon, isContam, giveSlime, drawBagToken, spawnIntruder, recordTurretEntry } from './core.mjs';
 import { repelIntruder, moveOneToward, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
+import { originalDealHits, originalApplyWounds, originalAttackEffects } from './original.mjs';
 import { ATTACK_CARDS, ITEMS, dropLocked, hasOpenQuest, connectedTo, QUEEN_CARDS, INTRUDER_NAMES } from '../data/cards.mjs';
+import { ORIGINAL_ATTACK_CARDS } from '../data/original-cards.mjs';
 import { CARNOMORPH_ATTACK_CARDS } from '../data/carnomorphs.mjs';
+import { RX_CARNOMORPH_ATTACK_CARDS, RX_CARNOMORPH_BUTCHER_BY_ID } from '../data/carnomorphs-redux.mjs';
 import { carnomorphAttackEffects, spawnCarnomorph, killCarnomorph, hasCarnomorphAdaptation, carnPowerCheck, carnDiceCheck } from './carnomorphs.mjs';
 import { shuffle } from '../rng.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { voidPowerCheck, voidAttackEffects, spawnVoid, killVoid, hasVoidWeakness } from './voidseeders.mjs';
 import { VOID_ATTACK_CARDS } from '../data/voidseeders.mjs';
 import { CHYTRID_ATTACK_CARDS } from '../data/chytrids.mjs';
 import { hasChyWeakness, giveChySpore, placeGerminator, placeMycelium, spawnChytrid, killChytrid, damageGerminator } from './chytrids.mjs';
 
-const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(c => [c.id, c]));
+const ATTACK_BY_ID = Object.fromEntries([...ATTACK_CARDS, ...ORIGINAL_ATTACK_CARDS, ...CARNOMORPH_ATTACK_CARDS,
+    ...RX_CARNOMORPH_ATTACK_CARDS, ...VOID_ATTACK_CARDS, ...CHYTRID_ATTACK_CARDS].map(c => [c.id, c]));
 /** Printed rank names used inside the attack card texts. */
 const ATTACK_RANK = { adult: 'Взрослый', drone: 'Дрон', queen: 'Королева' };
 /** The part of an attack card that applies to this intruder: «−1 здоровье.» out of a card that
@@ -25,6 +30,10 @@ const ATTACK_RANK = { adult: 'Взрослый', drone: 'Дрон', queen: 'Ко
  *  other two monsters. Cards printed without a rank split are returned whole, since every rank
  *  suffers the same thing. */
 export function attackEffectText(card, type) {
+    if (card && card.lines) {
+        const line = card.lines[type];
+        return line ? line.text : 'Атака не попала по этой цели.';
+    }
     const text = String((card && card.text) || '');
     if (card && card.targets) return card.targets.includes(type) ? text : 'Атака не попала по этой цели.';
     const word = ATTACK_RANK[type];
@@ -83,6 +92,23 @@ OPS['attack'] = (state, step) => {
             effect: attackEffectText(card, it.type), text: card.text });
         log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
         next(state, { ...step, cardId });
+        return;
+    }
+    // Redux Escape Master (passive): an attack suffered while Moving draws two Action cards,
+    // lets the owner resolve one for free, then discards both. The pending attack is replayed by
+    // turn.choose after the played card's own chain finishes, so no reaction can skip the attack.
+    if (isReduxCarnomorphs(state) && p.mutationCard === 'escapeMaster' && step.moving && !step.escapeMasterOffered) {
+        const before = p.hand.length;
+        drawCards(state, p, 2, true);
+        const drawn = p.hand.slice(before);
+        for (const c of drawn) discardCard(state, p, c);
+        const playable = drawn.filter(c => !isContam(c));
+        if (!playable.length) { next(state, { ...step, escapeMasterOffered: true }); return; }
+        (state.pendingFleeAttacks || (state.pendingFleeAttacks = [])).push({ ...step, op: 'attack', escapeMasterOffered: true });
+        ask(state, { kind: 'cards', secret: true, player: p.id,
+            title: 'Мастер побега: выберите карту действия, которую разыграете вместо атаки',
+            cards: playable, min: 1, max: 1 },
+            { op: 'escapeMaster.resolve', player: p.id, cards: playable });
         return;
     }
     // "Don't Panic" held by ANOTHER character in the room: that player decides first.
@@ -148,6 +174,16 @@ OPS['attack'] = (state, step) => {
         return;
     }
     resolveAttack(state, step, it, p);
+};
+OPS['escapeMaster.resolve'] = (state, step) => {
+    const p = player(state, step.player);
+    const chosen = Array.isArray(step.answer) ? step.answer[0] : step.answer;
+    if (!p || p.status !== 'active' || !chosen || !(step.cards || []).includes(chosen)) return;
+    const def = cardDef(state, chosen);
+    fx(state, { type: 'play', player: p.id, card: chosen });
+    log(state, pname(p) + ' разыгрывает карту «' + def.name + '» по «Мастеру побега».', 'good');
+    // Card effects end on turn.choose; that op replays the parked attack before opening the menu.
+    OPS['card.effect'](state, { op: 'card.effect', player: p.id, effect: def.effect, cardId: chosen });
 };
 OPS['attack.panic'] = (state, step) => {
     const h = player(state, step.holder);
@@ -246,7 +282,8 @@ export function chytridAttackEffects(card, it, p) {
 }
 
 function attackEffectsFor(state, card, it, p) {
-    if (state.enemySet === 'carnomorphs' && card.id.startsWith('carnoAttack')) return carnomorphAttackEffects(card, it, p);
+    if (card.id.startsWith('origAtk')) return originalAttackEffects(state, card, it, p);
+    if (state.enemySet === 'carnomorphs' && (card.id.startsWith('carnoAttack') || card.id.startsWith('rxAtk-'))) return carnomorphAttackEffects(card, it, p);
     if (state.enemySet === 'voidseeders' && card.id.startsWith('voidAttack')) return voidAttackEffects(card, it, p);
     if (state.enemySet === 'chytrids' && card.id.startsWith('chyAttack')) return chytridAttackEffects(card, it, p);
     let effects = card[it.type];
@@ -269,8 +306,8 @@ function resolveAttack(state, step, it, p) {
     const card = ATTACK_BY_ID[cardId];
     let effects = attackEffectsFor(state, card, it, p);
     if (!step.cardId) log(state, '⚔ ' + intruderLabel(state, it) + ' атакует ' + pname(p) + ': «' + card.name + '».', 'combat');
-    if (card.id === 'bite' && it.type === 'adult' && hasWeak(state, 'attackHabits')) log(state, '🦷 Повадки атаки: Укус Взрослого даёт лёгкую травму вместо тяжёлой.', 'good');
-    if (p.armor && ITEMS[p.armor.item].discardArmor && isAdultEquivalent(state, it) && !effects.some(e => ['miss', 'carnoMiss', 'voidMiss', 'chyMiss'].includes(e.op))) {
+    if ((card.id === 'bite' || card.effect === 'bite') && it.type === 'adult' && hasWeak(state, 'attackHabits')) log(state, '🦷 Повадки атаки: Укус Взрослого даёт лёгкую травму вместо тяжёлой.', 'good');
+    if (p.armor && ITEMS[p.armor.item].discardArmor && isAdultEquivalent(state, it) && !effects.some(e => ['miss', 'origMiss', 'carnoMiss', 'voidMiss', 'chyMiss'].includes(e.op))) {
         ask(state, { kind: 'choice', player: p.id, title: intruderLabel(state, it) + ': «' + card.name + '». Сбросить броню и проигнорировать атаку?',
             options: [{ id: 'yes', label: 'Да, сбросить броню' }, { id: 'no', label: 'Нет, принять атаку' }] },
             { op: 'attack.armor', player: p.id, intruder: it.uid, phantom: it.uid === '_phantom' ? it : undefined, cardId, moving: step.moving, dest: step.dest, context: step.context, ravenous: step.ravenous });
@@ -323,11 +360,14 @@ function lethalEffect(state, effects, p) {
     let hp = p.health;
     for (const e of effects) {
         switch (e.op) {
-            case 'dmg': hp -= e.n + (hasAdapt(state, 'razorAppendages') ? 1 : 0); if (hp <= 0) return true; break;
+            case 'dmg': case 'rxDmg': hp -= e.n + (hasAdapt(state, 'razorAppendages') ? 1 : 0); if (hp <= 0) return true; break;
+            case 'rxBite': if (healthState(p) === 'heavy') return true; break;
+            case 'rxDevourButcher': if (hs !== 'healthy') return true; break;
             case 'dieIf': if (e.state === 'heavy' ? hs === 'heavy' : (hs === 'injured' || hs === 'heavy')) return true; break;
             case 'if': if (lethalEffect(state, (e.state === 'injured' ? hs === 'injured' : hs === e.state) ? e.then : e.else, p)) return true; break;
             case 'furyRoom': if (hs === 'heavy') return true; break;
-            case 'carnoKill': case 'voidKill': case 'chyKill': return true;
+            case 'origKill': case 'carnoKill': case 'voidKill': case 'chyKill': return true;
+            case 'origFrenzy': if (p.wounds.length >= 2) return true; break;
             case 'chyEntangle': if (p.wounds.length || p.health <= state.chyQueenSlots.filter(Boolean).length) return true; break;
             case 'chyInfection': if (p.chySpore) return true; break;
             case 'chySpikes': if (p.wounds.length >= 2) return true; break;
@@ -353,6 +393,31 @@ function applyAttackEffects(state, effects, it, p, step, nested) {
         const hs = healthState(p);
         switch (e.op) {
             case 'dmg': loseHealth(state, p, e.n + (hasAdapt(state, 'razorAppendages') ? 1 : 0), 'атака'); break;
+            case 'rxDmg': loseHealth(state, p, e.n, 'атака карноморфа'); break;
+            case 'rxBite':
+                if (healthState(p) === 'heavy') killPlayer(state, p, 'укус карноморфа');
+                else gainWound(state, p, 1);
+                break;
+            case 'rxDevourButcher':
+                if (healthState(p) !== 'healthy') killPlayer(state, p, 'пожирание мясника');
+                else gainWound(state, p, 1);
+                break;
+            case 'rxSpawn':
+                spawnCarnomorph(state, 'metagorger', p.room);
+                log(state, 'Вылупление: метагоргер помещён в отсек без столкновения и внезапной атаки.', 'combat');
+                break;
+            case 'rxHeal':
+                if (it && state.intruders[it.uid]) {
+                    if (isReduxCarnomorphs(state) && it.type === 'butcher') state.butcherHits = 0;
+                    else it.hits = Math.max(0, (it.hits || 0) - (e.all ? (it.hits || 0) : (e.n || 1)));
+                    log(state, 'Атака карноморфа: снято ' + (e.all ? 'все жетоны ранений' : (e.n || 1)) + '.', 'combat');
+                }
+                break;
+            case 'rxMiss':
+                log(state, 'Атака карноморфа промахнулась: колода атак перемешана.', 'good');
+                state.attackDeck.push(...state.attackDiscard.splice(0));
+                shuffle(state, state.attackDeck);
+                break;
             case 'carnoKill': killPlayer(state, p, 'смертельная атака карноморфа'); break;
             case 'voidKill': killPlayer(state, p, 'смертельная атака кошмара'); break;
             case 'chyKill': killPlayer(state, p, 'смертельная атака хитрида'); break;
@@ -426,6 +491,48 @@ function applyAttackEffects(state, effects, it, p, step, nested) {
             case 'larva':
                 infectLarva(state, p);
                 break;
+            case 'origMiss':
+                log(state, 'Атака чужого проходит мимо.', 'good');
+                break;
+            case 'origKill':
+                killPlayer(state, p, 'смертельная атака чужого');
+                return;
+            case 'origSlime':
+                giveSlime(state, p);
+                break;
+            case 'origSummon': {
+                const tok = drawBagToken(state);
+                if (!tok) { log(state, 'Призыв: мешок пуст.', 'minor'); break; }
+                if (tok === 'blank') {
+                    const wasEmpty = state.bag.length === 0;
+                    state.bag.push('blank');
+                    if (wasEmpty && countAvailable(state, 'adult') > 0) state.bag.push('adult');
+                    for (const ex of state.ship.rooms[it.room].exits) placeNoise(state, ex.corridor);
+                    if (state.ship.rooms[it.room].tech) placeNoise(state, 'tech');
+                    log(state, 'Призыв: пустой жетон — шум во всех коридорах вокруг комнаты.', 'noise');
+                } else {
+                    const spawned = spawnIntruder(state, tok, it.room);
+                    log(state, 'Призыв: из мешка — ' + INTRUDER_NAMES[tok] + (spawned ? ' (без внезапной атаки).' : '.'), 'combat');
+                }
+                break;
+            }
+            case 'origTransform': {
+                const roomHere = it.room;
+                removeIntruder(state, it.uid, false);
+                const d = spawnIntruder(state, 'drone', roomHere);
+                log(state, 'Трансформация: Ползун превращается в Дрона (Охотника)!', 'combat');
+                if (d && p.status === 'active' && p.hand.length === 0) {
+                    log(state, 'В руке 0 карт — внезапная атака Дрона!', 'combat');
+                    next(state, { op: 'attack', intruder: d.uid, player: p.id, context: 'surprise' });
+                }
+                break;
+            }
+            case 'origFrenzy':
+                for (const o of playersInRoom(state, it.room)) {
+                    if (o.wounds.length >= 2) killPlayer(state, o, 'ярость чужого');
+                    else gainWound(state, o, 1);
+                }
+                break;
             case 'miss':
                 log(state, 'Промах! Колода атак перемешивается.', 'good');
                 state.attackDeck.push(...state.attackDiscard.splice(0));
@@ -434,11 +541,29 @@ function applyAttackEffects(state, effects, it, p, step, nested) {
         }
     }
     if (nested) return;
-    const miss = effects.some(e => e.op === 'miss' || e.op === 'carnoMiss' || e.op === 'voidMiss' || e.op === 'chyMiss');
+    if (!nested && isReduxCarnomorphs(state) && p.mutationCard === 'boilingBlood' &&
+        p.status === 'active' && (p.health < step._hp || p.wounds.length > step._w) &&
+        it && state.intruders[it.uid]) {
+        log(state, '🧬 Кипящая кровь: атакующий карноморф получает 1 ранение.', 'good');
+        applyHitsNoRoll(state, it, 1);
+    }
+    if (!nested && isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'tentacle') &&
+        p.status === 'active' && !step._tentacleDone && (p.health < step._hp || p.wounds.length > step._w)) {
+        step._tentacleDone = true;
+        log(state, '🧬 Щупальце: цель теряет ещё 1 здоровье.', 'bad');
+        loseHealth(state, p, 1, 'щупальце карноморфа');
+    }
+    const miss = effects.some(e => e.op === 'miss' || e.op === 'rxMiss' || e.op === 'origMiss' || e.op === 'carnoMiss' || e.op === 'voidMiss' || e.op === 'chyMiss');
     // Venomous: every non-miss attack contaminates if it did not already
     if (!miss && hasAdapt(state, 'venomous') && p.status === 'active' && state.contamSeq === step._contam) {
         log(state, '🧬 Ядовитость: атака даёт заражение.', 'bad');
         gainContamination(state, p, 1);
+    }
+    // Redux mutation: gaining Contamination from an Attack draws one Action card.
+    if (!nested && isReduxCarnomorphs(state) && p.mutationCard === 'geneticMalfunction' &&
+        p.status === 'active' && state.contamSeq > step._contam) {
+        drawCards(state, p, 1);
+        log(state, '🧬 Генетическая неисправность: заражение от атаки даёт 1 карту действия.', 'good');
     }
     // Ravenous: in the Intruder-phase attack step an adult/drone that drew blood attacks again
     if (hasAdapt(state, 'ravenous') && step.context === 'phase' && !step.ravenous && (it.type === 'adult' || it.type === 'drone') && p.status === 'active'
@@ -475,6 +600,7 @@ export function resolveFollows(state) {
         const it = state.intruders[f.intruder], p = player(state, f.player);
         if (!it || !p || p.status !== 'active' || p.room !== f.dest || it.room === f.dest) continue;
         it.room = f.dest;
+        recordTurretEntry(state, 'intruder', it.uid, f.dest);
         log(state, INTRUDER_NAMES[it.type] + ' следует за ' + pname(p) + ' в ' + roomName(state, f.dest) + '.', 'combat');
     }
 }
@@ -575,15 +701,19 @@ OPS['shoot.grenade'] = (state, step) => {
     // Printed: every Intruder there suffers a Critical result.
     for (const it of intrudersIn(state, r)) {
         if (!state.intruders[it.uid]) continue;
-        if (it.type === 'queen') { next(state, { op: 'queen.card', player: p.id }); continue; }
+        if (it.type === 'queen' && !(isOriginal(state) && state.enemySet === 'redux')) { next(state, { op: 'queen.card', player: p.id }); continue; }
         if (state.enemySet === 'voidseeders') {
             if (killVoid(state, it)) log(state, INTRUDER_NAMES[it.type] + ' уничтожен взрывом.', 'combat');
             else log(state, 'Гнетущий защищён логовами и не уничтожен взрывом.', 'combat');
         } else {
             log(state, INTRUDER_NAMES[it.type] + ' уничтожен взрывом (критический результат).', 'combat');
+            if (isReduxCarnomorphs(state) && it.type === 'butcher') { next(state, { op: 'butcher.card', player: p.id }); continue; }
             if (state.enemySet === 'carnomorphs') killCarnomorph(state, it);
             else if (state.enemySet === 'chytrids') killChytrid(state, it);
-            else removeIntruder(state, it.uid, true);
+            else {
+                if (it.type === 'queen') { state.queenDead = true; log(state, '👑 КОРОЛЕВА МЕРТВА!', 'good'); }
+                removeIntruder(state, it.uid, it.type !== 'larva');
+            }
         }
     }
     // Growth is not an Intruder for the launcher's room-wide item effect.
@@ -610,7 +740,7 @@ OPS['shoot.targetChosen'] = (state, step) => next(state, { ...step, op: String(s
 OPS['chy.germShoot'] = (state, step) => {
     const p=player(state,step.player), id=step.target.slice(5), w=p.items.find(i=>i.uid===step.weapon), rs=room(state,id), then=step.then || {op:'turn.choose'};
     if (!w || !rs || !rs.chyGerm || !canFire(p,w)) { next(state,then); return; }
-    const die=shootDie(p), dieName=dieId(die), wd=ITEMS[w.item].weapon;
+    const die=shootDie(state,p), dieName=dieId(die), wd=ITEMS[w.item].weapon;
     if (!step.rerollResolved && needDice(state,step,dieName,p.id,'Бросок боя — выстрел по наросту')) return;
     if (wd.reroll && !step.rerollResolved) {
         step.blue = dieName === 'blue'; const first=forcedRollOnce(state,step);
@@ -654,13 +784,15 @@ OPS['shoot.fire'] = (state, step) => {
     const it = state.intruders[step.target];
     const then = step.then || { op: 'turn.choose' };
     if (!w || !it || !canFire(p, w)) { next(state, then); return; }
-    const sdie = shootDie(p), sdieId = dieId(sdie);
+    const origBase = isOriginal(state) && state.enemySet === 'redux';
+    const needsRoll = origBase || it.type !== 'larva';
+    const sdie = shootDie(state,p), sdieId = dieId(sdie);
     if (sdieId === 'blue') step.blue = true;
-    if (it.type !== 'larva' && !step.rerollResolved && needDice(state, step, sdieId, p.id, sdieId === 'blue' ? 'Бросок боя — выстрел (синий кубик)' : 'Бросок боя — выстрел')) return;
+    if (needsRoll && !step.rerollResolved && needDice(state, step, sdieId, p.id, sdieId === 'blue' ? 'Бросок боя — выстрел (синий кубик)' : 'Бросок боя — выстрел')) return;
     const def = ITEMS[w.item], wd = def.weapon;
     // Weapons that allow a reroll ("may reroll the first roll, accept the second result") turn it
     // into the player's decision. The first die is rolled here, before ammo is spent.
-    if ((wd.reroll || (state.enemySet === 'voidseeders' && it.type === 'lair' && hasVoidWeakness(state, 'determination'))) && !step.rerollResolved && it.type !== 'larva') {
+    if ((wd.reroll || (state.enemySet === 'voidseeders' && it.type === 'lair' && hasVoidWeakness(state, 'determination'))) && !step.rerollResolved && needsRoll) {
         const first = forcedRollOnce(state, step);
         ask(state, { kind: 'choice', player: p.id, title: (wd.reroll ? '«' + def.name + '»' : 'Решительность') + ': выпало ' + fmtRoll(first) + '. Перебросить кубик боя? Второй результат окончателен.',
             options: [{ id: 'reroll', label: 'Перебросить' }, { id: 'keep', label: 'Оставить' }] },
@@ -706,10 +838,11 @@ OPS['shoot.fire'] = (state, step) => {
  * The Battle Suit (printed): "Use the special Blue Combat die when Shooting." The die is the
  * shooter's, so a wearer replaces the red die for every Shot they make, including rerolls.
  */
-function shootDie(p) { return p.armor && p.armor.item === 'battleSuit' ? BLUE_DIE : COMBAT_DIE; }
+/** The Battle die is a property of the ruleset, not only of the shooter's armour. */
+function shootDie(state, p) { return combatDieFor(state, p); }
 /** The first combat die of a shot: interactive when the player already rolled, else a normal roll. */
 function forcedRollOnce(state, step) {
-    return roll(state, step.blue ? BLUE_DIE : COMBAT_DIE);
+    return roll(state, step.blue ? BLUE_DIE : (isOriginal(state) ? combatDieFor(state) : COMBAT_DIE));
 }
 function adaptRoll(state, r) {
     if (hasAdapt(state, 'agile') && (r === 'crit' || r === 2)) { log(state, '🧬 Проворство: результат «' + fmtRoll(r) + '» считается «6».', 'combat'); r = 6; }
@@ -737,6 +870,8 @@ function faceEffect(state, wd, natural, name) {
  * A kill is preferable to survival; among equal outcomes, additional injury is preferable.
  * This mirrors the actual resolution below without consuming a roll or mutating the state. */
 function chyRollScore(state, it, natural, wd, hits, mod) {
+    // The original Battle die has no numbers; only theRedux die can be ranked this way.
+    if (typeof natural !== 'number' && natural !== 'crit') return 0;
     let face = natural;
     if (wd.facesTo && wd.facesTo[face] !== undefined) face = wd.facesTo[face];
     else if (wd.facesPlus && wd.facesPlus.includes(face)) face += 1;
@@ -756,6 +891,9 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
         state.lastCombatAction = { n: state.combatSeq, type: 'charAttacks', player: p.id, intruder: it.uid, room: it.room };
     }
     state.lastCombatNatural = null;
+    // Only the base intruders use the original wound rules; each expansion keeps the toughness
+    // check printed in its own book.
+    if (isOriginal(state) && state.enemySet === 'redux') return originalDealHits(state, p, it, hits, mod, opts);
     if (it.type === 'larva') { log(state, 'Личинка погибает.', 'good'); removeIntruder(state, it.uid, false); return true; }
     // Energy Vulnerability: an Energy-weapon attack that deals at least 1 Injury deals +1.
     if (hits >= 1 && opts.weapon && ITEMS[opts.weapon.item].weapon.energy && hasWeak(state, 'energyVuln')) { hits += 1; log(state, '⚡ Уязвимость к энергии: +1 ранение.', 'good'); }
@@ -763,7 +901,7 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     if (state.enemySet === 'chytrids' && hasChyWeakness(state, 'fireVulnerability') && hits > 0 && (opts.explosive || (opts.weapon && opts.weapon.item === 'flamethrower'))) { hits++; log(state, '🔥 Уязвимость к огню: +1 ранение.', 'good'); }
     it.hits += hits;
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
-    const die = opts.die || COMBAT_DIE;
+    const die = opts.die || combatDieFor(state, p);
     let r = opts.forcedRoll !== undefined ? opts.forcedRoll : roll(state, die);
     if (opts.bestOfTwo || (state.enemySet === 'chytrids' && it.type === 'stinkhorn' && hasChyWeakness(state, 'chitinDepletion'))) {
         const r2 = roll(state, die);
@@ -787,7 +925,29 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     // The Convict's Pipe: a Melee Attack contaminates only on the faces the card names.
     if (opts.contamFaces && opts.contamFaces.includes(natural)) gainContamination(state, p, 1);
     if (wd.plusOn5 && r === 5) { hits++; it.hits++; log(state, 'BF-пушка: «5» — дополнительное ранение.', 'combat'); }
-    // Carnomorphs use a separate two-die toughness check below; the ordinary kill-roll is ignored.
+    if (isReduxCarnomorphs(state)) {
+        let val = r;
+        if (hasCarnomorphAdaptation(state, 'agile') && (natural === 2 || natural === 'crit')) {
+            val = 6;
+            log(state, '🧬 Проворство: результат кубика боя считается 6.', 'good');
+        } else if (hasCarnomorphAdaptation(state, 'regenerativeTissue') && Number.isInteger(val)) {
+            val += 1;
+            log(state, '🧬 Регенерирующая ткань: результат кубика боя увеличен на 1.', 'good');
+        }
+        if (it.type === 'butcher') return butcherHits(state, p, it, hits, val, mod, opts);
+        val = val === 'crit' ? 'crit' : val + mod;
+        log(state, '🎲 Бой (Redux): ' + fmtRoll(val) + ' против ранений ' + it.hits + '.', 'combat');
+        if (val === 'crit' || val - (hasWeak(state, 'endangered') ? 1 : 0) <= it.hits) {
+            log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' убит!', 'good');
+            killCarnomorph(state, it);
+            onKill(state, p, opts);
+            return true;
+        }
+        log(state, INTRUDER_NAMES[it.type] + ' выживает (ранений ' + it.hits + ').', 'combat');
+        if (opts.retaliate && state.intruders[it.uid]) next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'retaliation' });
+        return false;
+    }
+    // Classic Carnomorphs use a separate two-die toughness check; the ordinary kill-roll is ignored.
     if (state.enemySet === 'carnomorphs') {
         it.hits -= hits; // The two-die toughness check adds the injuries back exactly once.
         if (opts.weapon && opts.weapon.item === 'flamethrower' && hasCarnomorphAdaptation(state, 'fireResistance')) {
@@ -831,12 +991,23 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
 }
 OPS['shoot.rerollAns'] = (state, step) => {
     // "You may reroll the first roll, accept the second": the second value is final.
-    const second = step.answer === 'reroll' ? roll(state, step.blue ? BLUE_DIE : COMBAT_DIE) : step.first;
+    const second = step.answer === 'reroll' ? roll(state, step.blue ? BLUE_DIE : combatDieFor(state, player(state, step.player))) : step.first;
     if (step.answer === 'reroll') log(state, pname(player(state, step.player)) + ' перебрасывает кубик боя.', 'combat');
     next(state, { ...step.step, rerollResolved: true, forcedRoll: second });
 };
 export function applyHitsNoRoll(state, it, n) {
     if (state.enemySet === 'voidseeders') { const result = voidPowerCheck(state, it, n); return !!result && result.result === 'killed'; }
+    if (isOriginal(state) && state.enemySet === 'redux') return originalApplyWounds(state, it, n);
+    if (isReduxCarnomorphs(state)) {
+        if (it.type === 'butcher') {
+            state.butcherHits = (state.butcherHits || 0) + n;
+            if (state.butcherHits >= 6) next(state, { op: 'butcher.card', player: null });
+            return false;
+        }
+        it.hits += n;
+        log(state, INTRUDER_NAMES[it.type] + ' получает ' + n + ' ранений (всего ' + it.hits + ').', 'combat');
+        return false;
+    }
     if (state.enemySet === 'carnomorphs') { const result = carnDiceCheck(state, it, n, [roll(state, COMBAT_DIE), roll(state, COMBAT_DIE)]); return !!result && result.result === 'killed'; }
     if (it.type === 'larva') { removeIntruder(state, it.uid, false); log(state, 'Личинка погибает.', 'good'); return; }
     if (it.type === 'queen') { state.queenHits += n; log(state, 'Королева получает ' + n + ' ранений (всего ' + state.queenHits + ').', 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card', player: null }); return; }
@@ -853,10 +1024,85 @@ function onKill(state, p, opts) {
     if (opts.weapon && ITEMS[opts.weapon.item].weapon.drawOnKill && !p.rifleDrawUsed) { p.rifleDrawUsed = true; drawCards(state, p, 1); }
 }
 
+/** Redux Carnomorph Butcher uses the Queen Health procedure of the Redux rulebook. */
+function butcherHits(state, p, it, hits, dieValue, mod = 0) {
+    // The Queen-style track is the only toughness the Butcher has; `it.hits` is not used.
+    it.hits = 0;
+    state.butcherHits = (state.butcherHits || 0) + hits;
+    const frail = hasWeak(state, 'endangered') ? 1 : 0;
+    const val = dieValue === 'crit' ? 'crit' : dieValue + mod;
+    log(state, '🎲 Бой с Мясником: ' + fmtRoll(dieValue) + (mod ? ' +' + mod : '') +
+        ', попаданий на треке ' + state.butcherHits + (frail ? ' (стойкость −1)' : '') + '.', 'combat');
+    if (val === 'crit' || val - frail <= state.butcherHits || state.butcherHits >= 6) {
+        next(state, { op: 'butcher.card', player: p ? p.id : null });
+    } else log(state, 'Мясник держится.', 'combat');
+    return false;
+}
+OPS['butcher.card'] = (state, step) => {
+    if (!state.butcherDeck || !state.butcherDeck.length) return;
+    const idx = state.butcherDeck.shift();
+    (state.butcherPlayed || (state.butcherPlayed = [])).push(idx);
+    const card = RX_CARNOMORPH_BUTCHER_BY_ID[idx];
+    if (!card) throw new Error('Missing Butcher health card: ' + idx);
+    fx(state, { type: 'butcher', card: card.id, name: card.name, text: card.text });
+    log(state, '🥩 Карта здоровья Мясника: «' + card.name + '» — ' + card.text, 'combat');
+    if (card.extra) state.butcherDeck.splice(0, card.extra);
+    state.butcherHits = 0;
+    const dead = !state.butcherDeck.length;
+    if (dead) {
+        state.butcherDead = true;
+        state.carnomorphButcherDead = true;
+        log(state, '🥩 МЯСНИК МЁРТВ!', 'good');
+    } else log(state, 'Карт здоровья Мясника осталось: ' + state.butcherDeck.length + '.', 'combat');
+    const butcher = Object.values(state.intruders).find(i => i.type === 'butcher');
+    if (butcher && (step.player != null || !card.byChar)) {
+        const ps = playersInRoom(state, butcher.room);
+        switch (card.effect) {
+            case 'mutationMarkers':
+                next(state, ...ps.filter(x => x.status === 'active' && (x.mutationMarkers || 0) > 0)
+                    .map(x => ({ op: 'butcher.marker', player: x.id })));
+                break;
+            case 'draw2': for (const x of ps) drawCards(state, x, 2); break;
+            case 'repel': if (!dead) repelIntruder(state, butcher, null, true); break;
+            case 'noise': next(state, ...ps.map(x => ({ op: 'noise.roll', player: x.id, room: x.room }))); break;
+            case 'malf': placeMalfunction(state, butcher.room, 'Мясник'); break;
+            case 'contam': for (const x of ps) if (x.status === 'active') gainContamination(state, x, 1); break;
+            case 'spawn': for (let i = 0; i < 2; i++) spawnCarnomorph(state, 'metagorger', butcher.room); break;
+            case 'bag':
+                for (let i = 0; i < 3; i++) if (addButcherToken(state)) { /* the bag is updated inside */ }
+                break;
+        }
+    }
+    if (dead && state.intruders[butcher && butcher.uid]) killCarnomorph(state, butcher);
+};
+OPS['butcher.marker'] = (state, step) => {
+    const p = player(state, step.player);
+    if (!p || p.status !== 'active' || !(p.mutationMarkers > 0)) return;
+    ask(state, { kind: 'choice', reaction: true, player: p.id,
+        title: 'Карта здоровья Мясника: сбросить 1 фишку мутации?',
+        options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
+        { op: 'butcher.markerAnswer', player: p.id });
+};
+OPS['butcher.markerAnswer'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'yes' && p && p.mutationMarkers > 0) {
+        p.mutationMarkers--;
+        log(state, pname(p) + ': фишка мутации сброшена.', 'good');
+    }
+};
+
+function addButcherToken(state) {
+    const i = (state.carnomorphSupply || []).findIndex(t => t.type === 'butcher');
+    if (i < 0) return false;
+    state.bag.push(state.carnomorphSupply.splice(i, 1)[0]);
+    log(state, 'В мешок добавлен жетон Мясника.', 'event');
+    return true;
+}
+
 function queenHits(state, p, it, hits, mod, opts = {}) {
     state.queenHits += hits;
     const wd = opts.weapon ? ITEMS[opts.weapon.item].weapon : {};
-    const natural = opts.forcedRoll !== undefined ? opts.forcedRoll : roll(state, opts.die || COMBAT_DIE);
+    const natural = opts.forcedRoll !== undefined ? opts.forcedRoll : roll(state, opts.die || combatDieFor(state, p));
     state.lastCombatNatural = natural;
     const face = faceEffect(state, wd, natural, opts.weapon ? ITEMS[opts.weapon.item].name : '');
     let r = natural;
@@ -932,10 +1178,13 @@ OPS['melee.hit'] = (state, step) => {
     const it = state.intruders[step.target];
     const then = step.then || { op: 'turn.choose' };
     if (!it) { next(state, then); return; }
+    const origBase = isOriginal(state) && state.enemySet === 'redux';
+    const mdie = combatDieFor(state);
+    const mdieId = dieId(mdie);
     // The Tactical Hatchet's printed effect replaces the combat roll entirely, so the die is not
     // even requested when it is used.
     const hatchet = p.items.find(i => ITEMS[i.item].hatchet && !i.charge && !i.broken);
-    if (!hatchet && it.type !== 'larva' && !step.rerollResolved && needDice(state, step, 'combat', p.id, 'Бросок боя — ближний бой')) return;
+    if (!hatchet && (origBase || it.type !== 'larva') && !step.rerollResolved && needDice(state, step, mdieId, p.id, 'Бросок боя — ближний бой')) return;
     if (!hatchet && state.enemySet === 'voidseeders' && it.type === 'lair' && hasVoidWeakness(state, 'determination') && !step.rerollResolved) {
         const first = forcedRollOnce(state, step);
         ask(state, { kind: 'choice', player: p.id, title: 'Решительность: выпало ' + fmtRoll(first) + '. Перебросить кубик боя?',
@@ -952,9 +1201,12 @@ OPS['melee.hit'] = (state, step) => {
     if (hatchet) log(state, 'Тактический топорик: 2 ранения без броска, оранжевая поломка на оружии.', 'combat');
     // 10.3: a Melee Attack deals 1 Hit and then makes a Combat roll, exactly like a shot — the
     // intruder dies on the same check. Only the Hatchet replaces the roll.
+    // Original rules (p. 19): Melee rolls the Battle die (double-crosshair = 1W); a miss deals 1
+    // Serious Wound directly, and a surviving intruder does NOT retaliate.
     const survived = hatchet ? !applyHitsNoRoll(state, it, hits)
-        : !dealHits(state, p, it, hits, 0, { retaliate: false, contamFaces: step.contamFaces, forcedRoll: step.forcedRoll });
-    if (survived && state.intruders[it.uid] && !step.noRetaliation && !(state.enemySet === 'voidseeders' && (it.type === 'lair' || it.room !== p.room))) {
+        : !dealHits(state, p, it, hits, 0, { retaliate: false, contamFaces: step.contamFaces, forcedRoll: step.forcedRoll, noMissWound: step.noMissWound, die: mdie });
+    const clawNoRetaliation = isReduxCarnomorphs(state) && p.mutationCard === 'claw';
+    if (!origBase && survived && state.intruders[it.uid] && !step.noRetaliation && !clawNoRetaliation && !(state.enemySet === 'voidseeders' && (it.type === 'lair' || it.room !== p.room))) {
         const weapons = p.items.filter(i => ITEMS[i.item].weapon);
         if (weapons.length) {
             ask(state, { kind: 'choice', player: p.id, title: 'Чужой выжил и отвечает атакой. Подставить оружие (первая поломка — жетон поломки; уже сломанное — уничтожается), чтобы избежать атаки?',

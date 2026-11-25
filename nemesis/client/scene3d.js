@@ -36,7 +36,10 @@ const TILE_ACCENT = {
     archives: '#4aa3df', comms: '#4aa3df', emergency: '#4fcf7a', evacA: '#e05252', evacB: '#e05252', fireControl: '#f1c40f', generator: '#f1c40f',
     laboratory: '#4fcf7a', nest: '#b26bd6', surgery: '#4fcf7a', repository: '#e05252', airlock: '#e05252', armory: '#e05252', cafeteria: '#4fcf7a',
     commandCenter: '#f1c40f', containment: '#4fcf7a', contaminated: '#9cff3b', decon: '#4fcf7a', engineRoom: '#f1c40f', hatchControl: '#e05252',
-    server: '#f1c40f', storage: '#f1c40f', cockpit: '#4aa3df', hibernatorium: '#b26bd6', engine: '#ffb347',
+    server: '#f1c40f', storage: '#f1c40f', defense: '#e05252',
+    originalServer: '#4aa3df', alarmControl: '#e05252', workshop: '#4fcf7a',
+    shower: '#9fd7ff', cabins: '#4aa3df', slimeRoom: '#9cff3b', doorLock: '#e05252', observation: '#4aa3df', radioRoom: '#f1c40f',
+    cockpit: '#4aa3df', hibernatorium: '#b26bd6', engine: '#ffb347',
 };
 // Wall palettes per tile family: [wall, darkPanel, trim, strip]
 const WALL_STYLES = {
@@ -56,6 +59,9 @@ const TILE_STYLE = {
     emergency: 'medical', surgery: 'medical', decon: 'medical', laboratory: 'lab', cafeteria: 'cafe',
     armory: 'military', airlock: 'military', hatchControl: 'military', repository: 'military', evacA: 'military', evacB: 'military',
     generator: 'tech', fireControl: 'tech', engineRoom: 'tech', storage: 'tech', server: 'tech',
+    defense: 'military', alarmControl: 'military',
+    originalServer: 'tech', workshop: 'tech', radioRoom: 'bridge',
+    shower: 'medical', cabins: 'cold', slimeRoom: 'toxic', doorLock: 'military', observation: 'bridge',
     engine: 'engine', nest: 'nest', cockpit: 'bridge', commandCenter: 'bridge', archives: 'bridge', comms: 'bridge',
     contaminated: 'toxic', containment: 'cold', hibernatorium: 'cold',
 };
@@ -3667,6 +3673,601 @@ export class Scene3D {
                 }));
                 break;
             }
+            case 'shower': {
+                // Original base-game Shower: grey tiling, curtained stalls, floor drains and a bench of
+                // clean towels. The printed art has no Computer, so no console or clickable spot here.
+                const water = M('#9fd7ff', 0.7), tileGrey = M('#9aa9b8');
+                const stall = (x, z, ry) => {
+                    bx(1.5, 2.1, 0.1, x, 1.05, z, M('#46505c'), ry);                 // back wall
+                    for (const sd of [-1, 1]) {
+                        bx(0.08, 2.0, 0.62, LX(x, z, ry, sd * 0.78, 0.3), 1.0, LZ(x, z, ry, sd * 0.78, 0.3), metal, ry);
+                        bx(0.72, 1.72, 0.03, LX(x, z, ry, sd * 0.39, 0.58), 1.16, LZ(x, z, ry, sd * 0.39, 0.58), M('#9fd7ff', 0.5, { alpha: 0.34 }), ry);
+                        bx(0.72, 0.06, 0.04, LX(x, z, ry, sd * 0.39, 0.6), 2.02, LZ(x, z, ry, sd * 0.39, 0.6), metal, ry);
+                    }
+                    for (const sd of [-1, 1]) {
+                        cy(0.08, 0.08, 0.5, LX(x, z, ry, 0, 0.34), 1.88 + sd * 0.12, LZ(x, z, ry, 0, 0.34), metal, 6);
+                    }
+                    cy(0.3, 0.3, 0.1, LX(x, z, ry, 0, 0.34), 1.62, LZ(x, z, ry, 0, 0.34), water, 10);
+                    bx(0.06, 0.5, 0.06, LX(x, z, ry, 0, 0.34), 2.15, LZ(x, z, ry, 0, 0.34), metal);
+                    // a drain in the stall and a second one just outside the curtain
+                    for (const v of [0.7, 1.25]) {
+                        cy(0.62, 0.62, 0.03, LX(x, z, ry, 0, v), 0.16, LZ(x, z, ry, 0, v), M('#39424e'), 10);
+                        for (let k = 0; k < 4; k++) bx(0.4, 0.02, 0.06, LX(x, z, ry, 0, v), 0.18, LZ(x, z, ry, 0, v), dark, k * Math.PI / 4);
+                    }
+                };
+                fix(() => {
+                    wall([Math.PI, -2.4, 2.4, 0.7], 3.2, (p, fr) => {
+                        for (const u of [-0.8, 0.8]) stall(...fr.at(u, 0), p.ry);
+                        bx(3.3, 0.12, 0.12, fr.at(0, 0.12)[0], 2.3, fr.at(0, 0.12)[1], metal, p.ry);
+                    });
+                    wall([1.5, -1.5, 2.8, -2.8], 1.6, (p) => {
+                        stall(p.x, p.z, p.ry);
+                    });
+                    wall([-0.9, 0.9, -2.6, 2.6], 1.4, (p, fr) => {
+                        bx(1.4, 1.7, 0.16, p.x, 1.55, p.z, M('#46505c'), p.ry);
+                        for (let k = 0; k < 3; k++) {
+                            bx(1.3, 0.06, 0.36, fr.at(0, 0.2)[0], 1.05 + k * 0.42, fr.at(0, 0.2)[1], tileGrey, p.ry);
+                            bx(0.36, 0.14, 0.26, fr.at(-0.36, 0.24)[0], 1.18 + k * 0.42, fr.at(-0.36, 0.24)[1], white, p.ry);
+                        }
+                        bx(1.2, 0.05, 0.06, fr.at(0, 0.24)[0], 0.78, fr.at(0, 0.24)[1], water, p.ry);
+                        for (const sd of [-1, 1]) {
+                            cy(0.22, 0.22, 0.34, fr.at(sd * 0.45, 0.26)[0], 1.5, fr.at(sd * 0.45, 0.26)[1], white, 8);
+                            bx(0.12, 0.06, 0.06, fr.at(sd * 0.45, 0.3)[0], 1.28, fr.at(sd * 0.45, 0.3)[1], water, p.ry);
+                        }
+                    });
+                });
+                // a bench with folded towels and a laundry basket on the open deck
+                bx(1.5, 0.1, 0.6, 0.1, 0.5, -0.7, metal);
+                for (const x of [-0.5, 0.7]) bx(0.1, 0.5, 0.5, x, 0.25, -0.7, dark);
+                for (let k = 0; k < 3; k++) bx(0.42, 0.1, 0.34, -0.3 + k * 0.42, 0.6, -0.7, white);
+                cy(0.66, 0.56, 0.5, 1.25, 0.25, 0.65, M('#4a5a6e'), 8);
+                for (let k = 0; k < 4; k++) ball(0.34, 1.25 + (k - 1.5) * 0.12, 0.52, 0.65 + (k % 2) * 0.1, white, 1, 0.6, 1);
+                // the wet floor: tile grout lines and pale puddles between the drains
+                for (let k = 0; k < 5; k++) {
+                    bx(2.6, 0.015, 0.03, -0.1, 0.016, -1.2 + k * 0.55, M('#5d6b7a', 0.5));
+                    bx(0.03, 0.015, 2.4, -1.4 + k * 0.62, 0.016, 0.1, M('#5d6b7a', 0.5));
+                }
+                for (const [x, z, d] of [[-1.35, 0.9, 0.9], [0.6, 1.35, 0.7], [1.4, -1.1, 0.6]]) {
+                    cy(d, d, 0.02, x, 0.02, z, M('#9fd7ff', 0.25), 10);
+                }
+                break;
+            }
+            case 'cabins': {
+                // Original Crew Cabins: stacked bunks along one wall, a round viewport with a lit blue
+                // pane on the other, and a small table with stools and sailors' cases in the middle.
+                const blue = M('#4aa3df', 0.85), warm = M('#7fa7c4', 0.5), wood = M('#6b5338');
+                fix(() => {
+                    wall([Math.PI, -2.5, 2.5, 0.8], 3.2, (p, fr) => {
+                        bx(3.2, 2.5, 0.14, p.x, 1.25, p.z, M('#3a4450'), p.ry);
+                        for (const sd of [-1, 1]) bx(0.1, 2.4, 0.2, fr.at(sd * 1.6, 0.18)[0], 1.25, fr.at(sd * 1.6, 0.18)[1], metal, p.ry);
+                        for (let k = 0; k < 2; k++) {
+                            const y = 0.5 + k * 1.05;
+                            bx(3.0, 0.1, 0.78, fr.at(0, 0.42)[0], y, fr.at(0, 0.42)[1], metal, p.ry);
+                            bx(2.82, 0.14, 0.66, fr.at(0, 0.44)[0], y + 0.12, fr.at(0, 0.44)[1], M('#5d6b7a'), p.ry);
+                            bx(0.5, 0.13, 0.4, fr.at(-1.05, 0.5)[0], y + 0.26, fr.at(-1.05, 0.5)[1], white, p.ry);
+                            bx(2.9, 0.08, 0.08, fr.at(0, 0.78)[0], y + 0.52, fr.at(0, 0.78)[1], dark, p.ry);
+                            for (let s = 0; s < 4; s++) bx(0.05, 0.42, 0.04, fr.at(-1.1 + s * 0.72, 0.8)[0], y + 0.28, fr.at(-1.1 + s * 0.72, 0.8)[1], k ? M('#4aa3df', 0.5) : warm, p.ry);
+                            bx(1.15, 0.06, 0.5, fr.at(0.55, 0.5)[0], y + 0.24, fr.at(0.55, 0.5)[1], M('#3a4450'), p.ry);
+                            for (let s = 0; s < 5; s++) bx(0.05, 0.5, 0.05, fr.at(-1.35 + s * 0.68, 0.82)[0], y + 0.36, fr.at(-1.35 + s * 0.68, 0.82)[1], metal, p.ry);
+                            discZ(0.14, 0.04, fr.at(1.3, 0.5)[0], y + 0.3, fr.at(1.3, 0.5)[1], k ? warm : blue, p.ry, 8);
+                        }
+                    });
+                    wall([1.6, -1.6, 2.9, -2.9], 2.4, (p, fr) => {
+                        bx(2.4, 2.1, 0.14, p.x, 1.55, p.z, M('#3a4450'), p.ry);
+                        discZ(1.5, 0.12, fr.at(0, 0.16)[0], 1.65, fr.at(0, 0.16)[1], metal, p.ry, 16);
+                        discZ(1.28, 0.04, fr.at(0, 0.22)[0], 1.65, fr.at(0, 0.22)[1], blue, p.ry, 16);
+                        discZ(0.9, 0.02, fr.at(0, 0.25)[0], 1.65, fr.at(0, 0.25)[1], M('#9fd7ff', 0.5), p.ry, 16);
+                        for (let k = 0; k < 6; k++) {
+                            const a = k * Math.PI / 3;
+                            bx(0.09, 0.08, 0.5, fr.at(Math.sin(a) * 0.72, 0.26)[0], 1.65 + Math.cos(a) * 0.72, fr.at(Math.sin(a) * 0.72, 0.26)[1], metal, p.ry, a);
+                        }
+                        bx(2.2, 0.08, 0.34, fr.at(0, 0.3)[0], 0.62, fr.at(0, 0.3)[1], wood, p.ry);
+                        for (const sd of [-1, 1]) bx(0.08, 0.6, 0.28, fr.at(sd * 0.95, 0.3)[0], 0.3, fr.at(sd * 0.95, 0.3)[1], dark, p.ry);
+                    });
+                    wall([-0.8, 0.8, -2.5, 2.5], 1.2, (p) => cabinet(p, 1.2, 1.7, 0.5, M('#3a4450'), M('#52607a'), blue));
+                });
+                // table, two stools and the crew's cases
+                cy(1.5, 1.5, 0.1, 0, 0.78, 0, wood, 12);
+                cy(0.16, 0.22, 0.72, 0, 0.4, 0, metal, 8);
+                cy(0.9, 0.9, 0.05, 0, 0.02, 0, M('#4aa3df', 0.18), 12);
+                for (const [x, z] of [[-1.2, 0.4], [1.2, -0.4]]) {
+                    cy(0.56, 0.56, 0.1, x, 0.52, z, M('#3a4450'), 8);
+                    cy(0.12, 0.14, 0.46, x, 0.27, z, metal, 6);
+                }
+                crateLid(-1.35, -1.15, 0.62, 0.4, crateMat, false);
+                crateLid(1.45, 1.0, 0.55, -0.3, crateMat2, true);
+                bx(0.5, 0.06, 0.36, 0, 0.85, 0.1, white);
+                cy(0.22, 0.22, 0.16, 0.35, 0.9, -0.18, M('#4aa3df', 0.6), 8);
+                for (let k = 0; k < 6; k++) bx(0.09, 0.02, 0.8, -1.2 + k * 0.48, 0.02, -0.5 + (k % 2) * 0.12, M('#4aa3df', 0.22));
+                for (const [x, z] of [[-2.0, 0.4], [2.0, -0.4]]) {
+                    bx(0.7, 1.4, 0.42, x, 0.7, z, M('#3a4450'));
+                    for (let k = 0; k < 3; k++) bx(0.6, 0.04, 0.03, x, 0.3 + k * 0.42, z + 0.23, metal);
+                    discZ(0.1, 0.04, x, 1.15, z + 0.26, blue, 0, 8);
+                }
+                for (let k = 0; k < 4; k++) cy(0.08, 0.08, 2.8, -1.8 + k * 1.2, 2.95, 0, metal, 6, Math.PI / 2);
+                break;
+            }
+            case 'slimeRoom': {
+                // The original Slime-covered Room: the printed tile is overrun by continuous green
+                // growth — puddles, sacs and tendrils on the deck and up the wall. No furniture is
+                // pristine here; the few crates still visible are half swallowed by the mass.
+                const slime = M('#9cff3b', 0.6), darkSlime = M('#4f7a24', 0.4), amber = M('#f1c40f', 0.8);
+                for (let k = 0; k < 7; k++) {
+                    const a = k * 0.9 + 0.3, r = 1.25 + (k % 3) * 0.42;
+                    const x = Math.sin(a) * r, z = Math.cos(a) * r;
+                    ball(0.9 + (k % 2) * 0.45, x, 0.2, z, k % 2 ? slime : darkSlime, 1.25, 0.18, 1.0);
+                    for (let s = 0; s < 3; s++) {
+                        const m = B().MeshBuilder.CreatePolyhedron('sl', { type: 1, size: 0.16 + (s % 2) * 0.1 }, S);
+                        m.position.set(x + (s - 1) * 0.24, 0.32 + s * 0.04, z + ((k + s) % 3 - 1) * 0.2);
+                        m.material = s === 1 ? slime : M('#75bf4b', 0.4); m.convertToFlatShadedMesh(); statics.push(m);
+                    }
+                }
+                for (let k = 0; k < 4; k++) {
+                    const x = -1.55 + k * 1.0, z = -1.25 + (k % 2) * 0.5;
+                    cy(0.58, 0.58, 0.2, x, 0.2, z, darkSlime, 9);
+                    cy(0.34, 0.34, 0.24, x, 0.32, z, slime, 9);
+                    cy(0.14, 0.14, 0.12, x, 0.46, z, M('#d4ff70', 0.9), 8);
+                }
+                crateLid(-2.2, 1.2, 0.7, 0.35, crateMat, true); slimeOn(-2.2, 1.2, 0.7, 0.35);
+                crateLid(1.9, 0.9, 0.58, -0.2, crateMat2, false); slimeOn(1.9, 0.9, 0.58, -0.2);
+                // a section of grating pushed aside, with growth coming through the slats
+                for (let k = 0; k < 6; k++) bx(0.09, 0.05, 1.0, -0.9 + k * 0.34, 0.18, -1.75, metal, 0.3);
+                for (const [x, z] of [[-0.7, -1.6], [0.3, -1.9], [0.9, -1.6]]) ball(0.5, x, 0.24, z, slime, 1.1, 0.5, 0.8);
+                fix(() => {
+                    wall([Math.PI, -2.5, 2.5, 0.9], 3.2, (p, fr) => {
+                        bx(3.2, 1.5, 0.12, p.x, 1.4, p.z, M('#2b333d'), p.ry);
+                        for (let k = 0; k < 9; k++) {
+                            const u = -1.3 + k * 0.32, h = 0.5 + (k % 3) * 0.42;
+                            ball(0.5 + (k % 2) * 0.2, fr.at(u, 0.16)[0], h, fr.at(u, 0.16)[1], k % 2 ? slime : darkSlime, 0.8, 1.4, 0.55);
+                        }
+                        for (let k = 0; k < 5; k++) {
+                            const u = -1.1 + k * 0.55;
+                            bx(0.08, 1.0, 0.08, fr.at(u, 0.3)[0], 0.75, fr.at(u, 0.3)[1], darkSlime, p.ry, k % 2 ? 0.4 : -0.3);
+                        }
+                    });
+                    wall([1.2, -1.2, 2.7, -2.7], 1.4, (p, fr) => {
+                        bx(1.4, 0.9, 0.14, p.x, 2.0, p.z, M('#3a4450'), p.ry);
+                        cy(0.4, 0.4, 0.12, fr.at(0, 0.14)[0], 2.05, fr.at(0, 0.14)[1], amber, 10, Math.PI / 2);
+                        for (const sd of [-1, 1]) ball(0.6, fr.at(sd * 0.55, 0.2)[0], 1.5, fr.at(sd * 0.55, 0.2)[1], slime, 0.7, 1.2, 0.5);
+                    });
+                });
+                break;
+            }
+            case 'doorLock': {
+                // Original Door Lock System: a central blast door with its lock wheel, flanked by red /
+                // green status boards and a console for sealing or unsealing a corridor.
+                const red = M('#e05252', 0.9), green = M('#4fcf7a', 0.8), blue = M('#4aa3df', 0.8);
+                // blast door in the middle of the room, standing on the floor finish
+                bx(1.0, 2.4, 0.2, -0.52, 1.2, -0.35, M('#3a4450'));
+                bx(1.0, 2.4, 0.2, 0.52, 1.2, -0.35, M('#3a4450'));
+                bx(2.3, 0.24, 0.32, 0, 2.48, -0.35, metal);
+                for (const sd of [-1, 1]) bx(0.16, 2.5, 0.32, sd * 1.1, 1.25, -0.35, dark);
+                for (let k = 0; k < 4; k++) bx(1.9, 0.06, 0.06, 0, 0.5 + k * 0.5, -0.22, k % 2 ? hazard : dark);
+                discZ(0.86, 0.16, 0, 1.32, -0.18, metal, 0, 12);
+                discZ(0.62, 0.12, 0, 1.32, -0.1, dark, 0, 12);
+                for (let k = 0; k < 6; k++) {
+                    const a = k * Math.PI / 3;
+                    bx(0.09, 0.14, 0.12, Math.sin(a) * 0.34, 1.32 + Math.cos(a) * 0.34, -0.02, metal, a);
+                }
+                discZ(0.18, 0.12, 0, 1.32, 0.04, red, 0, 8);
+                for (const sd of [-1, 1]) {
+                    for (let k = 0; k < 5; k++) bx(0.07, 1.9, 0.08, sd * (0.18 + k * 0.18), 1.2, -0.22, k % 2 ? M('#52607a') : dark);
+                    for (let k = 0; k < 4; k++) discZ(0.1, 0.06, sd * 0.75, 0.62 + k * 0.55, -0.2, metal, 0, 8);
+                    bx(0.34, 0.5, 0.05, sd * 0.72, 1.75, -0.2, M('#4aa3df', 0.6));
+                    for (let k = 0; k < 3; k++) bx(0.24, 0.04, 0.04, sd * 0.72, 1.9 - k * 0.12, -0.15, M('#dff0ff', 0.5));
+                }
+                for (const [x, z] of [[-2.1, -1.15], [2.1, -1.15]]) {
+                    bx(0.9, 1.6, 0.5, x, 0.8, z, M('#3a4450'));
+                    bx(0.96, 0.08, 0.56, x, 1.64, z, metal);
+                    for (let k = 0; k < 3; k++) bx(0.8, 0.05, 0.04, x, 0.4 + k * 0.5, z + 0.27, dark);
+                    discZ(0.16, 0.06, x, 1.2, z + 0.3, green, 0, 8);
+                }
+                // the operator's desk in front of the door, with a split door diagram
+                bx(1.5, 0.9, 0.55, 0, 0.45, 1.15, M('#2b333d'));
+                bx(1.6, 0.08, 0.62, 0, 0.94, 1.15, metal);
+                pat(1.36, 0.56, 0.05, 0, 1.15, 0, 0, -0.1, 1.24, M('#1e252c'), -0.3);
+                for (const sd of [-1, 1]) pat(0.56, 0.42, 0.03, 0, 1.15, 0, sd * 0.32, -0.08, 1.26, sd > 0 ? green : blue, -0.3);
+                for (let k = 0; k < 4; k++) pat(0.16, 0.05, 0.08, 0, 1.15, 0, -0.48 + k * 0.32, 0.16, 0.99, k === 0 ? red : metal);
+                fix(() => {
+                    wall([Math.PI, -2.4, 2.4, 0.8], 3.4, (p, fr) => {
+                        bx(3.4, 1.7, 0.14, p.x, 1.9, p.z, M('#2b333d'), p.ry);
+                        bx(3.2, 1.5, 0.04, fr.at(0, 0.12)[0], 1.9, fr.at(0, 0.12)[1], M('#1e252c'), p.ry);
+                        for (let k = 0; k < 6; k++) {
+                            const u = -1.3 + k * 0.52;
+                            bx(0.42, 0.8, 0.03, fr.at(u, 0.16)[0], 2.0, fr.at(u, 0.16)[1], k % 2 ? green : red, p.ry);
+                            bx(0.42, 0.06, 0.03, fr.at(u, 0.18)[0], 1.6, fr.at(u, 0.18)[1], metal, p.ry);
+                        }
+                        bx(2.8, 0.08, 0.04, fr.at(0, 0.18)[0], 1.2, fr.at(0, 0.18)[1], hazard, p.ry);
+                        for (let k = 0; k < 8; k++) {
+                            const u = -1.45 + k * 0.41;
+                            discZ(0.09, 0.03, fr.at(u, 0.2)[0], 1.42, fr.at(u, 0.2)[1], k % 3 ? green : red, p.ry, 8);
+                            bx(0.06, 0.2, 0.03, fr.at(u, 0.2)[0], 1.2, fr.at(u, 0.2)[1], metal, p.ry);
+                        }
+                    });
+                    wall([1.4, -1.4, 2.8, -2.8], 1.4, (p, fr) => {
+                        bx(1.4, 1.6, 0.16, p.x, 1.4, p.z, M('#3a4450'), p.ry);
+                        discZ(0.7, 0.1, fr.at(0, 0.16)[0], 1.5, fr.at(0, 0.16)[1], dark, p.ry, 12);
+                        discZ(0.5, 0.06, fr.at(0, 0.22)[0], 1.5, fr.at(0, 0.22)[1], metal, p.ry, 12);
+                        discZ(0.16, 0.08, fr.at(0, 0.28)[0], 1.5, fr.at(0, 0.28)[1], blue, p.ry, 8);
+                    });
+                });
+                for (let k = 0; k < 6; k++) bx(0.7, 0.02, 0.12, -1.0 + k * 0.4, 0.02, 2.0, k % 2 ? hazard : red, Math.PI / 4);
+                for (let k = 0; k < 5; k++) bx(1.2, 0.02, 0.06, -1.2 + k * 0.6, 0.018, 1.7, M('#4a5a6e', 0.6), 0);
+                for (let k = 0; k < 4; k++) cy(0.12, 0.12, 0.03, -1.5 + k, 0.03, -1.5, metal, 8);
+                break;
+            }
+            case 'observation': {
+                // Original Observation Room: a wide blue viewport, a bank of monitoring scopes and three
+                // padded observer chairs. The printed tile has a Computer, carried by the wall panel.
+                const blue = M('#4aa3df', 0.9), pale = M('#9fd7ff', 0.6), red = M('#e05252', 0.8);
+                fix(() => {
+                    wall([Math.PI, -2.5, 2.5, 0.9], 3.6, (p, fr) => {
+                        bx(3.6, 2.4, 0.14, p.x, 1.55, p.z, M('#2b333d'), p.ry);
+                        discZ(2.0, 0.14, fr.at(0, 0.14)[0], 1.7, fr.at(0, 0.14)[1], metal, p.ry, 16);
+                        discZ(1.76, 0.06, fr.at(0, 0.22)[0], 1.7, fr.at(0, 0.22)[1], blue, p.ry, 16);
+                        discZ(1.3, 0.03, fr.at(0, 0.26)[0], 1.7, fr.at(0, 0.26)[1], pale, p.ry, 16);
+                        for (let k = 0; k < 8; k++) {
+                            const a = k * Math.PI / 4;
+                            bx(0.1, 0.12, 0.7, fr.at(Math.sin(a) * 0.95, 0.3)[0], 1.7 + Math.cos(a) * 0.95, fr.at(Math.sin(a) * 0.95, 0.3)[1], metal, p.ry, a);
+                        }
+                        bx(3.4, 0.1, 0.16, fr.at(0, 0.2)[0], 0.5, fr.at(0, 0.2)[1], M('#4a5a6e'), p.ry);
+                        for (let k = 0; k < 8; k++) {
+                            const u = -1.5 + k * 0.43;
+                            discZ(0.09, 0.04, fr.at(u, 0.24)[0], 2.42, fr.at(u, 0.24)[1], k % 3 ? metal : pale, p.ry, 8);
+                        }
+                    });
+                    wall([1.5, -1.5, 2.9, -2.9], 2.4, (p, fr) => {
+                        bx(2.4, 1.6, 0.14, p.x, 1.8, p.z, M('#2b333d'), p.ry);
+                        bx(2.2, 1.4, 0.04, fr.at(0, 0.12)[0], 1.8, fr.at(0, 0.12)[1], M('#1e252c'), p.ry);
+                        for (let k = 0; k < 6; k++) {
+                            const u = -0.9 + (k % 3) * 0.9, v = 1.95 - Math.floor(k / 3) * 0.5;
+                            bx(0.66, 0.34, 0.03, fr.at(u, 0.16)[0], v, fr.at(u, 0.16)[1], k % 3 === 1 ? red : blue, p.ry);
+                        }
+                        cpu_(fr.at(0, 0.7)[0], fr.at(0, 0.7)[1], p.ry);
+                    });
+                });
+                for (let k = 0; k < 3; k++) {
+                    const a = -0.75 + k * 0.75, x = Math.sin(a) * 0.85, z = Math.cos(a) * 0.85, ry = a;
+                    pat(0.72, 0.75, 0.42, x, z, ry, 0, 0, 0.38, M('#3a4450'));
+                    pat(0.78, 0.07, 0.48, x, z, ry, 0, 0, 0.78, metal);
+                    pat(0.58, 0.42, 0.04, x, z, ry, 0, -0.14, 1.05, blue, -0.3);
+                    cy(0.24, 0.24, 0.5, LX(x, z, ry, -0.2, 0.02), 1.02, LZ(x, z, ry, -0.2, 0.02), M('#59697b'), 8);
+                    discZ(0.18, 0.05, LX(x, z, ry, 0.2, 0.04), 1.02, LZ(x, z, ry, 0.2, 0.04), pale, ry, 10);
+                    chair(LX(x, z, ry, 0, 0.9), LZ(x, z, ry, 0, 0.9), ry + Math.PI, M('#2b333d'));
+                }
+                for (let k = 0; k < 5; k++) bx(0.7, 0.02, 0.1, -1.0 + k * 0.5, 0.02, 1.65, k % 2 ? blue : dark, Math.PI / 4);
+                for (let k = 0; k < 4; k++) bx(1.1, 0.02, 0.06, -0.9 + k * 0.6, 0.018, 1.35, M('#4a5a6e', 0.6));
+                for (const [x, z] of [[-2.0, 0.9], [2.0, 0.9]]) {
+                    bx(0.6, 1.3, 0.4, x, 0.65, z, M('#3a4450'));
+                    bx(0.64, 0.08, 0.44, x, 1.34, z, metal);
+                    discZ(0.14, 0.05, x, 1.0, z + 0.22, blue, 0, 8);
+                }
+                break;
+            }
+            case 'radioRoom': {
+                // Original Radio Shack: twin valve transceivers, a scope desk with a gooseneck
+                // microphone, a mast threaded through the ceiling and reels of cable on the deck.
+                const amber = M('#f1c40f', 0.85), cyan = M('#4aa3df', 0.85), green = M('#4fcf7a', 0.8);
+                fix(() => {
+                    wall([Math.PI, -2.4, 2.4, 0.8], 3.4, (p, fr) => {
+                        bx(3.4, 1.7, 0.16, p.x, 1.75, p.z, M('#2b333d'), p.ry);
+                        for (const u of [-0.85, 0.85]) {
+                            bx(1.5, 1.4, 0.4, fr.at(u, 0.3)[0], 1.75, fr.at(u, 0.3)[1], M('#46505c'), p.ry);
+                            bx(1.38, 0.72, 0.04, fr.at(u, 0.52)[0], 2.02, fr.at(u, 0.52)[1], M('#1e252c'), p.ry);
+                            for (let k = 0; k < 4; k++) bx(1.16, 0.035, 0.02, fr.at(u, 0.55)[0], 2.28 - k * 0.16, fr.at(u, 0.55)[1], k % 2 ? cyan : green, p.ry);
+                            for (let k = 0; k < 3; k++) discZ(0.24, 0.08, fr.at(u - 0.45 + k * 0.45, 0.56)[0], 1.38, fr.at(u - 0.45 + k * 0.45, 0.56)[1], k === 1 ? amber : metal, p.ry, 10);
+                            for (let k = 0; k < 4; k++) cy(0.16, 0.16, 0.32, fr.at(u - 0.5 + k * 0.33, 0.54)[0], 0.92, fr.at(u - 0.5 + k * 0.33, 0.54)[1], M('#d4b02a', 0.4), 8);
+                        }
+                        bx(3.2, 0.1, 0.12, fr.at(0, 0.2)[0], 2.66, fr.at(0, 0.2)[1], metal, p.ry);
+                        cpu_(fr.at(0, 0.75)[0], fr.at(0, 0.75)[1], p.ry);
+                    });
+                    wall([1.35, -1.35, 2.8, -2.8], 1.6, (p, fr) => {
+                        bx(1.6, 1.8, 0.14, p.x, 1.75, p.z, M('#2b333d'), p.ry);
+                        cy(0.14, 0.18, 1.5, fr.at(0, 0.2)[0], 2.1, fr.at(0, 0.2)[1], metal, 8);
+                        for (let k = 0; k < 5; k++) {
+                            const u = -0.55 + k * 0.28;
+                            bx(0.05, 0.34, 0.05, fr.at(u, 0.22)[0], 2.55, fr.at(u, 0.22)[1], metal, p.ry);
+                        }
+                        for (const sd of [-1, 1]) discZ(0.22, 0.06, fr.at(sd * 0.42, 0.24)[0], 1.25, fr.at(sd * 0.42, 0.24)[1], amber, p.ry, 8);
+                        for (let k = 0; k < 4; k++) bx(1.4, 0.04, 0.03, fr.at(0, 0.2)[0], 2.4 - k * 0.3, fr.at(0, 0.2)[1], M('#59697b'), p.ry);
+                    });
+                });
+                // the operating desk: a scope, a tape deck with two reels and a gooseneck microphone
+                bx(1.9, 0.1, 0.85, 0, 0.92, 0.2, M('#6b5338'));
+                for (const x of [-0.78, 0.78]) for (const z of [-0.1, 0.5]) bx(0.1, 0.9, 0.1, x, 0.45, z, dark);
+                bx(0.9, 0.62, 0.06, -0.42, 1.28, 0.0, M('#1e252c'), 0, -0.25);
+                bx(0.76, 0.48, 0.03, -0.42, 1.3, 0.04, cyan, 0, -0.25);
+                for (let k = 0; k < 4; k++) bx(0.6, 0.03, 0.02, -0.42, 1.42 - k * 0.12, 0.07, M('#dff0ff', 0.5), 0, -0.25);
+                bx(0.8, 0.12, 0.5, 0.55, 1.03, 0.2, M('#3a4450'));
+                for (const x of [0.32, 0.78]) {
+                    cy(0.38, 0.38, 0.05, x, 1.13, 0.2, metal, 10);
+                    cy(0.14, 0.14, 0.07, x, 1.17, 0.2, dark, 8);
+                }
+                cy(0.08, 0.1, 0.06, 0.1, 1.02, 0.55, dark, 8);
+                cy(0.05, 0.05, 0.62, 0.1, 1.34, 0.55, metal, 6);
+                ball(0.22, 0.1, 1.68, 0.55, M('#59697b'));
+                chair(1.35, 0.85, -0.6, M('#3a4450'));
+                coil(-1.45, 1.1, 0.72, M('#20262c'));
+                coil(1.5, -1.05, 0.6, M('#20262c'));
+                for (let k = 0; k < 8; k++) bx(0.06, 0.06, 0.06, -1.5 + k * 0.42, 0.18, 1.05, k % 2 ? metal : amber);
+                for (let k = 0; k < 5; k++) bx(0.5, 0.02, 0.1, -1.0 + k * 0.5, 0.02, 1.45, k % 2 ? amber : dark, Math.PI / 4);
+                break;
+            }
+            case 'originalServer': {
+                // The original Server Room art (Aftermath's fourth new tile) is not the Redux sphere
+                // chamber: it is two long rack aisles with exposed glowing cores, hanging cable trays
+                // and a narrow diagnostic station. Only the wall pieces are fixed; the racks and deck
+                // paint go through the normal spread so they stay inside the standing zone.
+                const cyan = M('#4aa3df', 0.85), mint = M('#4fcf7a', 0.7), copper = M('#b07a3c'), oxide = M('#6b4a2c');
+                const rack = (x, z, ry) => {
+                    bx(0.94, 1.02, 2.7, x, 0.51, z, dark, ry);                          // rack body
+                    bx(1.02, 0.09, 2.82, x, 1.06, z, metal, ry);                        // top rail
+                    bx(1.02, 0.07, 2.82, x, 0.04, z, M('#1a1a1a'), ry);                 // plinth
+                    for (const sd of [-1, 1]) {
+                        pat(0.06, 0.98, 2.7, x, z, ry, sd * 0.49, 0, 0.54, panel);
+                        pat(0.1, 0.06, 2.5, x, z, ry, sd * 0.36, 0, 0.98, copper);      // exposed busbar
+                    }
+                    for (let k = 0; k < 3; k++) {
+                        const v = -0.84 + k * 0.84;
+                        pat(0.72, 0.78, 0.06, x, z, ry, 0, v - 0.22, 0.6, M('#1e252c'));
+                        pat(0.56, 0.62, 0.03, x, z, ry, 0, v - 0.24, 0.6, k === 1 ? mint : cyan);
+                        pat(0.5, 0.04, 0.02, x, z, ry, 0, v - 0.42, 0.6, M('#dff0ff', 0.5));
+                        for (let s = 0; s < 4; s++) pat(0.06, 0.06, 0.03, x, z, ry, -0.22 + s * 0.15, v + 0.16, 0.61, s % 3 ? M('#4fcf7a', 0.9) : M('#f1c40f', 0.8));
+                        pat(0.66, 0.06, 0.1, x, z, ry, 0, v + 0.28, 0.44, metal);       // rack shelf lip
+                    }
+                    // the lit core is a chain of short cylinders lying along the rack's long axis
+                    for (let k = 0; k < 5; k++) cy(0.3, 0.3, 0.34, x, 0.62, z + (k - 2) * 0.52, k % 2 ? mint : cyan, 8);
+                    for (let k = 0; k < 4; k++) pat(0.5, 0.05, 0.04, x, z, ry, 0, -1.1 + k * 0.72, 1.14, M('#8c96a0'));
+                };
+                rack(-0.62, -0.15, 0.22);
+                rack(0.62, 0.25, -0.24);
+                // a service terminal at the near end of the aisle, plus cable reels on the deck
+                bx(0.86, 0.95, 0.56, 0.1, 0.48, 1.12, panel, 0.18);
+                bx(0.94, 0.08, 0.62, 0.1, 0.98, 1.12, metal, 0.18);
+                pat(0.74, 0.52, 0.05, 0.1, 1.12, 0.18, 0, -0.18, 1.27, cyan, -0.3);
+                for (let k = 0; k < 3; k++) pat(0.18, 0.05, 0.08, 0.1, 1.12, 0.18, -0.2 + k * 0.2, 0.1, 1.03, dark);
+                coil(-1.32, 1.18, 0.72, M('#20262c'));
+                coil(1.5, -1.02, 0.62, M('#20262c'));
+                // the ceiling-height cable tray and the cooling bank hang off clear wall stretches
+                fix(() => {
+                    wall([0, Math.PI, 1.0, -1.0], 3.6, (p, fr) => {
+                        bx(3.6, 0.16, 0.38, p.x, 3.05, p.z, metal, p.ry);
+                        for (let k = 0; k < 5; k++) {
+                            bx(3.5, 0.04, 0.06, fr.at(0, 0.08)[0], 3.16, fr.at(0, 0.08)[1], k % 2 ? cyan : copper, p.ry);
+                            bx(0.07, 0.34, 0.1, fr.at(-1.5 + k * 0.75, 0.18)[0], 2.86, fr.at(-1.5 + k * 0.75, 0.18)[1], dark, p.ry);
+                        }
+                        for (const sd of [-1, 1]) bx(0.1, 0.95, 0.1, fr.at(sd * 1.66, 0.1)[0], 2.6, fr.at(sd * 1.66, 0.1)[1], dark, p.ry);
+                    });
+                    wall([2.05, -2.05, 1.5, -1.5], 1.7, (p, fr) => {
+                        bx(1.7, 1.5, 0.18, p.x, 1.65, p.z, M('#1e252c'), p.ry);
+                        bx(1.56, 1.3, 0.03, fr.at(0, 0.12)[0], 1.68, fr.at(0, 0.12)[1], M('#2b333d'), p.ry);
+                        for (let k = 0; k < 4; k++) bx(1.3, 0.05, 0.02, fr.at(0, 0.15)[0], 2.1 - k * 0.26, fr.at(0, 0.15)[1], k === 0 ? mint : M('#dff0ff', 0.45), p.ry);
+                        for (let k = 0; k < 3; k++) discZ(0.15, 0.05, fr.at(-0.52 + k * 0.52, 0.17)[0], 1.18, fr.at(-0.52 + k * 0.52, 0.17)[1], k === 1 ? M('#e05252', 0.9) : mint, p.ry, 8);
+                        // the diagnostic panel mounted on this wall is the room's Computer
+                        cpu_(fr.at(0, 0.62)[0], fr.at(0, 0.62)[1], p.ry);
+                    });
+                    wall([-1.7, 1.7, -2.5, 2.5], 2.0, (p, fr) => {
+                        bx(2.0, 1.0, 0.16, p.x, 1.5, p.z, M('#3a4450'), p.ry);
+                        for (const u of [-0.58, 0.58]) {
+                            discZ(0.78, 0.09, fr.at(u, 0.16)[0], 1.5, fr.at(u, 0.16)[1], dark, p.ry, 12);
+                            discZ(0.6, 0.04, fr.at(u, 0.22)[0], 1.5, fr.at(u, 0.22)[1], M('#59697b'), p.ry, 12);
+                            for (let k = 0; k < 4; k++) bx(0.06, 0.5, 0.03, fr.at(u + Math.cos(k * Math.PI / 2) * 0.22, 0.25)[0], 1.5 + Math.sin(k * Math.PI / 2) * 0.22, fr.at(u + Math.cos(k * Math.PI / 2) * 0.22, 0.25)[1], metal, p.ry, k * Math.PI / 4);
+                            discZ(0.14, 0.05, fr.at(u, 0.26)[0], 1.5, fr.at(u, 0.26)[1], cyan, p.ry, 8);
+                        }
+                    });
+                });
+                // aisle paint: a hazard box with two guide lines and a worn rust patch
+                floorZone(0, 0.1, 2.0, 2.6, 0, hazard);
+                for (let k = 0; k < 6; k++) bx(0.42, 0.02, 0.1, -0.9 + k * 0.36, 0.018, 1.36, k % 2 ? oxide : dark, 0.5);
+                cy(1.0, 1.0, 0.02, -1.15, 0.02, -1.15, M('#6b4a2c', 0.35), 10);
+                break;
+            }
+            case 'alarmControl': {
+                // Aftermath's Alarm System room: a horseshoe of three dial stations under a red beacon,
+                // with the ship-wide alert board on the wall. The printed tile has a Computer icon, so
+                // the board carries the clickable spot.
+                const red = M('#e05252', 1.0), amber = M('#f1c40f', 0.8), green = M('#4fcf7a', 0.75);
+                const lamps = [red, green, amber];
+                for (let k = 0; k < 5; k++) {
+                    const a = -1.0 + k * 0.5, x = Math.sin(a) * 1.12, z = Math.cos(a) * 1.12, ry = a;
+                    pat(0.82, 0.88, 0.5, x, z, ry, 0, 0, 0.44, dark);
+                    pat(0.88, 0.07, 0.56, x, z, ry, 0, 0, 0.9, metal);
+                    pat(0.68, 0.5, 0.05, x, z, ry, 0, -0.18, 1.2, M('#1e252c'), -0.32);
+                    pat(0.56, 0.38, 0.03, x, z, ry, 0, -0.16, 1.22, k % 2 ? M('#4aa3df', 0.6) : M('#4fcf7a', 0.5), -0.32);
+                    discZ(0.3, 0.07, LX(x, z, ry, -0.22, 0.02), 1.0, LZ(x, z, ry, -0.22, 0.02), lamps[k % 3], ry, 10);
+                    discZ(0.26, 0.05, LX(x, z, ry, 0.2, 0.02), 1.0, LZ(x, z, ry, 0.2, 0.02), M('#59697b'), ry, 10);
+                    for (let s = 0; s < 3; s++) pat(0.1, 0.05, 0.08, x, z, ry, -0.16 + s * 0.16, 0.16, 0.96, s === 1 ? amber : metal);
+                    for (const sd of [-1, 1]) pat(0.07, 0.44, 0.07, x, z, ry, sd * 0.34, 0.18, 0.22, metal);
+                }
+                // beacon: a mast, a ring of struts and a large faceted red lens above the console
+                cy(0.28, 0.34, 0.18, 0, 0.09, 0, dark, 10);
+                cy(0.12, 0.14, 2.1, 0, 1.15, 0, metal, 8);
+                cy(0.42, 0.46, 0.5, 0, 2.26, 0, dark, 10);
+                cy(0.64, 0.5, 0.42, 0, 2.55, 0, red, 10);
+                cy(0.72, 0.72, 0.07, 0, 2.34, 0, metal, 10);
+                cy(0.72, 0.72, 0.07, 0, 2.78, 0, metal, 10);
+                cy(0.3, 0.3, 0.1, 0, 2.85, 0, amber, 8);
+                for (let k = 0; k < 4; k++) {
+                    const a = k * Math.PI / 2;
+                    bx(0.07, 0.74, 0.07, Math.sin(a) * 0.3, 2.56, Math.cos(a) * 0.3, metal, a);
+                }
+                chair(1.45, 0.95, -0.5, M('#2f6b3a'));
+                fix(() => {
+                    wall([Math.PI, -2.4, 2.4, 0.8], 3.2, (p, fr) => {
+                        bx(3.2, 2.0, 0.16, p.x, 1.6, p.z, M('#1b2820'), p.ry);
+                        bx(3.05, 1.82, 0.04, fr.at(0, 0.12)[0], 1.6, fr.at(0, 0.12)[1], M('#244431'), p.ry);
+                        for (let k = 0; k < 3; k++) bx(2.7, 0.09, 0.03, fr.at(0, 0.16)[0], 2.2 - k * 0.34, fr.at(0, 0.16)[1], k === 0 ? red : amber, p.ry);
+                        // a small hex-cell ship plan: six lit rooms around a central hub
+                        discZ(0.36, 0.05, fr.at(0, 0.18)[0], 1.35, fr.at(0, 0.18)[1], M('#4fcf7a', 0.8), p.ry, 6);
+                        for (let k = 0; k < 6; k++) {
+                            const a = k * Math.PI / 3;
+                            bx(0.26, 0.26, 0.04, fr.at(Math.sin(a) * 0.72, 0.2)[0], 1.35 + Math.cos(a) * 0.52, fr.at(Math.sin(a) * 0.72, 0.2)[1], k % 2 ? M('#4aa3df', 0.7) : red, p.ry);
+                        }
+                        cpu_(fr.at(0, 0.72)[0], fr.at(0, 0.72)[1], p.ry);
+                    });
+                    wall([1.35, -1.35, 2.8, -2.8], 1.4, (p, fr) => {
+                        bx(1.4, 0.9, 0.14, p.x, 2.3, p.z, M('#2f3a33'), p.ry);
+                        bx(1.2, 0.5, 0.04, fr.at(0, 0.12)[0], 2.3, fr.at(0, 0.12)[1], dark, p.ry);
+                        for (let k = 0; k < 5; k++) bx(1.0, 0.045, 0.03, fr.at(0, 0.16)[0], 2.5 - k * 0.1, fr.at(0, 0.16)[1], metal, p.ry);
+                        cy(0.42, 0.28, 0.22, fr.at(0, 0.34)[0], 2.28, fr.at(0, 0.34)[1], red, 8, Math.PI / 2);
+                    });
+                    wall([-0.8, 0.8, -2.2, 2.2], 1.6, (p, fr) => {
+                        bx(1.6, 1.5, 0.16, p.x, 1.45, p.z, M('#2f3a33'), p.ry);
+                        for (let k = 0; k < 4; k++) {
+                            bx(1.45, 0.05, 0.04, fr.at(0, 0.12)[0], 1.95 - k * 0.28, fr.at(0, 0.12)[1], k === 0 ? red : M('#59697b'), p.ry);
+                            for (let s = 0; s < 5; s++) bx(0.04, 0.05, 0.03, fr.at(-0.6 + s * 0.3, 0.14)[0], 1.85 - k * 0.28, fr.at(-0.6 + s * 0.3, 0.14)[1], dark, p.ry);
+                        }
+                    });
+                });
+                // alarm chevrons painted on the deck, pointing at the console
+                for (let k = 0; k < 7; k++) bx(1.0, 0.02, 0.12, -0.9 + k * 0.3, 0.02, 1.45, k % 2 ? red : hazard, Math.PI / 4);
+                for (let k = 0; k < 3; k++) discZ(0.7, 0.02, 0, 0.03, 0, k === 1 ? M('#e05252', 0.25) : M('#1a1a1a', 0.3), 0, 12);
+                break;
+            }
+            case 'workshop': {
+                // Aftermath's Workshop from the printed art: a central repair bench with a vice and
+                // parts trays, two powered coil stations, a wall pegboard of tools and an overhead
+                // gantry. Green deck paint and warm task lamps keep it distinct from the Redux hold.
+                const green = M('#4fcf7a', 0.75), blue = M('#4aa3df', 0.8), red = M('#e05252', 0.8), wood = M('#a9763f');
+                // workbench: a solid top, a lower shelf, a vice, a lamp and sorted parts trays
+                bx(1.9, 0.1, 0.9, 0, 0.94, -0.25, wood);
+                bx(1.96, 0.06, 0.96, 0, 1.01, -0.25, metal);
+                bx(1.8, 0.06, 0.82, 0, 0.34, -0.25, M('#3a4450'));
+                for (const x of [-0.82, 0.82]) for (const z of [-0.58, 0.08]) bx(0.1, 0.9, 0.1, x, 0.45, z, dark);
+                bx(0.5, 0.24, 0.3, -0.52, 1.18, -0.25, M('#39424e'));
+                bx(0.1, 0.3, 0.1, -0.52, 1.45, -0.25, metal);
+                for (const sd of [-1, 1]) bx(0.16, 0.24, 0.06, -0.52 + sd * 0.14, 1.22, -0.08, metal, 0, sd * 0.2);
+                for (let k = 0; k < 3; k++) {
+                    bx(0.44, 0.09, 0.3, 0.1 + k * 0.42, 1.08, -0.28, M('#2b333d'));
+                    for (let s = 0; s < 3; s++) cy(0.08, 0.08, 0.07, -0.04 + k * 0.42 + s * 0.12, 1.16, -0.28, s === 1 ? green : metal, 6);
+                }
+                bx(0.08, 0.5, 0.08, 0.78, 1.28, -0.55, metal);
+                pat(0.42, 0.06, 0.24, 0.78, -0.55, 0, 0, 0.14, 1.55, M('#f1c40f', 0.7), -0.3);
+                // two coil stations: a base, an upright core and two lit rings, with a cable on the deck
+                const coilStation = (x, z, ry) => {
+                    cy(0.8, 0.9, 0.16, x, 0.08, z, dark, 10);
+                    cy(0.3, 0.36, 1.25, x, 0.7, z, M('#39424e'), 10);
+                    for (let k = 0; k < 3; k++) cy(0.74, 0.74, 0.08, x, 0.34 + k * 0.42, z, k === 1 ? green : blue, 10);
+                    cy(0.52, 0.52, 0.08, x, 1.36, z, metal, 10);
+                    for (let k = 0; k < 4; k++) bx(0.09, 0.16, 0.09, x + Math.cos(k * Math.PI / 2) * 0.5, 1.3, z + Math.sin(k * Math.PI / 2) * 0.5, dark, k * Math.PI / 2);
+                    coil(LX(x, z, ry, 0, 0.85), LZ(x, z, ry, 0, 0.85), 0.6, M('#20262c'));
+                };
+                coilStation(-1.45, 1.08, 0.3);
+                coilStation(1.5, 1.12, -0.3);
+                // gantry: a column behind the bench, a jib over it, a winch, chain and hook
+                cy(0.4, 0.48, 0.14, -2.25, 0.07, -1.6, dark, 10);
+                cy(0.18, 0.22, 3.1, -2.25, 1.62, -1.6, metal, 8);
+                bx(0.14, 0.14, 2.5, -2.25, 3.1, -0.5, metal);
+                bx(0.34, 0.42, 0.34, -2.25, 2.82, -1.6, M('#39424e'));
+                for (let k = 0; k < 3; k++) cy(0.22, 0.22, 0.06, -2.25, 2.94 - k * 0.02, -1.36, dark, 8, Math.PI / 2);
+                bx(0.05, 1.1, 0.05, -2.25, 2.42, -0.45, metal);
+                cy(0.24, 0.18, 0.26, -2.25, 1.8, -0.45, metal, 6);
+                bx(0.1, 0.2, 0.05, -2.25, 1.62, -0.45, dark);
+                fix(() => {
+                    // pegboard: a framed panel with hanging wrenches, screwdrivers and a shelf of jars
+                    wall([Math.PI, -2.5, 2.5, 0.9], 3.0, (p, fr) => {
+                        bx(3.0, 1.8, 0.14, p.x, 1.75, p.z, M('#2b3a2c'), p.ry);
+                        bx(2.82, 1.6, 0.04, fr.at(0, 0.11)[0], 1.75, fr.at(0, 0.11)[1], M('#3d563d'), p.ry);
+                        for (let k = 0; k < 7; k++) for (let s = 0; s < 4; s++) discZ(0.045, 0.02, fr.at(-1.2 + k * 0.4, 0.15)[0], 1.2 + s * 0.34, fr.at(-1.2 + k * 0.4, 0.15)[1], M('#8c96a0'), p.ry, 6);
+                        for (let k = 0; k < 5; k++) {
+                            const u = -1.1 + k * 0.55;
+                            bx(0.06, 0.5, 0.04, fr.at(u, 0.16)[0], 1.55, fr.at(u, 0.16)[1], metal, p.ry);
+                            bx(0.2, 0.09, 0.04, fr.at(u, 0.17)[0], 1.32, fr.at(u, 0.17)[1], k % 2 ? metal : green, p.ry, k * 0.3);
+                        }
+                        bx(2.8, 0.08, 0.32, fr.at(0, 0.26)[0], 0.78, fr.at(0, 0.26)[1], metal, p.ry);
+                        for (let k = 0; k < 5; k++) cy(0.22, 0.22, 0.34, fr.at(-1.05 + k * 0.52, 0.3)[0], 0.99, fr.at(-1.05 + k * 0.52, 0.3)[1], k % 2 ? M('#4aa3df', 0.4) : crateMat, 8);
+                    });
+                    wall([1.4, -1.4, 2.8, -2.8], 1.3, (p) => cabinet(p, 1.3, 1.8, 0.52, M('#3d563d'), M('#4a5a3c'), green));
+                    wall([-0.7, 0.7, -2.4, 2.4], 1.2, (p, fr) => {
+                        bx(1.2, 1.0, 0.16, p.x, 1.6, p.z, M('#2b333d'), p.ry);
+                        bx(1.0, 0.6, 0.04, fr.at(0, 0.12)[0], 1.68, fr.at(0, 0.12)[1], M('#1e252c'), p.ry);
+                        for (let k = 0; k < 3; k++) discZ(0.18, 0.05, fr.at(-0.34 + k * 0.34, 0.16)[0], 1.68, fr.at(-0.34 + k * 0.34, 0.16)[1], k === 1 ? red : green, p.ry, 8);
+                        bx(1.1, 0.06, 0.1, fr.at(0, 0.17)[0], 1.15, fr.at(0, 0.17)[1], M('#f1c40f', 0.6), p.ry);
+                    });
+                });
+                // green workshop deck: safety outline, a paint-worn patch and two drop zones
+                floorZone(0, -0.1, 2.2, 1.7, 0, M('#5a6a3a'));
+                for (let k = 0; k < 5; k++) bx(0.5, 0.02, 0.1, -1.0 + k * 0.5, 0.02, 0.92, k % 2 ? hazard : M('#1a1a1a'));
+                cy(0.66, 0.66, 0.02, 1.0, 0.02, -1.15, M('#1a1a1a', 0.35), 10);
+                break;
+            }
+            case 'defense': {
+                // Turret control bay from the original/Aftermath rules: a status wall with three model
+                // turrets and their live lamps, a bank of camera feeds, an armourer's bench and a
+                // fire-control table with three operator stations. Everything on the wall is placed by
+                // its own width, so a generated doorway never takes the status board with it.
+                const red = M('#e05252', 0.9), green = M('#4fcf7a', 0.85), amber = M('#f1c40f', 0.8);
+                const status = [red, green, amber];
+                fix(() => {
+                    // --- status wall: one big board with a miniature turret for each of the three guns -
+                    const bp = wallSpot(pickAngle([Math.PI, -2.5, 2.5, 0.7, -0.7], 0.7, 3.6), 5.78, 3.6);
+                    if (bp) {
+                        const bf = frameOf(bp);
+                        bx(3.4, 2.2, 0.16, bp.x, 1.6, bp.z, M('#1e252c'), bp.ry);
+                        bx(3.5, 0.1, 0.22, bp.x, 2.75, bp.z, metal, bp.ry);
+                        bx(3.5, 0.1, 0.22, bp.x, 0.48, bp.z, dark, bp.ry);
+                        for (let i = 0; i < 3; i++) {
+                            const u = -1.05 + i * 1.05;
+                            bx(0.9, 1.5, 0.05, bf.at(u, 0.13)[0], 1.62, bf.at(u, 0.13)[1], M('#2b333d'), bp.ry);
+                            bx(0.7, 0.1, 0.12, bf.at(u, 0.24)[0], 0.98, bf.at(u, 0.24)[1], metal, bp.ry);
+                            discZ(0.36, 0.12, bf.at(u, 0.31)[0], 1.24, bf.at(u, 0.31)[1], M('#59697b'), bp.ry, 8);
+                            bx(0.12, 0.1, 0.5, bf.at(u, 0.58)[0], 1.24, bf.at(u, 0.58)[1], M('#8c96a0'), bp.ry);
+                            discZ(0.17, 0.06, bf.at(u, 0.24)[0], 2.18, bf.at(u, 0.24)[1], status[i], bp.ry, 8);
+                            for (let k = 0; k < 3; k++) bx(0.46, 0.035, 0.02, bf.at(u, 0.2)[0], 1.87 - k * 0.13, bf.at(u, 0.2)[1], M('#dff0ff', 0.55), bp.ry);
+                        }
+                        bx(2.4, 0.07, 0.03, bf.at(0, 0.2)[0], 2.55, bf.at(0, 0.2)[1], red, bp.ry);
+                    }
+                    // --- three camera feeds over the operator side of the room -----------------------
+                    const cp = wallSpot(pickAngle([1.5, -1.5, 2.9, -2.9], 0.7, 3.2), 5.72, 3.2);
+                    if (cp) screenBank(cp.x, cp.z, cp.ry, 3, 3.0, 1.35);
+                    // --- armourer's bench: spare ammo cases under it, a tool board above it ----------
+                    const wp = wallSpot(pickAngle([-1.0, 1.0, -2.9, 2.9], 0.7, 2.8), 5.8, 2.8);
+                    if (wp) {
+                        const wf = frameOf(wp);
+                        bx(2.5, 0.12, 0.7, wp.x, 0.95, wp.z, metal, wp.ry);
+                        for (const sd of [-1, 1]) bx(0.12, 0.95, 0.6, wf.at(sd * 1.1, 0)[0], 0.48, wf.at(sd * 1.1, 0)[1], dark, wp.ry);
+                        bx(2.4, 0.06, 0.1, wf.at(0, 0.3)[0], 0.45, wf.at(0, 0.3)[1], M('#3a4450'), wp.ry);
+                        ammoBox(wf.at(-0.7, 0.18)[0], wf.at(-0.7, 0.18)[1], wp.ry, false);
+                        ammoBox(wf.at(0.15, 0.2)[0], wf.at(0.15, 0.2)[1], wp.ry, true);
+                        bx(2.2, 0.7, 0.06, wf.at(0, 0.06)[0], 2.1, wf.at(0, 0.06)[1], M('#2a3038'), wp.ry);
+                        for (let k = 0; k < 6; k++) bx(0.08, 0.42, 0.05, wf.at(-0.85 + k * 0.34, 0.12)[0], 2.1, wf.at(-0.85 + k * 0.34, 0.12)[1], k % 2 ? metal : hazard, wp.ry);
+                        ammoBox(wf.at(-0.9, 0.78)[0], wf.at(-0.9, 0.78)[1], wp.ry + 0.2, false);
+                        ammoBox(wf.at(0.85, 0.78)[0], wf.at(0.85, 0.78)[1], wp.ry - 0.2, false);
+                    }
+                });
+                // --- fire-control table: a lit target plot ringed by three firing stations ------------
+                cy(1.55, 1.7, 0.14, 0, 0.07, 0, dark, 12);
+                cy(1.15, 1.25, 0.72, 0, 0.46, 0, M('#2b333d'), 12);
+                cy(1.62, 1.62, 0.1, 0, 0.88, 0, metal, 12);
+                cy(1.5, 1.5, 0.03, 0, 0.95, 0, M('#e05252', 0.45), 12);
+                for (let k = 0; k < 3; k++) {
+                    const a = k / 3 * Math.PI * 2;
+                    cy(0.5, 0.5, 0.02, Math.cos(a) * 0.48, 0.98, Math.sin(a) * 0.48, M('#dff0ff', 0.55), 12);
+                }
+                // The three posts sit on the free side of the table: a full ring would put one of them
+                // in the front-right standing zone, where the spread pass shoves it across the room.
+                const postAngles = [-2.2, -0.8, 0.6];
+                for (let k = 0; k < 3; k++) {
+                    const a = postAngles[k];
+                    const x = Math.sin(a) * 1.25, z = Math.cos(a) * 1.25, ry = a + Math.PI;
+                    bx(0.86, 0.88, 0.46, x, 0.44, z, M('#1e252c'), ry);
+                    bx(0.94, 0.08, 0.52, x, 0.92, z, metal, ry);
+                    pat(0.78, 0.54, 0.05, x, z, ry, 0, 0.1, 1.26, M('#1e252c'), -0.32);
+                    pat(0.66, 0.44, 0.02, x, z, ry, 0, 0.14, 1.26, status[k], -0.32);
+                    for (let s = 0; s < 3; s++) pat(0.1, 0.06, 0.06, x, z, ry, -0.22 + s * 0.22, 0.3, 0.98, s === 1 ? amber : M('#8c96a0'));
+                    pat(0.26, 0.2, 0.24, x, z, ry, 0.26, 0.12, 1.05, metal);
+                    pat(0.08, 0.08, 0.42, x, z, ry, 0.26, 0.34, 1.05, M('#8c96a0'));
+                }
+                chair(1.15, 1.35, -0.8, M('#3a4450'));
+                // --- deck paint: a hazard box around the table and three arcs to the firing stations --
+                floorZone(0, 0, 2.8, 2.8, 0, hazard);
+                for (let k = 0; k < 6; k++) bx(0.6, 0.02, 0.12, -1.25 + k * 0.5, 0.016, 1.52, k % 2 ? hazard : dark, Math.PI / 4);
+                for (let k = 0; k < 3; k++) {
+                    const a = postAngles[k];
+                    bx(1.0, 0.02, 0.12, Math.sin(a) * 1.85, 0.018, Math.cos(a) * 1.85, status[k], a);
+                }
+                break;
+            }
             case 'storage': {
                 // Cargo hold after the board art: long cargo modules with strapped lids lying on the
                 // painted deck rectangles (the same coordinates buildFloor paints), green pallet boxes
@@ -4307,9 +4908,19 @@ export class Scene3D {
         return rs.tile || (r.kind === 'cockpit' ? 'cockpit' : r.kind === 'hibernatorium' ? 'hibernatorium' : r.kind === 'engine' ? 'engine' : null);
     }
 
+    /** Original rules share the Redux tile pool, but two of those tiles print different rooms.
+     *  The server room is the only shared action where the original art is already playable, so its
+     *  model is swapped in; the alarm and workshop rooms are gallery-only until their actions land. */
+    visualTile(view, tile) {
+        return view && view.rules === 'original' && tile === 'server' ? 'originalServer' : tile;
+    }
+
     updateRoom(view, r) {
         const node = this.roomNodes[r.id]; const rs = view.roomState[r.id];
         const tile = this.tileFor(view, r);
+        // The rules tile stays the source of names, icons and Computer flags. Only the 3D shell is
+        // swapped: the original Server Room is a pair of rack aisles, not the Redux sphere chamber.
+        const visual = this.visualTile(view, tile);
         // Evacuation bays build their cradles from the pod rota of their own section: a cradle with no
         // pod is a vacant slot, not a hole in the deck.
         const podSec = tile === 'evacA' ? 'A' : tile === 'evacB' ? 'B' : null;
@@ -4335,18 +4946,18 @@ export class Scene3D {
         if (node.flip && node.flip.phase === 1) return;   // first half of the token flip: keep showing the face-down side
         node.qm.setEnabled(!tile);
         // shell appears once the tile is known
-        const sk = tile || '';
+        const sk = visual || '';
         if (node.shellKey !== sk) {
             if (node.shell) node.shell.root.dispose();
             // Keyed by tile, not by room: a shell is built from the tile that lies in the room, and a
             // session deals those tiles into other rooms — a saved edit has to follow its tile.
-            node.shell = tile ? this.owner('tile:' + tile + ':shell', () => this.buildShell(node, tile)) : null;
+            node.shell = visual ? this.owner('tile:' + visual + ':shell', () => this.buildShell(node, visual)) : null;
             node.shellKey = sk; node.lightsOn = undefined;
             this.syncComputer(node, tile);
         }
         node.malfunction = !!rs.malfunction;
         if (node.shell) {
-            const st = node.shell.strips; const style = WALL_STYLES[TILE_STYLE[tile] || 'steel'];
+            const st = node.shell.strips; const style = WALL_STYLES[TILE_STYLE[visual] || 'steel'];
             if (!node.malfunction) { st.diffuseColor = B().Color3.FromHexString(style[3]); st.emissiveColor = B().Color3.FromHexString(style[3]).scale(0.9); }
             for (const e of node.shell.emergency) e.setEnabled(node.malfunction);
             this.setRoomLights(node, !node.malfunction);

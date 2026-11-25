@@ -10,12 +10,12 @@ import { bagTokenType, bagTokenLabel, bagTokenIcon } from '/shared/bag-tokens.mj
 //   item    — a card is pulled from the coloured item deck (green/red/yellow/support)
 //   event / attack / queen — a card is drawn from the shared deck, flips face up in the centre
 //                            and slides to its discard
-import { esc, describeCard, eventArt, attackArt, panicArt, queenArt, cardArt, itemArt } from './cards.js';
+import { esc, describeCard, eventArt, attackArt, panicArt, queenArt, butcherArt, cardArt, itemArt } from './cards.js';
 import { ITEMS } from '/shared/data/cards.mjs';
 import * as Snd from './sound.js';
 
-const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева', panic: 'Паника', bag: 'Мешок' };
-const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', panic: '#704a89', own: '#2c5a7a', feats: '#7d6420', contam: '#5a7a2a', bag: '#6b4f2a' };
+const DECK_LABELS = { green: 'Зелёная', red: 'Красная', yellow: 'Жёлтая', support: 'Поддержка', event: 'События', attack: 'Атаки', queen: 'Королева', butcher: 'Мясник', panic: 'Паника', bag: 'Мешок' };
+const DECK_COLORS = { green: '#2f9e55', red: '#b63a3a', yellow: '#c9a227', support: '#6b7fa3', event: '#8a5a2b', attack: '#7a2d5a', queen: '#5b2a86', butcher: '#8b1f2f', panic: '#704a89', own: '#2c5a7a', feats: '#7d6420', contam: '#5a7a2a', bag: '#6b4f2a' };
 
 
 export class TableFX {
@@ -39,6 +39,12 @@ export class TableFX {
         piles.push(['feats', 'Подвиги', (view.feats || []).length]);
         const shared = view.enemySet === 'voidseeders' ? 'panic' : 'queen';
         piles.push([shared, DECK_LABELS[shared], (view.decks || {})[shared]]);
+        if (view.rules === 'original') {
+            for (const omitted of ['feats', ...(view.enemySet === 'voidseeders' ? [] : ['queen'])]) {
+                const index = piles.findIndex(pile => pile[0] === omitted);
+                if (index >= 0) piles.splice(index, 1);
+            }
+        }
         this.table.innerHTML = piles.map(([k, label, n]) =>
             '<div class="pile' + (n === 0 ? ' empty' : '') + '" data-pile="' + k + '" title="' + esc(label) + ': ' + n + ' — нажмите, чтобы посмотреть"><div class="pback" style="--pc:' + (DECK_COLORS[k] || '#345') + '">' +
             (k === 'own' ? '<span class="pdisc">⤵</span>' : '') + '<span class="pcount">' + n + '</span></div><div class="plabel">' + esc(label) + '</div></div>').join('');
@@ -211,15 +217,15 @@ export class TableFX {
                 this.fly(el, from || to, to, 650, { rotA: 8, rotB: -4, arc: 90, scaleA: 0.9, scaleB: 1.05, fadeOut: true }, () => { this.removeEffect(el); done(); });
                 break;
             }
-            case 'event': case 'attack': case 'queen': case 'panic': {
+            case 'event': case 'attack': case 'queen': case 'butcher': case 'panic': {
                 const k = f.type;
                 // The Event card is drawn by the table-wide event window itself (centred, closed by
                 // «Готово»), so a second flying copy would sit on top of it.
                 if (k === 'event' && f.view && f.view.prompt && f.view.prompt.kind === 'ack' && f.view.prompt.event === f.card) { Snd.play('card'); done(); break; }
                 const from = this.pileRect(k);
                 const mid = this.centerRect();
-                const title = k === 'panic' ? 'Паника · ' + f.level + '+' : k === 'event' ? 'Событие' : k === 'attack' ? (f.check ? 'Проверка стойкости' : 'Атака') + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : 'Королева';
-                const art = k === 'panic' ? panicArt(f.card) : k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : queenArt(f.card);
+                const title = k === 'panic' ? 'Паника · ' + f.level + '+' : k === 'event' ? 'Событие' : k === 'attack' ? (f.check ? 'Проверка стойкости' : 'Атака') + (f.intruder ? ' · ' + (this.intruderNames[f.intruder] || f.intruder) : '') : k === 'butcher' ? 'Здоровье Мясника' : 'Королева';
+                const art = k === 'panic' ? panicArt(f.card) : k === 'event' ? eventArt(f.card) : k === 'attack' ? attackArt(f.card) : k === 'butcher' ? butcherArt() : queenArt(f.card);
                 // An attack card printed for all three ranks lists all three ("Взрослый: … Дрон: …
                 // Королева: …"). Only the line of the intruder that is actually attacking belongs on
                 // the table: the effect the runner really suffers (`effect`). The rest of the card is

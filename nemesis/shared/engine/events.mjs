@@ -1,22 +1,31 @@
 // events.mjs — Event Phase (event card, intruder movement, effects, noise rolls, bag development)
 // and Cleanup Phase (first player, draw up, time, self-destruct, end checks).
 
-import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeFire, placeMalfunction,
+import { OPS, ask, askAck, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, secretTile, placeFire, placeMalfunction,
     placeNoise, corridorsOf, spawnIntruder, removeIntruder, turnOrder, drawCards, drawLimit, gainContamination, inCombat,
-    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef, payCost, payableCards, infectLarva } from './core.mjs';
-import { shuffle } from '../rng.mjs';
+    findRoomsByTile, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, discardCard, fx, cardDef, payCost, payableCards, infectLarva, killPlayer,
+    roll, noiseDieFor, fmtRoll, canDestroyDoor, recordTurretEntry } from './core.mjs';
+import { shuffle, randInt } from '../rng.mjs';
 import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
+import { ORIGINAL_EVENT_BY_ID } from '../data/original-cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
 import { CARNOMORPH_EVENT_BY_ID } from '../data/carnomorph-events.mjs';
+import { RX_CARNOMORPH_EVENT_BY_ID } from '../data/carnomorphs-redux.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { CHYTRID_EVENT_BY_ID } from '../data/chytrids.mjs';
 import { VOID_EVENT_BY_ID } from '../data/voidseeders.mjs';
 import { eventTextFor } from '../data/event-text.mjs';
-import { moveIntrudersByCorridor, moveIntrudersToClosest, bagDevelopment, checkNest } from './intruders.mjs';
+import { moveIntrudersByCorridor, moveIntrudersToClosest, bagDevelopment, checkNest, hyperAttackStep } from './intruders.mjs';
 import { countAvailable } from './movement.mjs';
+import { surpriseAttack } from './surprise.mjs';
+import { isOriginal, originalDrawPhase } from './original.mjs';
 import { infectionProcedure, eclosionProcedure } from './actions.mjs';
 
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
-const eventById = (state, id) => state.enemySet === 'carnomorphs' ? CARNOMORPH_EVENT_BY_ID[id] : state.enemySet === 'voidseeders' ? VOID_EVENT_BY_ID[id] : state.enemySet === 'chytrids' ? CHYTRID_EVENT_BY_ID[id] : EVENT_BY_ID[id];
+const eventById = (state, id) => state.enemySet === 'carnomorphs'
+    ? (isReduxCarnomorphs(state) ? RX_CARNOMORPH_EVENT_BY_ID[id] : CARNOMORPH_EVENT_BY_ID[id])
+    : state.enemySet === 'voidseeders' ? VOID_EVENT_BY_ID[id]
+        : state.enemySet === 'chytrids' ? CHYTRID_EVENT_BY_ID[id] : (ORIGINAL_EVENT_BY_ID[id] || EVENT_BY_ID[id]);
 
 const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 /** What the intruders do on this card, in one line. */
@@ -52,15 +61,19 @@ function packName(ev) {
  *  the effect of the card and the dice it demands. The table reads them one at a time instead of
  *  picking the requirement out of a single wall of printed text. */
 export function eventLogLines(ev) {
+    if (String(ev.id || '').startsWith('origEv')) {
+        const types = ((ev.move && ev.move.types) || []).map(t => INTRUDER_NAMES[t] || t).join(', ');
+        return [
+            '📜 Событие: «' + ev.name + '».',
+            'Движение (' + types + '): коридор ' + ev.move.num + '.',
+            'Эффект: ' + ev.text,
+        ];
+    }
     if (ev.move && ev.move.types) return [
         '📜 Событие: «' + ev.name + '».',
         'Движение: все ' + packName(ev) + ' — коридор ' + ev.move.num + '.',
         'Эффект: ' + ev.text,
-<<<<<<< HEAD
-        'Игроки также бросают кубик шума по правилам события.',
-=======
         'Бросок кубика: каждый персонаж делает бросок шума.',
->>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     ];
     const sentences = String(ev.text || '').split(/(?<=\.)\s+/).map(x => x.trim()).filter(Boolean);
     const isRoll = x => /бросок|встреч/i.test(x);
@@ -99,12 +112,7 @@ OPS['event.reveal'] = (state, step) => {
     const id = step.id, ev = eventById(state, id);
     state.lastEvent = id;
     state.lastEventN = (state.lastEventN || 0) + 1;
-<<<<<<< HEAD
-    const baseText = state.enemySet === 'chytrids' ? chytridEventText(ev) : ev.move && ev.move.types ? carnomorphEventText(ev) : ev.text;
-    const text = ['carnomorphs', 'voidseeders', 'chytrids'].includes(state.enemySet) ? baseText + '\n\nИгроки также бросают кубик шума по правилам события.' : baseText;
-=======
     const text = eventTextFor(ev);
->>>>>>> 1dfc922873aae94caa38cab68cb564432e9d3209
     fx(state, { type: 'event', card: id, name: ev.name, text });
     log(state, state.enemySet === 'chytrids' ? '📜 Событие: «' + ev.name + '». ' + text + '\nИгроки также бросают кубик шума по правилам события.' : eventLogLines(ev).join('\n'), 'event');
     if (state.ui && state.ui.eventAck) {
@@ -124,8 +132,9 @@ OPS['event.movement'] = (state, step) => {
     // some of the miniatures; the table now moves the whole pack the same way, which is what a
     // single direction on the card means. Movements printed inside the effect (a queen going to
     // her nest, a figure stepping into a vent) stay exactly as that effect says.
-    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num);
+    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num, isOriginal(state) && state.enemySet === 'redux' ? ev.move.types : null);
     else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
+    else if (ev.move.type === 'closestTwice') attacks = moveIntrudersToClosest(state).concat(moveIntrudersToClosest(state));
     if (state.enemySet === 'voidseeders') {
         next(state, ...attacks, { op: 'void.eventEffect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'void.dissipate' }, { op: 'phase.cleanup' });
         return;
@@ -141,7 +150,144 @@ OPS['event.effect'] = (state, step) => {
     const id = step.id;
     const allRooms = Object.keys(state.ship.rooms).sort();
     const roomsWithIcons = (color, n) => allRooms.filter(r => { const t = tileOf(state, r); return t && ROOM_TILES[t].items.filter(x => x === color).length >= n; });
-    const neighborsNoDoor = (r) => state.ship.rooms[r].exits.filter(e => state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to);
+    const neighborsNoDoor = (r) => state.ship.rooms[r].exits.filter(e => e.corridor !== 'tech' && state.ship.corridors[e.corridor].door !== 'closed').map(e => e.to);
+    if (isOriginal(state) && state.enemySet === 'redux' && String(id).startsWith('origEv')) {
+        const ev = ORIGINAL_EVENT_BY_ID[id];
+        switch (ev && ev.effect) {
+            case 'eggProtection': {
+                const nest = findRoomsByTile(state, 'nest')[0];
+                const targets = turnOrder(state).filter(p => p.status === 'active' && !p.pod && (p.room === nest || p.heavy.some(h => h.type === 'egg')));
+                next(state, ...targets.map(p => ({ op: 'encounter', room: p.room, player: p.id, reason: 'Событие «Защита кладки»: Контакт' })));
+                break;
+            }
+            case 'brood': {
+                if (state.nestEggs > 0) { state.nestEggs--; log(state, '«Выводок»: сброшено 1 яйцо Улья (осталось ' + state.nestEggs + ').', 'event'); checkNest(state); }
+                const nest = findRoomsByTile(state, 'nest')[0];
+                let infected = false;
+                if (nest) for (const p of turnOrder(state)) {
+                    if (p.status === 'active' && !p.pod && p.room === nest && !p.hand.some(c => !String(c).startsWith('contam#')) && !p.larva) {
+                        if (p.charId !== 'android') infected = true;
+                        infectLarva(state, p);
+                    }
+                }
+                if (!infected && countAvailable(state, 'larva') > 0) { state.bag.push('larva'); log(state, 'Никто не заражён — жетон Личинки добавлен в мешок.', 'event'); }
+                break;
+            }
+            case 'regeneration':
+                for (const it of Object.values(state.intruders)) {
+                    it.hits = Math.max(0, (it.hits || 0) - 2);
+                    log(state, 'Регенерация: ' + INTRUDER_NAMES[it.type] + ' сбрасывает 2 раны (осталось ' + it.hits + ').', 'event');
+                }
+                break;
+            case 'rampage':
+                for (const r of allRooms) if (intrudersIn(state, r).some(it => ['adult', 'drone', 'queen'].includes(it.type))) placeMalfunction(state, r, 'разгром');
+                break;
+            case 'lurking':
+                for (const it of Object.values({ ...state.intruders })) if (!playersInRoom(state, it.room).length) {
+                    removeIntruder(state, it.uid, false); state.bag.push(it.type);
+                    log(state, '«Затаившиеся»: ' + INTRUDER_NAMES[it.type] + ' убран с поля, жетон возвращён в мешок.', 'event');
+                }
+                break;
+            case 'hunt':
+                for (const it of Object.values(state.intruders)) {
+                    if (it.type !== 'drone' || playersInRoom(state, it.room).length) continue;
+                    const candidates = state.ship.rooms[it.room].exits
+                        .filter(e => e.corridor !== 'tech' && playersInRoom(state, e.to).length)
+                        .map(e => e.to).sort();
+                    if (candidates.length) {
+                        const destination = candidates[0];
+                        const exit = state.ship.rooms[it.room].exits.find(e => e.to === destination && e.corridor !== 'tech');
+                        const corridor = state.ship.corridors[exit.corridor];
+                        if (corridor.door === 'closed') {
+                            if (canDestroyDoor(state, it)) {
+                                corridor.door = 'destroyed';
+                                log(state, '«Охота»: Трутень уничтожает закрытую дверь ' + corridor.id + ' и остаётся на месте.', 'event');
+                            }
+                            continue;
+                        }
+                        it.room = destination;
+                        recordTurretEntry(state, 'intruder', it.uid, destination);
+                        log(state, '«Охота»: Трутень движется в ' + roomName(state, destination) + '.', 'event');
+                    }
+                }
+                break;
+            case 'scentOfPrey': {
+                const roomsWithSlime = new Set(state.players.filter(p => p.status === 'active' && !p.pod && p.slime).map(p => p.room));
+                for (const r of roomsWithSlime) for (const c of corridorsOf(state, r)) if (!c.noise) placeNoise(state, c.id);
+                break;
+            }
+            case 'malfunction': {
+                // The printed card selects the lowest-numbered Room; it does not require the room
+                // to have been explored. Skip only rooms where a Malfunction cannot be placed.
+                const r = allRooms.find(id => !room(state, id).malfunction
+                    && !['nest', 'contaminated'].includes(secretTile(state, id)));
+                if (r) placeMalfunction(state, r, 'событие');
+                break;
+            }
+            case 'consumingFire': {
+                const burning = allRooms.filter(r => room(state, r).fire);
+                for (const r of burning) { room(state, r).itemsLeft = 0; room(state, r).itemsDepleted = true; }
+                for (const r of burning) for (const n of neighborsNoDoor(r)) placeFire(state, n, 'распространение');
+                break;
+            }
+            case 'eclosion': {
+                const steps = [];
+                for (const p of turnOrder(state)) if (p.status === 'active' && !p.pod) {
+                    steps.push({ op: p.larva ? 'event.origHatch' : 'event.origInfect4', player: p.id });
+                }
+                next(state, ...steps);
+                break;
+            }
+            case 'techNoise':
+                if (!state.ship.techNoise) placeNoise(state, 'tech');
+                else next(state, ...turnOrder(state).filter(p => p.status === 'active' && !p.pod && state.ship.rooms[p.room].tech)
+                    .map(p => ({ op: 'noise.roll', player: p.id, room: p.room })));
+                break;
+            case 'hiveNoise': {
+                const nest = findRoomsByTile(state, 'nest')[0];
+                if (nest && room(state, nest).explored) for (const c of corridorsOf(state, nest)) if (!c.noise) placeNoise(state, c.id);
+                break;
+            }
+            case 'flammable': {
+                const h = roomOfKind(state.ship, 'hibernatorium').id;
+                if (!room(state, h).fire) placeFire(state, h, 'событие');
+                else for (const n of neighborsNoDoor(h)) placeFire(state, n, 'событие');
+                break;
+            }
+            case 'bulkheadsOpen':
+                for (const c of Object.values(state.ship.corridors)) if (c.door === 'closed') c.door = 'open';
+                log(state, 'Тревога: все закрытые двери открыты.', 'event');
+                break;
+            case 'damagingFire': {
+                const burning = allRooms.filter(r => room(state, r).fire);
+                for (const r of burning) placeMalfunction(state, r, 'разрушения');
+                for (const r of burning) for (const n of neighborsNoDoor(r)) placeFire(state, n, 'распространение');
+                break;
+            }
+            case 'generatorOverheats': {
+                const gen = findRoomsByTile(state, 'generator').find(r => room(state, r).malfunction);
+                if (gen) startSelfDestruct(state);
+                break;
+            }
+            case 'lifeSupport':
+                for (const r of allRooms) { const t = secretTile(state, r); if (t && ROOM_TILES[t].items.includes('green')) placeMalfunction(state, r, 'сбой жизнеобеспечения'); }
+                break;
+            case 'podEjection': {
+                const pod = state.pods.filter(x => !x.removed && !x.launched).sort((a, b) => a.num - b.num)[0];
+                if (pod) { pod.removed = true; for (const pid of pod.occupants) { const p = player(state, pid); if (p) p.pod = null; } pod.occupants = []; log(state, 'Капсула №' + pod.num + ' удалена из игры.', 'event'); }
+                break;
+            }
+            case 'coolantLeak': {
+                const gen = findRoomsByTile(state, 'generator').find(r => room(state, r).malfunction);
+                if (gen) startSelfDestruct(state);
+                break;
+            }
+            case 'shortCircuit':
+                for (const r of allRooms) { const t = secretTile(state, r); if (t && ROOM_TILES[t].computer && ROOM_TILES[t].items.includes('yellow')) placeMalfunction(state, r, 'короткое замыкание'); }
+                break;
+        }
+        return;
+    }
     switch (id) {
         case 'breakingIn': {
             // Printed: place Noise in the Tech entrance IF THERE ISN'T ONE; only when one is already
@@ -248,7 +394,26 @@ OPS['event.effect'] = (state, step) => {
             else { for (let i = 0; i < 2; i++) if (countAvailable(state, 'drone') > 0) { state.bag.push('drone'); k++; } log(state, 'В мешок добавлено дронов: ' + k + '.', 'event'); }
             break;
         }
+
     }
+};
+OPS['event.origHatch'] = (state, step) => {
+    const p = player(state, step.player);
+    if (p.status !== 'active' || !p.larva) return;
+    const r = p.room;
+    p.larva = false;
+    killPlayer(state, p, 'событие «Созревание»');
+    const crawler = spawnIntruder(state, 'crawler', r);
+    log(state, crawler ? 'Из тела ' + pname(p) + ' вырывается Ползун.' : 'Личинка погибает, но Ползун не выставлен: миниатюры закончились.', 'death');
+};
+OPS['event.origInfect4'] = (state, step) => {
+    const p = player(state, step.player);
+    if (!p || p.status !== 'active') return;
+    const handBefore = new Set(p.hand);
+    drawCards(state, p, 4, true);
+    const drawn = p.hand.filter(c => !handBefore.has(c));
+    infectionProcedure(state, p, false, 'event');
+    for (const c of drawn) if (p.hand.includes(c)) discardCard(state, p, c);
 };
 OPS['event.shell'] = (state, step) => {
     const p = player(state, step.player);
@@ -382,7 +547,27 @@ OPS['event.finish'] = (state, step) => {
             state.eventDeck.push(step.id);
             shuffle(state, state.eventDeck);
             log(state, 'Карта события замешана обратно в колоду.', 'minor');
+        } else if (ev.finish === 'shuffle') {
+            state.eventDeck.push(...state.eventDiscard.splice(0), step.id);
+            shuffle(state, state.eventDeck);
+            log(state, 'Карта события и сброс замешаны обратно в колоду.', 'minor');
         } else state.eventDiscard.push(step.id);
+        next(state, { op: 'bag.develop' });
+        return;
+    }
+    if (ev && String(step.id || '').startsWith('origEv')) {
+        if (ev.finish === 'remove') {
+            (state.origEventRemoved || (state.origEventRemoved = [])).push(step.id);
+            state.eventDeck.push(...state.eventDiscard.splice(0));
+            shuffle(state, state.eventDeck);
+            log(state, 'Карта события удалена из игры, сброс замешан в колоду.', 'minor');
+        } else if (ev.finish === 'self') {
+            state.eventDeck.push(step.id);
+            shuffle(state, state.eventDeck);
+            log(state, 'Карта события замешана обратно в колоду.', 'minor');
+        } else {
+            state.eventDiscard.push(step.id);
+        }
         next(state, { op: 'bag.develop' });
         return;
     }
@@ -395,19 +580,27 @@ OPS['event.finish'] = (state, step) => {
 // Cleanup
 // ---------------------------------------------------------------------------------------------
 OPS['phase.cleanup'] = (state) => {
+    // Original Turrets shoot before the Event Phase, so entries made by the Event card or Hive
+    // Development are already too late for this round's Fire Damage and expire at turn cleanup.
+    if (isOriginal(state) && state.enemySet === 'redux') state.turretEntries = [];
     state.phase = 'cleanup';
     log(state, '— Фаза уборки —', 'phase');
     const n = state.players.length;
     { const order = turnOrder(state); for (let k = 1; k <= n; k++) { const q = order[k % n]; if (q.status === 'active') { state.firstPlayer = q.id; break; } } }
     log(state, 'Жетон первого игрока → ' + pname(state.players[state.firstPlayer]) + '.', 'info');
-    for (const p of state.players) {
+    // Original rules draw at the START of the next Player Phase (originalDrawPhase), not here.
+    if (!isOriginal(state)) for (const p of state.players) {
         if (p.status !== 'active') continue;
         let limit = drawLimit(p);
+        if (isReduxCarnomorphs(state) && p.mutationCard === 'adaptation') limit++;
         if (tileOf(state, p.room) === 'cafeteria' && !room(state, p.room).malfunction && !inCombat(state, p)) limit++;
         const need = Math.max(0, limit - p.hand.length);
         if (need) drawCards(state, p, need);
     }
-    if (state.enemySet !== 'carnomorphs' && state.enemySet !== 'voidseeders') {
+    // Chytrids use the Redux phase order in this adaptation, so their time advances at Cleanup even
+    // when the lobby's rules selector is Original. Carnomorphs and Voidseeders advance time in their
+    // own phase-start handlers; Original base intruders advance it at the start of the Intruder Phase.
+    if ((!isOriginal(state) || state.enemySet === 'chytrids') && state.enemySet !== 'carnomorphs' && state.enemySet !== 'voidseeders') {
         state.time--;
         log(state, '⏱ Время: ' + state.time + (state.time <= HIBERNATION_TIME ? ' (гибернация доступна)' : '') + '.', 'info');
         if (state.selfDestruct > 0) {

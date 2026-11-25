@@ -27,3 +27,9 @@ export function knowledgeTrack(p) {
 export function larvaBadge(p) {
     return p.larva ? '<span class="sh-larva" title="У персонажа личинка" aria-label="У персонажа личинка">🪱</span>' : '';
 }
+
+export function slimeBadge(p, rules) {
+    return rules === 'original' && p.slime
+        ? '<span class="sh-slime" title="Слизь: Тишина превращается в Опасность" aria-label="У персонажа маркер слизи">🟢</span>'
+        : '';
+}

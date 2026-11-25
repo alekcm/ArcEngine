@@ -7,7 +7,7 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
     gainKnowledge, restoreHealth, removeWound, removeFire, removeMalfunction, placeMalfunction, loseHealth, discardCard,
     removeCardFromGame, isContam, drawCards, spawnIntruder, HIBERNATION_TIME, handLimit, heavyCount, findRoomsByTile,
     clearNoiseAround, removeIntruder, corridorsOf, gainContamination, fx, intruderLabel, healthState, payableCards,
-    askEngineKnown, askEngineReading } from './core.mjs';
+    askEngineKnown, askEngineReading, removeSlime, combatDieFor, roll, needDice, fmtRoll } from './core.mjs';
 import { dealHits, phosphateWound } from './combat.mjs';
 import { ROOM_TILES, engineRooms } from '../ship.mjs';
 import { ITEMS, WOUNDS, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, INTRUDER_NAMES, ADAPTATIONS, WEAKNESSES, EVENT_CARDS, canLoadWith } from '../data/cards.mjs';
@@ -63,6 +63,8 @@ export function roomActionAvailable(state, p, opts = {}) {
         case 'hatchControl': return { ok: true };
         case 'server': return { ok: true };
         case 'storage': return { ok: true };
+        case 'defense': return state.rules === 'original' && state.enemySet === 'redux' && (state.turrets || []).some(t => !t.destroyed)
+            ? { ok: true } : { ok: false, reason: 'На поле нет турелей' };
         case 'cockpit': return { ok: true };
         case 'hibernatorium': return state.time <= HIBERNATION_TIME ? { ok: true } : { ok: false, reason: 'Гибернация недоступна (время > ' + HIBERNATION_TIME + ')' };
         case 'engine': return { ok: true };
@@ -120,6 +122,7 @@ OPS['room.action'] = (state, step) => {
             for (const c of [...p.deck]) { p.deck.splice(p.deck.indexOf(c), 1); p.discard.push(c); }
             p.discard = p.discard.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
+            removeSlime(state, p);
             if (state.enemySet === 'chytrids' && removeChySpore(state, p)) log(state, 'Спора удалена.', 'good');
             removeCarnomorphMutation(state, p);
             if (state.enemySet === 'voidseeders' && p.madness > 3) alterMadness(state, p, 3 - p.madness);
@@ -162,6 +165,7 @@ OPS['room.action'] = (state, step) => {
             const n = p.hand.filter(isContam).length;
             p.hand = p.hand.filter(c => !isContam(c));
             if (p.larva) { p.larva = false; log(state, 'Личинка удалена.', 'good'); }
+            removeSlime(state, p);
             if (state.enemySet === 'chytrids' && removeChySpore(state, p)) log(state, 'Спора удалена.', 'good');
             log(state, pname(p) + ': удалено заражений из руки — ' + n + '.', 'good');
             next(state, back); return;
@@ -188,6 +192,14 @@ OPS['room.action'] = (state, step) => {
             const drawn = [];
             for (const d of ['green', 'red', 'yellow']) { const c = drawItem(state, d); if (c) drawn.push(c); }
             keepOneOf(state, p, drawn, 'items', { op: 'noise.roll', player: p.id, room: p.room, thenAfter: back });
+            return;
+        }
+        case 'defense': {
+            const turrets = (state.turrets || []).filter(t => !t.destroyed);
+            if (!turrets.length) { log(state, 'На поле нет турелей.', 'minor'); next(state, back); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Отсек обороны: какую турель переключить?',
+                options: turrets.map(t => ({ id: String(t.id), label: 'Турель в ' + roomName(state, t.room) + ' (' + ({ inactive: 'неактивна', all: 'цель: все', intruders: 'цель: пришельцы' }[t.status] || 'статус скрыт') + ')' })) },
+                { op: 'room.defense', player: p.id, then: back });
             return;
         }
         case 'cockpit':
@@ -328,9 +340,28 @@ OPS['adaptation.remove'] = (state, step) => {
 OPS['room.nest'] = (state, step) => {
     const p = player(state, step.player);
     if (step.answer === 'take') { state.nestEggs--; p.heavy.push({ type: 'egg' }); log(state, pname(p) + ' берёт яйцо из Гнезда (осталось ' + state.nestEggs + ').', 'action'); }
-    else { state.nestEggs--; log(state, pname(p) + ' уничтожает яйцо (осталось ' + state.nestEggs + ').', 'action'); }
+    else if (state.rules === 'original' && state.enemySet === 'redux') {
+        next(state, { op: 'room.nestMelee', player: p.id, then: step.then, noNoise: step.noNoise });
+        return;
+    } else { state.nestEggs--; log(state, pname(p) + ' уничтожает яйцо (осталось ' + state.nestEggs + ').', 'action'); }
     checkNest(state);
     if (step.noNoise) next(state, step.then); else next(state, { op: 'noise.roll', player: p.id, room: p.room }, step.then);
+};
+OPS['room.nestMelee'] = (state, step) => {
+    const p = player(state, step.player), then = step.then || { op: 'turn.choose' };
+    if (!p || p.status !== 'active' || state.nestEggs <= 0) { next(state, then); return; }
+    const die = combatDieFor(state, p);
+    if (!step.rerollResolved && needDice(state, step, 'combatOriginal', p.id, 'Бросок боя — удар по яйцу', { room: p.room })) return;
+    const face = roll(state, die);
+    state.lastCombatFace = face;
+    if (face === 'miss') log(state, '🎲 Удар по яйцу: ' + fmtRoll(face) + ' — промах; ран и заражения нет.', 'minor');
+    else {
+        state.nestEggs--;
+        log(state, '🎲 Удар по яйцу: ' + fmtRoll(face) + ' — яйцо уничтожено (осталось ' + state.nestEggs + ').', 'combat');
+        checkNest(state);
+    }
+    if (step.noNoise) next(state, then);
+    else next(state, { op: 'noise.roll', player: p.id, room: p.room }, then);
 };
 OPS['room.airlock'] = (state, step) => {
     const r = step.answer;
@@ -408,6 +439,7 @@ OPS['room.hatch'] = (state, step) => {
     log(state, 'Капсула №' + pod.num + ' теперь ' + (pod.locked ? 'заблокирована' : 'разблокирована') + '.', 'event');
     next(state, step.then);
 };
+OPS['room.defense'] = (state, step) => next(state, { op: 'turret.control', player: step.player, turretId: step.answer, then: step.then });
 OPS['room.server'] = (state, step) => {
     const p = player(state, step.player);
     const av = roomActionAvailable(state, p, { room: step.answer, allowMalfunction: true });
@@ -668,7 +700,8 @@ OPS['computer.scan'] = (state, step) => {
     p.knownTiles[step.answer] = secretTile(state, step.answer);
     const tok = state.secret.tokens[step.answer];
     const TOK = { malfunction: 'поломка', fire: 'огонь', corpse: 'труп', door: 'закрытая дверь' };
-    ask(state, { kind: 'info', player: p.id, title: 'Сканер (только вы это видите)', text: 'Комната ' + step.answer + ': ' + ROOM_TILES[secretTile(state, step.answer)].name + '\nЖетон исследования: ' + (TOK[tok] || 'нет') }, { op: 'noop', then: step.then });
+    const tokenLabel = tok ? (typeof tok === 'object' ? (tok.label || TOK[tok.effect] || tok.effect || 'жетон') : (TOK[tok] || tok)) : 'нет';
+    ask(state, { kind: 'info', player: p.id, title: 'Сканер (только вы это видите)', text: 'Комната ' + step.answer + ': ' + ROOM_TILES[secretTile(state, step.answer)].name + '\nЖетон исследования: ' + tokenLabel }, { op: 'noop', then: step.then });
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -713,7 +746,7 @@ export function giveItem(state, p, itemKey, ammo) {
         p.items.push(inst);
         log(state, pname(p) + ' получает предмет «' + def.name + '».', 'good');
     }
-    if (tileOf(state, p.room) === 'contaminated') gainContamination(state, p, 1);
+    if (tileOf(state, p.room) === 'contaminated' && !(state.rules === 'original' && state.enemySet === 'redux')) gainContamination(state, p, 1);
     if (def.kind === 'heavy' && heavyCount(p) > handLimit(p)) next(state, { op: 'wound.armCheck', player: p.id });
     return inst;
 }

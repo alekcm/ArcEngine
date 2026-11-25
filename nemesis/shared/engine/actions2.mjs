@@ -6,8 +6,10 @@ import { isAdultEquivalent } from './core.mjs';
 
 import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, restoreHealth, removeFire,
     removeMalfunction, placeMalfunction, drawCards, discardCard, isContam, payCost, placeNoise, corridorsOf, secretTile,
-    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon, cardDef } from './core.mjs';
+    payableCards, gainContamination, gainWound, removeWound, loseHealth, intruderLabel, HEAVY_NAMES, computerHere, breakWeapon, cardDef, removeSlime, recordTurretEntry } from './core.mjs';
 import { ITEMS, dropLocked, canLoadWith, hasOpenQuest, connectedTo, COMPUTER_CARDS, COORDINATE_CARDS, DESTINATION_NAMES, WOUNDS, EVENT_CARDS } from '../data/cards.mjs';
+import { ORIGINAL_EVENT_BY_ID } from '../data/original-cards.mjs';
+import { eventTextFor } from '../data/event-text.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { repelIntruder } from './intruders.mjs';
 import { dealHits, applyHitsNoRoll } from './combat.mjs';
@@ -160,8 +162,8 @@ OPS['card.riskAssessment'] = (state, step) => {
     const p = player(state, step.player);
     if (!compHere(state, p) || !noMalf(state, p)) { log(state, 'Нужна комната с компьютером без поломки.', 'minor'); next(state, BACK); return; }
     if (!state.eventDeck.length) state.eventDeck = shuffle(state, state.eventDiscard.splice(0));
-    const id = state.eventDeck[0]; const ev = EVENT_CARDS.find(e => e.id === id);
-    const desc = ev ? '«' + ev.name + '» — ' + ev.text + (ev.intruders ? ' (Движение чужих: ' + ev.intruders + ')' : '') : id;
+    const id = state.eventDeck[0]; const ev = (state.rules === 'original' && state.enemySet === 'redux' ? ORIGINAL_EVENT_BY_ID[id] : null) || EVENT_CARDS.find(e => e.id === id);
+    const desc = ev ? '«' + ev.name + '» — ' + (state.rules === 'original' && state.enemySet === 'redux' ? eventTextFor(ev) : ev.text + (ev.intruders ? ' (Движение чужих: ' + ev.intruders + ')' : '')) : id;
     ask(state, { kind: 'choice', player: p.id, title: 'Верхняя карта событий (только вы это видите)', text: desc,
         options: [{ id: 'top', label: 'Оставить сверху', desc }, { id: 'bottom', label: 'Положить вниз', desc }] }, { op: 'card.riskAssessment.pick', player: p.id });
 };
@@ -851,7 +853,7 @@ OPS['card.tacticalMove'] = (state, step) => {
 OPS['card.tacticalMove.go'] = (state, step) => {
     const p = player(state, step.player);
     const it = step.intr && state.intruders[step.intr];
-    if (it) { it.room = step.answer; log(state, intruderLabel(state, it) + ' следует за охотником.', 'combat'); }
+    if (it) { it.room = step.answer; recordTurretEntry(state, 'intruder', it.uid, step.answer); log(state, intruderLabel(state, it) + ' следует за охотником.', 'combat'); }
     next(state, { op: 'move.direct', player: p.id, dest: step.answer, noNoise: true, then: BACK });
 };
 
@@ -989,6 +991,7 @@ OPS['item.surgeryKit'] = (state, step) => {
     }
     o.discard = o.discard.filter(c => !isContam(c));
     if (o.larva) { o.larva = false; log(state, pname(o) + ': личинка удалена.', 'good'); }
+    removeSlime(state, o);
     removeCarnomorphMutation(state, o);
     if (inst) { p.items = p.items.filter(i => i !== inst); (state.itemDiscard[ITEMS[inst.item].deck] = state.itemDiscard[ITEMS[inst.item].deck] || []).push(inst.item); }
     o.passed = true;

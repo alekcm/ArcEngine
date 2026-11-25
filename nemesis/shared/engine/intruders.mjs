@@ -2,19 +2,36 @@ import { burnChytrids, returnStinkhornToQueen, moveLargeChytrid } from './chytri
 // intruders.mjs — Intruder Phase (burning, attacks), intruder movement rules, bag development.
 
 import { OPS, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, removeIntruder, spawnIntruder,
-    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt, hasWeak, canDestroyDoor } from './core.mjs';
+    INTRUDER_RANK, intruderLabel, orderIndex, drawBagToken, hasAdapt, hasWeak, canDestroyDoor, recordTurretEntry } from './core.mjs';
 import { distances, roomOfKind } from '../ship.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { countAvailable, fieldExpAsk } from './movement.mjs';
+import { isOriginal, originalBagDevelopment, originalBagTokenMeaning, originalTimeStep } from './original.mjs';
 import { VOID_TYPES } from '../data/voidseeders.mjs';
 import { addVoidToken } from './void-bag.mjs';
 import { addCarnomorphToken, hasCarnomorphAdaptation } from './carnomorphs.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 
 OPS['phase.intruder'] = (state) => {
     state.phase = 'intruder';
     log(state, '— Фаза чужих —', 'phase');
     if (state.enemySet === 'carnomorphs') { next(state, { op: 'carnomorph.phaseStart' }); return; }
     if (state.enemySet === 'voidseeders') { next(state, { op: 'void.phaseStart' }); return; }
+    if (isOriginal(state) && state.enemySet === 'redux') {
+        // Original base-game rules, p. 10: 4. Time -> 5. Intruder Attacks -> 6. Fire Damage -> 7. Event Card -> 8. Hive Development.
+        // Expansion sets keep their own (Redux-adapted or printed) phase order.
+        if (originalTimeStep(state)) return;
+        const steps = [];
+        const byPosition = (a, b) => (state.ship.rooms[a].y - state.ship.rooms[b].y) || (state.ship.rooms[a].x - state.ship.rooms[b].x) || a.localeCompare(b);
+        for (const id of Object.keys(state.ship.rooms).sort(byPosition)) {
+            if (!playersInRoom(state, id).length) continue;
+            const list = intrudersIn(state, id).sort((a, b) => INTRUDER_RANK[a.type] - INTRUDER_RANK[b.type]);
+            for (const it of list) steps.push({ op: 'attack', intruder: it.uid, context: 'phase' });
+        }
+        if (steps.length) log(state, 'Чужие атакуют персонажей в своих комнатах.', 'combat');
+        next(state, ...steps, { op: 'original.phaseFire' }, { op: 'phase.event' });
+        return;
+    }
     // 1. Burning
     if (state.enemySet === 'chytrids') burnChytrids(state);
     for (const [id, rs] of Object.entries(state.roomState)) {
@@ -47,7 +64,8 @@ export function checkNest(state) {
 
 /** A Nightmare ignores a closed door until Solid Bulkheads has been revealed. */
 export function ignoresIntruderDoor(state, it) {
-    return (state.enemySet === 'carnomorphs' && hasCarnomorphAdaptation(state, 'substitution')) ||
+    return (state.enemySet === 'carnomorphs' && (hasCarnomorphAdaptation(state, 'substitution') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'changeling')))) ||
         (state.enemySet === 'voidseeders' && VOID_TYPES.includes(it.type) && !(state.voidWeaknesses || []).includes('solidBulkheads'));
 }
 
@@ -83,6 +101,7 @@ export function moveIntrudersByCorridor(state, num, types = null) {
             continue;
         }
         it.room = exit.to;
+        recordTurretEntry(state, 'intruder', it.uid, exit.to);
         log(state, INTRUDER_NAMES[it.type] + ' переходит по коридору ' + num + ' в ' + roomName(state, exit.to) + '.', 'event');
         const h = hyperAttackStep(state, it); if (h) attacks.push(h);
     }
@@ -125,6 +144,7 @@ export function moveOneToward(state, it, targets) {
         return;
     }
     it.room = e.to;
+    recordTurretEntry(state, 'intruder', it.uid, e.to);
     log(state, INTRUDER_NAMES[it.type] + ' движется к ' + pname(best.p) + ': ' + roomName(state, e.to) + '.', 'event');
     return true;
 }
@@ -132,7 +152,9 @@ export function moveOneToward(state, it, targets) {
 /** Repel: move an intruder to a neighbouring room (chooser picks if several). */
 export function repelIntruder(state, it, toRoom, force) {
     if (state.enemySet === 'voidseeders' && it.type === 'lair') return false;
-    if (hasAdapt(state, 'fearless') && !force) { log(state, '🧬 Бесстрашие: ' + INTRUDER_NAMES[it.type] + ' нельзя отогнать.', 'bad'); return false; }
+    const fearless = hasAdapt(state, 'fearless') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'fearless'));
+    if (fearless && !force) { log(state, '🧬 Бесстрашие: ' + INTRUDER_NAMES[it.type] + ' нельзя отогнать.', 'bad'); return false; }
     const exits = state.ship.rooms[it.room].exits;
     const e = toRoom ? exits.find(x => x.to === toRoom) : exits[0];
     if (!e) return false;
@@ -144,16 +166,22 @@ export function repelIntruder(state, it, toRoom, force) {
         return false;
     }
     it.room = e.to;
+    recordTurretEntry(state, 'intruder', it.uid, e.to);
     log(state, INTRUDER_NAMES[it.type] + ' отогнан в ' + roomName(state, e.to) + '.', 'good');
     const h = hyperAttackStep(state, it); if (h) next(state, h);
     return true;
 }
 /** Hyper Aggression adaptation: an intruder entering a room with characters attacks at once. Returns the attack step or null. */
 export function hyperAttackStep(state, it) {
-    if (!hasAdapt(state, 'hyperAggression') || !state.intruders[it.uid] || it.type === 'larva') return null;
-    if (!playersInRoom(state, it.room).length) return null;
+    const aggressive = hasAdapt(state, 'hyperAggression') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'hyperAggression'));
+    if (!aggressive || !state.intruders[it.uid] || it.type === 'larva') return null;
+    const targets = playersInRoom(state, it.room);
+    if (!targets.length) return null;
+    targets.sort((a, b) => a.hand.filter(c => !String(c).startsWith('contam#')).length -
+        b.hand.filter(c => !String(c).startsWith('contam#')).length || orderIndex(state, a) - orderIndex(state, b));
     log(state, '🧬 Гиперагрессия: ' + INTRUDER_NAMES[it.type] + ' немедленно атакует в ' + roomName(state, it.room) + '!', 'combat');
-    return { op: 'attack', intruder: it.uid, context: 'hyper' };
+    return { op: 'attack', intruder: it.uid, player: targets[0].id, context: 'hyper' };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -181,9 +209,23 @@ OPS['bag.develop'] = (state, step) => {
     }
     if (!token) { log(state, 'Развитие мешка: мешок пуст.', 'minor'); return; }
     log(state, '🎒 Развитие мешка: ' + INTRUDER_NAMES[token] + '.', 'event');
+    if (isOriginal(state)) { originalDevelop(state, token); return; }
     if (!step.noFE && fieldExpAsk(state, token, { op: 'bag.develop' })) return;
     bagDevelopment(state, token);
 };
+/** Hive Development under the original rules (p. 11). Tokens leave the bag and only Adults go in. */
+function originalDevelop(state, token) {
+    const add = (type, n = 1) => {
+        let k = 0;
+        for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; }
+        if (k) log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event');
+    };
+    const res = originalBagDevelopment(state, token, add);
+    for (const line of res.notes) log(state, line, 'event');
+    if (state.bagLast) state.bagLast.effect = res.notes.join(' ');
+    next(state, ...res.steps);
+}
+
 export function bagDevelopment(state, token) {
     const added = [], notes = [];
     const add = (type, n = 1) => { let k = 0; for (let i = 0; i < n; i++) if (countAvailable(state, type) > 0) { state.bag.push(type); k++; } if (k) { added.push(INTRUDER_NAMES[type] + ' ×' + k); log(state, 'В мешок добавлено: ' + INTRUDER_NAMES[type] + ' ×' + k + '.', 'event'); } };

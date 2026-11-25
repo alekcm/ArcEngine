@@ -6,8 +6,8 @@ import { buildMenu } from './engine/turn.mjs';
 import { handSlots, fxSequenceEnd } from './engine/core.mjs';
 import { CHARACTERS, FIELD_DATA, ITEMS } from './data/cards.mjs';
 
-const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
-    'intruders', 'enemySet', 'chyGermSlots', 'chyQueenSlots', 'chyDeadStinkhorns', 'chyQueenDead', 'chySporesLeft', 'chyMyceliumLeft', 'chyWeaknesses', 'chyAnalyzed', 'chyOverrun', 'voidDespoilerDead', 'voidLairsDestroyed', 'voidWeaknesses', 'voidAnalyzed', 'carnomorphButcherDead', 'carnomorphAdaptations', 'carnomorphRemoved', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods', 'noiseVariant',
+const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version', 'rules', 'mode', 'round', 'phase', 'firstPlayer', 'current', 'actionsLeft', 'turnSeq', 'ship', 'roomState',
+    'intruders', 'turrets', 'enemySet', 'carnomorphRedux', 'butcherHits', 'butcherDead', 'butcherDeck', 'butcherPlayed', 'chyGermSlots', 'chyQueenSlots', 'chyDeadStinkhorns', 'chyQueenDead', 'chySporesLeft', 'chyMyceliumLeft', 'chyWeaknesses', 'chyAnalyzed', 'chyOverrun', 'voidDespoilerDead', 'voidLairsDestroyed', 'voidWeaknesses', 'voidAnalyzed', 'carnomorphButcherDead', 'carnomorphAdaptations', 'carnomorphRemoved', 'fireLeft', 'malfLeft', 'time', 'selfDestruct', 'destination', 'shipDestroyed', 'podsUnlocked', 'pods', 'noiseVariant',
     'claims', 'lastComputerAction', 'computerCard', 'queenHits', 'queenDead', 'nestEggs', 'nestDestroyed', 'nestDiscovered', 'analyzed', 'adaptations', 'adaptationsRemoved', 'weaknesses', 'weaknessMode', 'seating', 'feats', 'featsUsed', 'result', 'lastEvent'];
 
 /**
@@ -18,6 +18,10 @@ const PUBLIC_KEYS = ['lastRoll', 'lastShot', 'lastCombatAction', 'fx', 'version'
 export function viewFor(state, viewer, logFrom = 0) {
     const v = {};
     for (const k of PUBLIC_KEYS) v[k] = state[k];
+    v.roomState = Object.fromEntries(Object.entries(state.roomState || {}).map(([id, rs]) => [id, { ...rs, itemsLeft: rs.itemsLeft ?? null }]));
+    v.intruders = Object.fromEntries(Object.entries(state.intruders || {}).map(([id, it]) => [id, {
+        ...it, displayHits: state.carnomorphRedux && it.type === 'butcher' ? (state.butcherHits || 0) : it.hits,
+    }]));
     // Older saves stored draw/contamination/damage counts in `n`, overwriting their event id.
     // The retained feed is a consecutive tail of fxSeq, so reconstruct ids even for those saves.
     const effects = state.fx || [];
@@ -30,6 +34,7 @@ export function viewFor(state, viewer, logFrom = 0) {
         green: state.itemDecks.green.length, red: state.itemDecks.red.length, yellow: state.itemDecks.yellow.length, support: state.itemDecks.support.length,
         queen: state.queenDeck.length,
         computer: (state.computerDeck || []).length,
+        ...(state.carnomorphRedux ? { butcher: (state.butcherDeck || []).length } : {}),
         ...(state.enemySet === 'voidseeders' ? { panic: (state.voidPanicDeck || []).length } : {}),
     };
     // Decks the table may look through: the computer's action deck (its cards are public) and the
@@ -41,6 +46,7 @@ export function viewFor(state, viewer, logFrom = 0) {
         event: (state.eventDiscard || []).slice(),
         attack: (state.attackDiscard || []).slice(),
         queen: (state.queenPlayed || []).slice(),
+        ...(state.carnomorphRedux ? { butcher: (state.butcherPlayed || []).slice() } : {}),
         ...(state.enemySet === 'voidseeders' ? { panic: (state.voidPanicDiscard || []).slice() } : {}),
         wound: (state.woundDiscard || []).slice(),
         computer: (state.computerDiscard || []).slice(),
@@ -68,7 +74,7 @@ function playerView(state, p, mine) {
         // Hand slots name what lies in each hand, so they are only sent to their owner (p. 14).
         handSlots: mine ? handSlots(state, p) : undefined,
         knowledge: p.knowledge, knowledgeActive: p.knowledgeActive, signal: p.signal,
-        passed: p.passed, pod: p.pod, larva: p.larva, chySpore: p.chySpore, laika: p.laika || null,
+        passed: p.passed, pod: p.pod, larva: p.larva, slime: !!p.slime, chySpore: p.chySpore, laika: p.laika || null,
         madness: p.madness, mutationMarkers: p.mutationMarkers, hasMutation: !!p.mutationCard, mutationCard: (mine || p.mutationRevealed) ? p.mutationCard : undefined,
         mutationRevealed: p.mutationRevealed,
         handCount: p.hand.length, deckCount: p.deck.length, discardCount: p.discard.length,
