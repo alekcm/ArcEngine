@@ -5,6 +5,7 @@ import { eclosionProcedure } from './actions.mjs';
 import { shuffle } from '../rng.mjs';
 import { OBJECTIVES, COORDINATE_CARDS, DESTINATION_NAMES, ITEMS, FEATS, objectiveTextOf } from '../data/cards.mjs';
 import { CARNOMORPH_MUTATIONS } from '../data/carnomorphs.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { mutationOptions } from './carnomorphs.mjs';
 
 function objectiveOf(p) { return p.objective || p.objectives[0]; }
@@ -134,11 +135,11 @@ OPS['game.carnomorphFinal'] = (state, step) => {
         const offered = state.mutationDeck.splice(0, 2);
         if (!offered.length) { log(state, 'Финальная проверка: колода мутаций пуста.', 'minor'); next(state, after); return; }
         if (offered.length === 1) {
-            p.mutationCard = offered[0]; p.mutationRevealed = false;
+            p.mutationCard = offered[0]; p.mutationRevealed = false; p.mutationRedux = isReduxCarnomorphs(state);
             next(state, { op: 'game.carnomorphDraw', player: p.id, then: after }); return;
         }
         ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Финальная проверка: выберите карту мутации',
-            options: mutationOptions(offered) },
+            options: mutationOptions(offered, state) },
             { op: 'game.carnomorphPick', player: p.id, offered, then: after });
         return;
     }
@@ -146,7 +147,7 @@ OPS['game.carnomorphFinal'] = (state, step) => {
 };
 OPS['game.carnomorphPick'] = (state, step) => {
     const p = state.players[step.player];
-    p.mutationCard = step.answer; p.mutationRevealed = false;
+    p.mutationCard = step.answer; p.mutationRevealed = false; p.mutationRedux = isReduxCarnomorphs(state);
     state.mutationDeck.push(...step.offered.filter(id => id !== step.answer));
     shuffle(state, state.mutationDeck);
     next(state, { op: 'game.carnomorphDraw', player: p.id, then: step.then });

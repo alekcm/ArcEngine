@@ -2,8 +2,9 @@ import { isAdultEquivalent, hasAttackTarget, taserTargets } from './core.mjs';
 // turn.mjs — Player Phase: turns, the main action prompt and dispatch to the action procedures.
 
 import { OPS, ask, next, later, log, player, pname, removeCardFromGame, intrudersIn, inCombat, turnOrder, cardDef, isContam, payableCards,
-    discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards,
+    discardCard, payCost, tileOf, room, roomName, handLimit, heavyCount, loseHealth, gainContamination, drawCards, restoreHealth,
     HEAVY_NAMES, itemDef, healthState, activePlayers, fx, playersInRoom, corridorsOf, computerHere, HIBERNATION_TIME } from './core.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { repairOptions } from './actions.mjs';
 import { ITEMS, dropLocked, CHARACTERS, OBJECTIVES, WOUNDS, objectiveTextOf, hasOpenQuest } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
@@ -45,6 +46,15 @@ OPS['turn.start'] = (state) => {
 };
 
 OPS['turn.choose'] = (state) => {
+    // Escape Master (Redux mutation) resolves a drawn card as a reaction to an attack while
+    // Moving. Card effects finish on this op, so replay the parked attack before the menu or any
+    // other queued reaction can take over.
+    if (state.pendingFleeAttacks && state.pendingFleeAttacks.length) {
+        const step = state.pendingFleeAttacks.shift();
+        const p = step && player(state, step.player);
+        if (p && p.status === 'active') next(state, step);
+        return;
+    }
     // p. 1: an action is fully resolved before the next action may be chosen. Handlers that
     // return to the menu while mandatory procedures are still queued (a Knowledge threshold,
     // a Queen Health card, a hand-capacity check) must not overtake them. Defer the menu to the
@@ -299,6 +309,10 @@ OPS['turn.do'] = (state, step) => {
             return;
         case 'pass':
             p.passed = true;
+            if (isReduxCarnomorphs(state) && p.mutationCard === 'regenerativeTissue') {
+                restoreHealth(state, p, 1);
+                log(state, '🧬 Регенерирующая ткань: ' + pname(p) + ' восстанавливает 1 здоровье после паса.', 'good');
+            }
             log(state, pname(p) + ' пасует.', 'action');
             next(state, { op: 'pass.discard', player: p.id });
             return;

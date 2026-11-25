@@ -11,6 +11,7 @@ import { drawSupport, keepOneOf } from './items.mjs';
 import { dealHits } from './combat.mjs';
 import { FEATS, ITEMS, WOUNDS, DECK_NAMES } from '../data/cards.mjs';
 import { shuffle } from '../rng.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 
 const BREACH_ACTIONS = 3;
 const DAMAGE_CONTROL_TOKENS = 4;
@@ -114,6 +115,10 @@ OPS['feat.conviction.kill'] = (state, step) => {
         }
         if (state.enemySet === 'chytrids') { killChytrid(state, it); next(state, step.then); return; }
         if (state.enemySet === 'carnomorphs') {
+            if (isReduxCarnomorphs(state) && it.type === 'butcher') {
+                next(state, { op: 'butcher.card', player: p.id }, step.then);
+                return;
+            }
             log(state, 'Решимость: ' + intruderLabel(state, it) + ' убит.', 'combat');
             killCarnomorph(state, it);
             next(state, step.then);

@@ -14,6 +14,7 @@ import { CARNOMORPH_EVENT_CARDS } from '../shared/data/carnomorph-events.mjs';
 import { VOID_ATTACK_CARDS, VOID_PANIC_CARDS, VOID_EVENT_CARDS, VOID_WEAKNESSES, VOID_LIMITS, VOID_LEVEL_TYPES } from '../shared/data/voidseeders.mjs';
 import { CHYTRID_ATTACK_CARDS, CHYTRID_EVENT_CARDS, CHYTRID_WEAKNESSES, CHYTRID_LIMITS, CHYTRID_TOKEN_VALUES } from '../shared/data/chytrids.mjs';
 import { EVENT_NOISE_TEXT } from '../shared/data/event-text.mjs';
+import { RX_CARNOMORPH_TOKENS, RX_CARNOMORPH_LIMIT, RX_CARNOMORPH_ATTACK_CARDS, RX_CARNOMORPH_EVENT_CARDS, RX_CARNOMORPH_ADAPTATIONS, RX_CARNOMORPH_MUTATIONS, RX_CARNOMORPH_BUTCHER_CARDS } from '../shared/data/carnomorphs-redux.mjs';
 
 const TOUGH = v => (v === 'retreat' ? '↩ отступление' : String(v));
 const cell = s => String(s == null ? '' : s).replace(/\|/g, '\\|');
@@ -47,6 +48,34 @@ function carnomorphs() {
         'Развитие мешка: синий глодатель — жетон в запас, в мешок 1 глодатель, затем все персонажи вне боя бросают шум; красный — жетон в мешок и фигурки глодателей в отсеки с глодателями, тяжёлыми объектами и в гнездо; падальщик и свежеватель — жетон в мешок и бросок шума всем вне боя; мясник — жетон убрать и разыграть столкновение.',
         'Аналога личинки в дополнении нет; в ячейке текущего уровня лежат 8 жетонов яиц и 3 карты адаптаций.',
     ]));
+    return out.join('\n');
+}
+
+function carnomorphsRedux() {
+    const out = ['## Карноморфы Redux', ''];
+    out.push('Отдельный набор для Redux. Неописанные на листах правила берутся из Redux; классический набор остаётся доступен только в оригинальных правилах.', '');
+    out.push('### Жетоны', '');
+    out.push(table(['Тип', 'Значения в запасе', 'Лимит фигурок'],
+        Object.entries(RX_CARNOMORPH_TOKENS).map(([t, values]) => [INTRUDER_NAMES[t], values.join(', '), RX_CARNOMORPH_LIMIT[t]])));
+    out.push('', 'Мешок: 1 пустой, 5 случайных глодателей и 5 + по одному за игрока случайных жетонов падальщиков, мясных зверей и мясников. Неиспользованные жетоны остаются рядом с планшетом по типам.', '');
+    out.push('### Атаки (20 карт)', '');
+    out.push(table(['ID', 'Название', 'Падальщик', 'Мясной зверь', 'Мясник'],
+        RX_CARNOMORPH_ATTACK_CARDS.map(c => [c.id, c.name, c.lines.shambler.text, c.lines.fleshbeast.text, c.lines.butcher.text])));
+    out.push('', '### События (20 карт)', '');
+    out.push(table(['ID', 'Название', 'Движение', 'Эффект', 'После розыгрыша', 'Шум'],
+        RX_CARNOMORPH_EVENT_CARDS.map(c => [c.id, c.name,
+            c.move.type === 'none' ? 'нет' : c.move.type === 'closest' ? 'к ближайшему персонажу' :
+                c.move.type === 'closestTwice' ? 'дважды к ближайшему персонажу' : 'коридор ' + c.move.num,
+            c.text, c.finish === 'shuffle' ? 'карта и сброс замешиваются' : 'в сброс', 'все'])));
+    out.push('', '### Адаптации (8 карт, 3 в игре)', '');
+    out.push(table(['Ключ', 'Название', 'Текст'],
+        Object.entries(RX_CARNOMORPH_ADAPTATIONS).map(([k, a]) => [k, a.name, a.text])));
+    out.push('', '### Мутации персонажей (12 карт)', '');
+    out.push(table(['Ключ', 'Название', 'Текст карты'],
+        Object.entries(RX_CARNOMORPH_MUTATIONS).map(([k, m]) => [k, m.name, m.infected])));
+    out.push('', '### Здоровье Мясника (12 карт)', '');
+    out.push(table(['ID', 'Название', 'Дополнительный сброс', 'Текст'],
+        RX_CARNOMORPH_BUTCHER_CARDS.map(c => [c.id, c.name, c.extra, c.text])));
     return out.join('\n');
 }
 
@@ -130,7 +159,7 @@ export function dlcReference() {
         '---',
         '',
     ];
-    return [...head, carnomorphs(), '', '---', '', voidseeders(), '', '---', '', chytrids(), ''].join('\n');
+    return [...head, carnomorphs(), '', '---', '', carnomorphsRedux(), '', '---', '', voidseeders(), '', '---', '', chytrids(), ''].join('\n');
 }
 
 const here = dirname(fileURLToPath(import.meta.url));

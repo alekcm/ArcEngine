@@ -21,14 +21,16 @@ import { INTRUDER_NAMES } from '../data/cards.mjs';
 export function surpriseAttack(state, it, p, threshold, opts = {}) {
     if (!it || !p || p.status !== 'active' || p.pod) return false;
     const value = Math.max(1, threshold);
-    const cards = p.hand.length;
+    const shapeshift = state.carnomorphRedux && p.mutationCard === 'shapeshift';
+    const cards = p.hand.length + (shapeshift ? 2 : 0);
     const name = INTRUDER_NAMES[it.type] || it.type;
+    const shown = shapeshift ? p.hand.length + '+2' : String(cards);
     if (cards < value) {
-        log(state, 'Внезапная атака: ' + name + ' нападает на ' + pname(p) + ' — карт в руке ' + cards + ' < ' + value + '.', 'combat');
+        log(state, 'Внезапная атака: ' + name + ' нападает на ' + pname(p) + ' — карт в руке ' + shown + ' < ' + value + '.', 'combat');
         next(state, { op: 'attack', intruder: it.uid, player: p.id, context: 'surprise' });
         return true;
     }
-    log(state, 'Внезапной атаки нет: ' + name + ' не нападает на ' + pname(p) + ' — карт в руке ' + cards + ' ≥ ' + value + '.', 'minor');
+    log(state, 'Внезапной атаки нет: ' + name + ' не нападает на ' + pname(p) + ' — карт в руке ' + shown + ' ≥ ' + value + '.', 'minor');
     return false;
 }
 

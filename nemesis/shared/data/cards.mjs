@@ -923,7 +923,7 @@ export const QUEEN_CARDS = QUEEN_FACES.flatMap(c => Array.from({ length: c.copie
 
 // `crawler` (Ползун) exists only in the original ruleset; a Redux table never meets one.
 export const INTRUDER_NAMES = { larva: 'Личинка', adult: 'Взрослый', drone: 'Дрон', queen: 'Королева', blank: 'Пусто', crawler: 'Ползун',
-    metagorger: 'Глодатель', shambler: 'Падальщик', breeder: 'Свежеватель', butcher: 'Мясник',
+    metagorger: 'Глодатель', shambler: 'Падальщик', breeder: 'Свежеватель', fleshbeast: 'Мясной зверь', butcher: 'Мясник',
     lurker: 'Таящийся', whisperer: 'Шепчущий', creeper: 'Крадущийся', despoiler: 'Гнетущий', lair: 'Логово', stinkhorn: 'Отросток', deathcap: 'Шляпка', chyQueen: 'Королева хитридов' };
 export const INTRUDER_SUPPLY = { larva: 8, crawler: 3, adult: 12, drone: 12, queen: 1 };
 /** Intruder token pools (Queen Health card «add up to 3 Queen tokens» implies 3 Queen tokens). */

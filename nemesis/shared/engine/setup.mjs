@@ -1,7 +1,7 @@
 // setup.mjs — createGame(): builds the initial state from the lobby configuration.
 
 import { seedFromString, shuffle, randInt, pick } from '../rng.mjs';
-import { playableEnemySet, enemySetAllowed, rulesModeOf } from '../dlc.mjs';
+import { playableEnemySet, enemySetAllowed, rulesModeOf, normalizeEnemySet } from '../dlc.mjs';
 import { bindAttackCards } from './original.mjs';
 import { initCarnomorphPack } from './carnomorph-setup.mjs';
 import { initVoidseeders } from './voidseeders.mjs';
@@ -36,16 +36,23 @@ import './endgame.mjs';
 bindAttackCards(ATTACK_CARDS);
 
 export function createGame(config) {
-    // A DLC pack only exists under the original rules, so naming one settles the ruleset when the
-    // caller (a test, a save, a bot) does not say.
+    // The Redux Carnomorph pack is a lobby id that settles the ruleset; classic expansions still
+    // exist only under the original rules.
     const rules = config.rules !== undefined ? rulesModeOf(config.rules)
-        : (config.enemySet && config.enemySet !== 'redux' ? 'original' : 'redux');
-    const enemySet = config.enemySet ?? 'redux';
+        : (config.enemySet === 'carnomorphsRedux' ? 'redux'
+            : (config.enemySet && config.enemySet !== 'redux' ? 'original' : 'redux'));
+    if (config.enemySet === 'carnomorphsRedux' && rules !== 'redux') {
+        throw new RangeError('The Redux Carnomorph pack requires the Redux rules');
+    }
+    const enemySet = normalizeEnemySet(config.enemySet ?? 'redux');
     if (!playableEnemySet(enemySet)) throw new RangeError('Enemy set is not playable: ' + enemySet);
     if (!enemySetAllowed(enemySet, rules)) throw new RangeError('Enemy set ' + enemySet + ' is not playable under the ' + rules + ' rules');
     const seedStr = config.seed || String(Date.now());
     const state = {
         version: 1, enemySet, rules,
+        // Distinguishes the Redux Carnomorph variant from classic engine fixtures that happen to
+        // run with Redux rules; both share `enemySet: 'carnomorphs'` internally.
+        carnomorphRedux: enemySet === 'carnomorphs' && rules === 'redux',
         seedStr, rng: seedFromString(seedStr),
         mode: config.mode === 'random' ? 'random' : 'original',
         round: 0, phase: 'setup',

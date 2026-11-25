@@ -10,6 +10,7 @@ import { isOriginal, originalBagDevelopment, originalBagTokenMeaning, originalTi
 import { VOID_TYPES } from '../data/voidseeders.mjs';
 import { addVoidToken } from './void-bag.mjs';
 import { addCarnomorphToken, hasCarnomorphAdaptation } from './carnomorphs.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 
 OPS['phase.intruder'] = (state) => {
     state.phase = 'intruder';
@@ -63,7 +64,8 @@ export function checkNest(state) {
 
 /** A Nightmare ignores a closed door until Solid Bulkheads has been revealed. */
 export function ignoresIntruderDoor(state, it) {
-    return (state.enemySet === 'carnomorphs' && hasCarnomorphAdaptation(state, 'substitution')) ||
+    return (state.enemySet === 'carnomorphs' && (hasCarnomorphAdaptation(state, 'substitution') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'changeling')))) ||
         (state.enemySet === 'voidseeders' && VOID_TYPES.includes(it.type) && !(state.voidWeaknesses || []).includes('solidBulkheads'));
 }
 
@@ -150,7 +152,9 @@ export function moveOneToward(state, it, targets) {
 /** Repel: move an intruder to a neighbouring room (chooser picks if several). */
 export function repelIntruder(state, it, toRoom, force) {
     if (state.enemySet === 'voidseeders' && it.type === 'lair') return false;
-    if (hasAdapt(state, 'fearless') && !force) { log(state, '🧬 Бесстрашие: ' + INTRUDER_NAMES[it.type] + ' нельзя отогнать.', 'bad'); return false; }
+    const fearless = hasAdapt(state, 'fearless') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'fearless'));
+    if (fearless && !force) { log(state, '🧬 Бесстрашие: ' + INTRUDER_NAMES[it.type] + ' нельзя отогнать.', 'bad'); return false; }
     const exits = state.ship.rooms[it.room].exits;
     const e = toRoom ? exits.find(x => x.to === toRoom) : exits[0];
     if (!e) return false;
@@ -169,10 +173,15 @@ export function repelIntruder(state, it, toRoom, force) {
 }
 /** Hyper Aggression adaptation: an intruder entering a room with characters attacks at once. Returns the attack step or null. */
 export function hyperAttackStep(state, it) {
-    if (!hasAdapt(state, 'hyperAggression') || !state.intruders[it.uid] || it.type === 'larva') return null;
-    if (!playersInRoom(state, it.room).length) return null;
+    const aggressive = hasAdapt(state, 'hyperAggression') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'hyperAggression'));
+    if (!aggressive || !state.intruders[it.uid] || it.type === 'larva') return null;
+    const targets = playersInRoom(state, it.room);
+    if (!targets.length) return null;
+    targets.sort((a, b) => a.hand.filter(c => !String(c).startsWith('contam#')).length -
+        b.hand.filter(c => !String(c).startsWith('contam#')).length || orderIndex(state, a) - orderIndex(state, b));
     log(state, '🧬 Гиперагрессия: ' + INTRUDER_NAMES[it.type] + ' немедленно атакует в ' + roomName(state, it.room) + '!', 'combat');
-    return { op: 'attack', intruder: it.uid, context: 'hyper' };
+    return { op: 'attack', intruder: it.uid, player: targets[0].id, context: 'hyper' };
 }
 
 // ---------------------------------------------------------------------------------------------

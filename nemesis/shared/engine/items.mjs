@@ -11,6 +11,7 @@ import { OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, r
 import { ITEMS, WOUNDS, DECK_NAMES, canLoadWith, INTRUDER_NAMES } from '../data/cards.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 import { shuffle } from '../rng.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { repelIntruder, checkNest } from './intruders.mjs';
 import { startSelfDestruct, stopSelfDestruct } from './events.mjs';
 import { drawItem, giveItem, healChoice, removeOneContam } from './rooms.mjs';
@@ -461,7 +462,8 @@ OPS['item.detonate'] = (state, step) => {
                 else log(state, 'Гнетущий защищён логовами и не уничтожен взрывом.', 'combat');
             } else {
                 log(state, '✔ ' + INTRUDER_NAMES[it.type] + ' уничтожен детонатором!', 'good');
-                if (state.enemySet === 'carnomorphs') killCarnomorph(state, it);
+                if (isReduxCarnomorphs(state) && it.type === 'butcher') { next(state, { op: 'butcher.card', player: p.id }); }
+                else if (state.enemySet === 'carnomorphs') killCarnomorph(state, it);
                 else if (state.enemySet === 'chytrids') killChytrid(state, it);
                 else removeIntruder(state, it.uid, true);
             }

@@ -10,6 +10,8 @@ import { EVENT_CARDS, INTRUDER_NAMES, ITEMS } from '../data/cards.mjs';
 import { ORIGINAL_EVENT_BY_ID } from '../data/original-cards.mjs';
 import { ROOM_TILES, roomOfKind } from '../ship.mjs';
 import { CARNOMORPH_EVENT_BY_ID } from '../data/carnomorph-events.mjs';
+import { RX_CARNOMORPH_EVENT_BY_ID } from '../data/carnomorphs-redux.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { CHYTRID_EVENT_BY_ID } from '../data/chytrids.mjs';
 import { VOID_EVENT_BY_ID } from '../data/voidseeders.mjs';
 import { eventTextFor } from '../data/event-text.mjs';
@@ -20,7 +22,10 @@ import { isOriginal, originalDrawPhase } from './original.mjs';
 import { infectionProcedure, eclosionProcedure } from './actions.mjs';
 
 const EVENT_BY_ID = Object.fromEntries(EVENT_CARDS.map(e => [e.id, e]));
-const eventById = (state, id) => state.enemySet === 'carnomorphs' ? CARNOMORPH_EVENT_BY_ID[id] : state.enemySet === 'voidseeders' ? VOID_EVENT_BY_ID[id] : state.enemySet === 'chytrids' ? CHYTRID_EVENT_BY_ID[id] : (ORIGINAL_EVENT_BY_ID[id] || EVENT_BY_ID[id]);
+const eventById = (state, id) => state.enemySet === 'carnomorphs'
+    ? (isReduxCarnomorphs(state) ? RX_CARNOMORPH_EVENT_BY_ID[id] : CARNOMORPH_EVENT_BY_ID[id])
+    : state.enemySet === 'voidseeders' ? VOID_EVENT_BY_ID[id]
+        : state.enemySet === 'chytrids' ? CHYTRID_EVENT_BY_ID[id] : (ORIGINAL_EVENT_BY_ID[id] || EVENT_BY_ID[id]);
 
 const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 /** What the intruders do on this card, in one line. */
@@ -129,6 +134,7 @@ OPS['event.movement'] = (state, step) => {
     // her nest, a figure stepping into a vent) stay exactly as that effect says.
     if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num, isOriginal(state) && state.enemySet === 'redux' ? ev.move.types : null);
     else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
+    else if (ev.move.type === 'closestTwice') attacks = moveIntrudersToClosest(state).concat(moveIntrudersToClosest(state));
     if (state.enemySet === 'voidseeders') {
         next(state, ...attacks, { op: 'void.eventEffect', id }, { op: 'event.noise', id }, { op: 'event.finish', id }, { op: 'void.dissipate' }, { op: 'phase.cleanup' });
         return;
@@ -541,6 +547,10 @@ OPS['event.finish'] = (state, step) => {
             state.eventDeck.push(step.id);
             shuffle(state, state.eventDeck);
             log(state, 'Карта события замешана обратно в колоду.', 'minor');
+        } else if (ev.finish === 'shuffle') {
+            state.eventDeck.push(...state.eventDiscard.splice(0), step.id);
+            shuffle(state, state.eventDeck);
+            log(state, 'Карта события и сброс замешаны обратно в колоду.', 'minor');
         } else state.eventDiscard.push(step.id);
         next(state, { op: 'bag.develop' });
         return;
@@ -582,6 +592,7 @@ OPS['phase.cleanup'] = (state) => {
     if (!isOriginal(state)) for (const p of state.players) {
         if (p.status !== 'active') continue;
         let limit = drawLimit(p);
+        if (isReduxCarnomorphs(state) && p.mutationCard === 'adaptation') limit++;
         if (tileOf(state, p.room) === 'cafeteria' && !room(state, p.room).malfunction && !inCombat(state, p)) limit++;
         const need = Math.max(0, limit - p.hand.length);
         if (need) drawCards(state, p, need);

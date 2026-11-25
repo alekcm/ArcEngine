@@ -1,6 +1,7 @@
 import { transmitChySpore, placeMycelium, hasChyWeakness, moveLargeChytrid } from './chytrids.mjs';
 import { bagTokenLabel } from '../bag-tokens.mjs';
 import { hasCarnomorphAdaptation } from './carnomorphs.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 // movement.mjs — Move / Careful Move, exploration, noise rolls and encounters.
 
 import { payCost, OPS, ask, next, log, player, pname, intrudersIn, playersInRoom, room, roomName, tileOf, placeNoise, corridorsOf,
@@ -119,7 +120,7 @@ OPS['explore'] = (state, step) => {
                 next(state, { op: 'original.exploreDanger', player: p.id, room: step.room });
             } else if (p && p.slime) {
                 log(state, '🟢 Слизь: «Тишина» превращается в «Опасность»!', 'bad');
-                next(state, { op: 'noise.roll', player: p.id, room: step.room, forced: 'danger', rerolled: true });
+                next(state, { op: 'noise.roll', player: p.id, room: step.room, forced: 'danger', rerolled: true, source: 'movement' });
             } else {
                 log(state, 'Жетон разведки «Тишина» — бросок шума при этом входе не делается.', 'minor');
             }
@@ -129,7 +130,7 @@ OPS['explore'] = (state, step) => {
             if (p) {
                 log(state, 'Жетон разведки «Опасность»!', 'event');
                 if (isOriginal(state) && state.enemySet === 'redux') next(state, { op: 'original.exploreDanger', player: p.id, room: step.room });
-                else next(state, { op: 'noise.roll', player: p.id, room: step.room, forced: 'danger', rerolled: true });
+                else next(state, { op: 'noise.roll', player: p.id, room: step.room, forced: 'danger', rerolled: true, source: 'movement' });
             }
             break;
         case 'door': {
@@ -174,12 +175,12 @@ OPS['move.afterExplore'] = (state, step) => {
             { op: 'noise.place', player: p.id, room: p.room, then });
         return;
     }
-    next(state, { op: 'noise.roll', player: p.id, room: p.room }, then);
+    next(state, { op: 'noise.roll', player: p.id, room: p.room, source: 'movement' }, then);
 };
 OPS['noise.reroll'] = (state, step) => {
     const p = player(state, step.player);
-    if (step.answer !== 'yes') { next(state, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, forced: step.first, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, then: step.then }); return; }
-    payCost(state, p, 1, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, then: step.then }, 'Сканер движения: сброс карты');
+    if (step.answer !== 'yes') { next(state, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, forced: step.first, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, source: step.source, then: step.then }); return; }
+    payCost(state, p, 1, { op: 'noise.roll', player: p.id, room: step.room, rerolled: true, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, source: step.source, then: step.then }, 'Сканер движения: сброс карты');
 };
 OPS['noise.chyReroll'] = (state, step) => {
     const chosen = { ...step.noise, op: 'noise.roll', answer: undefined };
@@ -224,7 +225,7 @@ function resolveOriginalDanger(state, step, fallback) {
     const targets = originalDangerTargets(state, step.room);
     if (!targets.length) {
         if (fallback === 'noise') {
-            next(state, { op: 'noise.roll', player: step.player, room: step.room });
+            next(state, { op: 'noise.roll', player: step.player, room: step.room, source: 'movement' });
         } else {
             for (const c of corridorsOf(state, step.room)) placeNoise(state, c.id);
             log(state, 'Опасность: рядом нет чужих — шум во всех коридорах вокруг.', 'noise');
@@ -274,10 +275,10 @@ OPS['noise.roll'] = (state, step) => {
         r = 'danger';
         log(state, '🟢 Слизь: «Тишина» превращается в «Опасность»!', 'bad');
     }
-    if (state.enemySet === 'carnomorphs' && !step.laika && !step.mutationOffered && p.mutationCard === 'senses' && p.hand.some(isContam)) {
+    if (state.enemySet === 'carnomorphs' && !step.laika && !step.mutationOffered && (p.mutationCard === 'senses' || (isReduxCarnomorphs(state) && p.mutationCard === 'sharpenedSenses' && step.source === 'movement')) && p.hand.some(isContam)) {
         ask(state, { kind: 'choice', secret: !p.mutationRevealed, reaction: true, player: p.id,
             title: 'Использовать мутацию после броска шума?', options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }] },
-            { op: 'mutation.offerSenses', player: p.id, first: r, noise: { ...step, room: roomId, mutationOffered: true } });
+            { op: 'mutation.offerSenses', player: p.id, trigger: p.mutationCard, first: r, noise: { ...step, room: roomId, mutationOffered: true } });
         return;
     }
     if (!step.laika && state.enemySet === 'chytrids' && room(state, roomId).chyMycelium && hasChyWeakness(state, 'slowReaction') && !step.chyOffered) {
@@ -292,7 +293,7 @@ OPS['noise.roll'] = (state, step) => {
     if (scanner && !step.rerolled && p.hand.length && r !== 'silence') {
         ask(state, { kind: 'choice', player: p.id, title: 'Сканер движения: сбросить 1 карту и перебросить бросок шума? (второй результат обязателен)',
             options: [{ id: 'yes', label: 'Перебросить' }, { id: 'no', label: 'Оставить' }] },
-            { op: 'noise.reroll', player: p.id, room: roomId, first: r, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, then: step.then });
+            { op: 'noise.reroll', player: p.id, room: roomId, first: r, mutationOffered: step.mutationOffered, chyOffered: step.chyOffered, allowCombat: step.allowCombat, source: step.source, then: step.then });
         return;
     }
     if (r === 'silence') return;
@@ -307,6 +308,11 @@ OPS['noise.roll'] = (state, step) => {
     if (r === 'danger') {
         if (isOriginal(state) && state.enemySet === 'redux') {
             next(state, { op: 'original.noiseDanger', player: p.id, room: roomId });
+            return;
+        }
+        if (isReduxCarnomorphs(state) && p.mutationCard === 'scream' && !step.laika) {
+            for (const c of corridorsOf(state, roomId)) placeNoise(state, c.id);
+            log(state, '🧬 Крик: «Опасность» не приводит карноморфов в отсек — шум во всех коридорах вокруг.', 'good');
             return;
         }
         const holder = playersInRoom(state, roomId).find(o => o.hand.some(c => (cardDef(state, c) || {}).effect === 'fdPredictable'));

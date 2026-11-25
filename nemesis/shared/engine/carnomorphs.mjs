@@ -2,39 +2,61 @@
 // are integrated; these functions operate on the normal, JSON-serializable game state.
 import { randInt, shuffle } from '../rng.mjs';
 import { CARNOMORPH_ATTACK_CARDS, CARNOMORPH_ATTACK_BY_ID, CARNOMORPH_ADAPTATIONS, CARNOMORPH_MUTATIONS } from '../data/carnomorphs.mjs';
-import { repelIntruder } from './intruders.mjs';
+import { RX_CARNOMORPH_ATTACK_CARDS, RX_CARNOMORPH_ATTACK_BY_ID, RX_CARNOMORPH_ADAPTATIONS, RX_CARNOMORPH_MUTATIONS, RX_CARNOMORPH_NEXT, RX_CARNOMORPH_LIMIT, RX_CARNOMORPH_BUTCHER_CARDS } from '../data/carnomorphs-redux.mjs';
+import { repelIntruder, moveOneToward } from './intruders.mjs';
 import { surpriseAttack, encounterLine } from './surprise.mjs';
-import { initialExpansionBag } from '../dlc.mjs';
+import { initialExpansionBag, isReduxCarnomorphs } from '../dlc.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
+import { roomOfKind } from '../ship.mjs';
 import { faceValue } from './original.mjs';
 import { OPS, ask, log, next, intrudersIn, playersInRoom, room, roomName, tileOf, spawnIntruder, removeIntruder, loseHealth, gainContamination, killPlayer, turnOrder, corridorsOf, placeNoise, cardDef, HIBERNATION_TIME, SELF_DESTRUCT_LENGTH, destroyShip, fx } from './core.mjs';
 
 const RANK = { butcher: 0, breeder: 1, shambler: 2, metagorger: 3 };
 const NEXT = { metagorger: 'shambler', shambler: 'breeder', breeder: 'butcher' };
 const LIMIT = { metagorger: 8, shambler: 8, breeder: 3, butcher: 1 };
+const RX_RANK = { butcher: 0, fleshbeast: 1, shambler: 2, metagorger: 3 };
+
+const nextOf = (state, type) => isReduxCarnomorphs(state) ? RX_CARNOMORPH_NEXT[type] : NEXT[type];
+const limitOf = (state, type) => isReduxCarnomorphs(state) ? RX_CARNOMORPH_LIMIT[type] : LIMIT[type];
+const rankOf = (state, type) => isReduxCarnomorphs(state) ? RX_RANK[type] : RANK[type];
+const adaptationDefs = state => isReduxCarnomorphs(state) ? RX_CARNOMORPH_ADAPTATIONS : CARNOMORPH_ADAPTATIONS;
+const mutationDefs = state => isReduxCarnomorphs(state) ? RX_CARNOMORPH_MUTATIONS : CARNOMORPH_MUTATIONS;
+const rxThird = state => isReduxCarnomorphs(state) ? 'fleshbeast' : 'breeder';
 
 /** Initialize pack-specific counters and physical token supply; does not install the decks. */
 export function initCarnomorphs(state) {
-    const { bag, supply } = initialExpansionBag('carnomorphs', state.players.map(p => p.id), state);
+    const { bag, supply } = initialExpansionBag('carnomorphs', state.players.map(p => p.id), state,
+        isReduxCarnomorphs(state) ? 'redux' : 'original');
     state.bag = bag;
     state.carnomorphSupply = supply;
     state.carnomorphButcherDead = false;
     state.carnomorphRevealed = [];
-    const cards = shuffle(state, Object.keys(CARNOMORPH_ADAPTATIONS)).slice(0, 3);
-    state.secret.carnomorphAdaptations = { shambler: cards[0], breeder: cards[1], butcher: cards[2] };
-    state.carnomorphAdaptations = { shambler: null, breeder: null, butcher: null };
+    const third = rxThird(state);
+    const cards = shuffle(state, Object.keys(adaptationDefs(state))).slice(0, 3);
+    state.secret.carnomorphAdaptations = { shambler: cards[0], [third]: cards[1], butcher: cards[2] };
+    state.carnomorphAdaptations = { shambler: null, [third]: null, butcher: null };
     state.carnomorphRemoved = [];
     state.adaptations = []; state.weaknessMode = false; state.weaknesses = [];
-    state.mutationDeck = shuffle(state, Object.keys(CARNOMORPH_MUTATIONS));
+    if (isReduxCarnomorphs(state)) initButcherHealth(state);
+    state.mutationDeck = shuffle(state, Object.keys(mutationDefs(state)));
     state.mutationDiscard = [];
-    for (const p of state.players) { p.mutationCard = null; p.mutationRevealed = false; p.mutationMarkers = 0; }
+    for (const p of state.players) { p.mutationCard = null; p.mutationRevealed = false; p.mutationMarkers = 0; p.mutationRedux = isReduxCarnomorphs(state); }
     state.nestEggs = 8;
 }
 
-/** Add one token from the supply; Metagorgers must use red tokens before blue ones. */
+/** Butcher Health uses the Redux Queen procedure: 6 hits, a 12-card deck, and a death flag. */
+export function initButcherHealth(state) {
+    state.butcherHits = 0;
+    state.butcherDeck = shuffle(state, RX_CARNOMORPH_BUTCHER_CARDS.map(c => c.id));
+    state.butcherPlayed = [];
+    state.butcherDead = false;
+}
+
+/** Add one token from the supply; classic Metagorgers must use red tokens before blue ones. */
 export function addCarnomorphToken(state, type) {
     const supply = state.carnomorphSupply;
-    const types = type === 'metagorger' ? ['redMetagorger', 'blueMetagorger'] : [type];
+    const types = isReduxCarnomorphs(state) ? [type]
+        : type === 'metagorger' ? ['redMetagorger', 'blueMetagorger'] : [type];
     for (const t of types) {
         const indices = supply.map((x, i) => x.type === t ? i : -1).filter(i => i >= 0);
         if (!indices.length) continue;
@@ -54,12 +76,12 @@ function revealType(state, type) {
         const card = state.secret.carnomorphAdaptations && state.secret.carnomorphAdaptations[type];
         if (card && !(state.carnomorphRemoved || []).includes(type)) {
             state.carnomorphAdaptations[type] = card;
-            log(state, '🧬 ' + INTRUDER_NAMES[type] + ': раскрыта адаптация «' + CARNOMORPH_ADAPTATIONS[card].name + '».', 'event');
+            log(state, '🧬 ' + INTRUDER_NAMES[type] + ': раскрыта адаптация «' + adaptationDefs(state)[card].name + '».', 'event');
         }
     }
 }
 export function spawnCarnomorph(state, type, roomId) {
-    if (!Object.hasOwn(LIMIT, type)) throw new RangeError('Unknown Carnomorph: ' + type);
+    if (limitOf(state, type) === undefined) throw new RangeError('Unknown Carnomorph: ' + type);
     const it = spawnIntruder(state, type, roomId);
     if (it) revealType(state, type);
     return it;
@@ -67,7 +89,7 @@ export function spawnCarnomorph(state, type, roomId) {
 
 /** Removal after a lethal attack: do not take tokens from the bag for the spawned Shamblers. */
 export function killCarnomorph(state, it) {
-    if (!it || !state.intruders[it.uid] || !Object.hasOwn(LIMIT, it.type)) return;
+    if (!it || !state.intruders[it.uid] || limitOf(state, it.type) === undefined) return;
     const { type, room: roomId, uid } = it;
     removeIntruder(state, uid, false);
     if (type === 'butcher') state.carnomorphButcherDead = true;
@@ -75,7 +97,7 @@ export function killCarnomorph(state, it) {
         room(state, roomId).objects.push({ type: 'carcass' });
         state.carcassCount = (state.carcassCount || 0) + 1;
     }
-    const count = type === 'butcher' ? 2 : type === 'breeder' ? 1 : 0;
+    const count = type === 'butcher' ? 2 : type === rxThird(state) ? 1 : 0;
     for (let i = 0; i < count; i++) spawnCarnomorph(state, 'shambler', roomId);
 }
 
@@ -110,9 +132,9 @@ function feedOne(state, it, onlyHeavy = false) {
     const roomId = it.room, food = foodInRoom(state, roomId, it, onlyHeavy);
     if (!food) return false;
     it.hits = 0;
-    const evolved = NEXT[it.type];
+    const evolved = nextOf(state, it.type);
     const available = evolved && !(evolved === 'butcher' && state.carnomorphButcherDead) &&
-        Object.values(state.intruders).filter(other => other.type === evolved).length < LIMIT[evolved];
+        Object.values(state.intruders).filter(other => other.type === evolved).length < limitOf(state, evolved);
     if (available) { it.type = evolved; revealType(state, evolved); }
     eat(state, roomId, food);
     log(state, '🍖 Карноморф кормится в ' + roomName(state, roomId) + ': ' + INTRUDER_NAMES[it.type] + '.', 'event');
@@ -121,8 +143,8 @@ function feedOne(state, it, onlyHeavy = false) {
 function orderedCarnomorphs(state) {
     const rooms = Object.keys(state.ship.rooms).sort((a, b) =>
         state.ship.rooms[a].y - state.ship.rooms[b].y || state.ship.rooms[a].x - state.ship.rooms[b].x || a.localeCompare(b));
-    return rooms.flatMap(roomId => intrudersIn(state, roomId).filter(it => Object.hasOwn(RANK, it.type))
-        .sort((a, b) => RANK[a.type] - RANK[b.type]).map(it => it.uid));
+    return rooms.flatMap(roomId => intrudersIn(state, roomId).filter(it => rankOf(state, it.type) !== undefined)
+        .sort((a, b) => rankOf(state, a.type) - rankOf(state, b.type)).map(it => it.uid));
 }
 /** Feed each original miniature at most once, in printed priority order, outside combat. */
 export function feedCarnomorphs(state) {
@@ -141,7 +163,7 @@ export function hasCarnomorphAdaptation(state, id) {
 /** Lab spaces are bound to monster types: corpse/Shambler, carcass/Breeder, egg/Butcher. */
 export function analyzeCarnomorphAdaptation(state, type) {
     const normalized = type === 'charCorpse' ? 'corpse' : type;
-    const rank = { corpse: 'shambler', carcass: 'breeder', egg: 'butcher' }[normalized];
+    const rank = { corpse: 'shambler', carcass: rxThird(state), egg: 'butcher' }[normalized];
     if (!rank) return false;
     state.analyzed[normalized] = true;
     const id = state.carnomorphAdaptations && state.carnomorphAdaptations[rank];
@@ -156,20 +178,21 @@ export function analyzeCarnomorphAdaptation(state, type) {
     state.carnomorphAdaptations[rank] = null;
     (state.carnomorphRemoved || (state.carnomorphRemoved = [])).push(rank);
     state.adaptationsRemoved = (state.adaptationsRemoved || 0) + 1;
-    log(state, id ? '🧬 Анализ: адаптация «' + CARNOMORPH_ADAPTATIONS[id].name + '» удалена.' : '🧬 Анализ: закрытая адаптация удалена.', 'good');
+    log(state, id ? '🧬 Анализ: адаптация «' + adaptationDefs(state)[id].name + '» удалена.' : '🧬 Анализ: закрытая адаптация удалена.', 'good');
     return true;
 }
 
 /** Install the twenty printed physical attack cards. This is deliberately separate from init,
  *  so a partially wired pack can never silently replace a live Redux deck. */
 export function initCarnomorphAttackDeck(state) {
-    state.attackDeck = shuffle(state, CARNOMORPH_ATTACK_CARDS.map(c => c.id));
+    const deck = isReduxCarnomorphs(state) ? RX_CARNOMORPH_ATTACK_CARDS : CARNOMORPH_ATTACK_CARDS;
+    state.attackDeck = shuffle(state, deck.map(c => c.id));
     state.attackDiscard = [];
 }
 
 /** A damage check consumes an attack card. An arrow retreats instead of killing. */
 export function carnPowerCheck(state, it, hits) {
-    if (!it || !state.intruders[it.uid] || !Object.hasOwn(LIMIT, it.type)) return null;
+    if (!it || !state.intruders[it.uid] || limitOf(state, it.type) === undefined) return null;
     if (!Number.isInteger(hits) || hits < 1) throw new RangeError('Damage must be a positive integer');
     if (!state.attackDeck.length) state.attackDeck = shuffle(state, state.attackDiscard.splice(0));
     const id = state.attackDeck.shift();
@@ -196,8 +219,15 @@ export function carnPowerCheck(state, it, hits) {
     return { card: id, result: 'survived' };
 }
 
+/** Redux attack cards have no toughness: each printed target line is the whole effect. */
+export function rxCarnomorphAttackEffects(card, it) {
+    const line = card.lines && card.lines[it.type];
+    return line ? [...line.fx] : [{ op: 'rxMiss' }];
+}
+
 /** Translate an attack card to the shared combat interpreter, including its reaction window. */
 export function carnomorphAttackEffects(card, it, p) {
+    if (card.lines) return rxCarnomorphAttackEffects(card, it);
     if (!card.targets.includes(it.type)) return [{ op: 'carnoMiss' }];
     switch (card.effect) {
         case 'vomit': return [{ op: 'contam' }, { op: 'carnoCarcass' }];
@@ -211,7 +241,8 @@ export function carnomorphAttackEffects(card, it, p) {
     }
 }
 
-const tokenRank = { redMetagorger: 'metagorger', blueMetagorger: 'metagorger', shambler: 'shambler', breeder: 'breeder', butcher: 'butcher' };
+const tokenRank = { redMetagorger: 'metagorger', blueMetagorger: 'metagorger', metagorger: 'metagorger',
+    shambler: 'shambler', breeder: 'breeder', fleshbeast: 'fleshbeast', butcher: 'butcher' };
 function allNoiseSteps(state) {
     return turnOrder(state).filter(p => p.status === 'active' && !p.pod && !intrudersIn(state, p.room).length)
         .map(p => ({ op: 'noise.roll', player: p.id, room: p.room }));
@@ -225,10 +256,14 @@ export function resolveCarnomorphEncounter(state, step) {
     const token = step.token;
     if (!token) return;
     if (token === 'blank') {
-        if (!state.bag.length) addCarnomorphToken(state, 'metagorger');
+        // Redux 7.7: no Intruder, return the Blank, then add up to two Adult tokens to the bag.
+        // Redux's Adult slot is the Shambler; the classic pack uses its Adult tokens.
         state.bag.push('blank');
-        noiseAround(state, step.room);
-        if (state.bagLast) state.bagLast.effect = 'Пустой жетон: шум во всех коридорах.';
+        const adult = isReduxCarnomorphs(state) ? 'shambler' : 'adult';
+        let added = 0;
+        for (let i = 0; i < 2; i++) if (addCarnomorphToken(state, adult)) added++;
+        if (!intrudersIn(state, step.room).length) noiseAround(state, step.room);
+        if (state.bagLast) state.bagLast.effect = 'Пустой жетон: чужих нет, в мешок добавлено ' + added + ' взрослых жетонов.';
         return;
     }
     const type = tokenRank[token.type];
@@ -257,11 +292,65 @@ OPS['carnomorph.encounterSurprise'] = (state, step) => {
 
 /** Surprise value of a Carnomorph token, with the pack's Adaptation applied. */
 export function carnomorphSurpriseValue(state, value) {
-    return Math.max(1, value + (hasCarnomorphAdaptation(state, 'acceleration') ? 1 : 0));
+    const boost = hasCarnomorphAdaptation(state, 'acceleration') ||
+        (isReduxCarnomorphs(state) && hasCarnomorphAdaptation(state, 'quickening')) ? 1 : 0;
+    return Math.max(1, value + boost);
 }
 function carnomorphSurpriseNote(state, value) {
-    return hasCarnomorphAdaptation(state, 'acceleration') ? '«Ускорение»: порог +1.' : '';
+    return carnomorphSurpriseValue(state, value) !== value ? '«Ускорение»: порог +1.' : '';
 }
+
+/** Redux bag development, with metagorger/shambler/fleshbeast/butcher in the base game's
+ *  larva/adult/drone/queen slots. The number on the reverse of a token is never used here. */
+function rxDevelopCarnomorphBag(state, token, type) {
+    if (type === 'blank') {
+        for (let i = 0; i < 2; i++) addCarnomorphToken(state, 'shambler');
+        state.bag.push('blank');
+        if (state.bagLast) state.bagLast.effect = 'Пустой жетон: в мешок добавлено 2 жетона падальщика.';
+        return [];
+    }
+    if (type === 'metagorger') {
+        state.carnomorphSupply.push(token);
+        addCarnomorphToken(state, 'fleshbeast');
+        if (state.bagLast) state.bagLast.effect = 'Глодатель: в мешок добавлен жетон мясного зверя.';
+        return [];
+    }
+    if (type === 'shambler' || type === 'fleshbeast') {
+        state.carnomorphSupply.push(token);
+        addCarnomorphToken(state, 'butcher');
+        if (state.bagLast) state.bagLast.effect = 'В мешок добавлен жетон мясника.';
+        return [];
+    }
+    if (type === 'butcher') {
+        if (state.butcherDead || state.carnomorphButcherDead) {
+            // Redux's dead Queen token is removed from the game rather than returned to its pool.
+            addCarnomorphToken(state, 'fleshbeast');
+            if (state.bagLast) state.bagLast.effect = 'Мясник мёртв: жетон убран из игры, в мешок добавлен мясной зверь.';
+            return [];
+        }
+        state.carnomorphSupply.push(token);
+        const butcher = Object.values(state.intruders).find(it => it.type === 'butcher');
+        if (!butcher) {
+            const hibernatorium = roomOfKind(state.ship, 'hibernatorium');
+            const spawned = hibernatorium ? spawnCarnomorph(state, 'butcher', hibernatorium.id) : null;
+            if (state.bagLast) state.bagLast.effect = 'Мясник пробуждён в Гибернаториуме (без внезапной атаки).';
+            return spawned ? [{ op: 'carnomorph.butcherActivate', intruder: spawned.uid }] : [];
+        }
+        if (state.bagLast) state.bagLast.effect = 'Мясник активируется.';
+        return [{ op: 'carnomorph.butcherActivate', intruder: butcher.uid }];
+    }
+    throw new Error('Invalid Redux Carnomorph token: ' + type);
+}
+OPS['carnomorph.butcherActivate'] = (state, step) => {
+    const it = state.intruders[step.intruder];
+    if (!it || it.type !== 'butcher') return;
+    if (playersInRoom(state, it.room).length) {
+        next(state, { op: 'attack', intruder: it.uid, context: 'surprise' });
+        return;
+    }
+    const targets = state.players.filter(p => p.status === 'active' && !p.pod);
+    if (targets.length && moveOneToward(state, it, targets)) log(state, 'Мясник движется к ближайшему персонажу.', 'event');
+};
 
 /** Resolve the expansion's bag-development token, returning queued actions in execution order. */
 export function developCarnomorphBag(state, token) {
@@ -269,6 +358,7 @@ export function developCarnomorphBag(state, token) {
     // Old saves and a few test fixtures still carry the token as a bare type name. The rules only
     // care about the type here, so accept both shapes instead of dropping the token's effect.
     const type = typeof token === 'string' ? token : token.type;
+    if (isReduxCarnomorphs(state)) return rxDevelopCarnomorphBag(state, token, type);
     if (type === 'blank') {
         for (const it of Object.values(state.intruders)) {
             if (it.type !== 'shambler' || playersInRoom(state, it.room).length) continue;
@@ -333,10 +423,14 @@ export function removeCarnomorphMutation(state, p) {
  *  The physical card is picked by looking at it: the client draws the card face (`art/…`) and
  *  prints «ЗАРАЖЁН» in red and «НЕ ЗАРАЖЁН» in green, exactly like the card itself, instead of one
  *  grey line of text. */
-export function mutationOptions(ids) {
+export function mutationOptions(ids, state) {
+    const redux = !!(state && isReduxCarnomorphs(state));
+    const defs = redux ? RX_CARNOMORPH_MUTATIONS : CARNOMORPH_MUTATIONS;
     return ids.map(id => {
-        const card = CARNOMORPH_MUTATIONS[id];
-        return { id, label: card.name, art: 'carnomorph/mutation/' + id, infected: card.infected, clean: card.clean };
+        const card = defs[id];
+        return { id, label: card.name,
+            art: (redux ? 'carnomorph/redux/mutation/' : 'carnomorph/mutation/') + id,
+            infected: card.infected, clean: card.clean, redux };
     });
 }
 
@@ -346,14 +440,14 @@ OPS['carnomorph.gainCard'] = (state, step) => {
     if (!p || p.status !== 'active' || p.mutationCard) return;
     const cards = state.mutationDeck.splice(0, 2);
     if (!cards.length) { log(state, 'Колода мутаций пуста.', 'minor'); return; }
-    if (cards.length === 1) { p.mutationCard = cards[0]; p.mutationRevealed = false; return; }
+    if (cards.length === 1) { p.mutationCard = cards[0]; p.mutationRevealed = false; p.mutationRedux = isReduxCarnomorphs(state); return; }
     ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Выберите карту мутации',
-        options: mutationOptions(cards) },
+        options: mutationOptions(cards, state) },
         { op: 'carnomorph.pickMutation', player: p.id, cards });
 };
 OPS['carnomorph.pickMutation'] = (state, step) => {
     const p = state.players[step.player];
-    p.mutationCard = step.answer; p.mutationRevealed = false;
+    p.mutationCard = step.answer; p.mutationRevealed = false; p.mutationRedux = isReduxCarnomorphs(state);
     state.mutationDeck.push(...step.cards.filter(id => id !== step.answer));
     shuffle(state, state.mutationDeck);
     log(state, p.name + ' получает карту мутации лицом вниз.', 'event');
@@ -405,14 +499,29 @@ OPS['carnomorph.phaseAct'] = (state, step) => {
     if (!it) return;
     const combat = playersInRoom(state, it.room).length > 0;
     if (!combat) { feedOne(state, it); return; }
-    if (hasCarnomorphAdaptation(state, 'ravenous')) feedOne(state, it, true);
+    if (hasCarnomorphAdaptation(state, isReduxCarnomorphs(state) ? 'voracious' : 'ravenous')) feedOne(state, it, true);
     if (state.intruders[it.uid] && playersInRoom(state, it.room).length)
         next(state, { op: 'attack', intruder: it.uid, context: 'phase' });
 };
 OPS['carnomorph.phaseFire'] = (state) => {
     for (const [id, rs] of Object.entries(state.roomState)) {
         if (!rs.fire) continue;
-        if (!hasCarnomorphAdaptation(state, 'fireResistance')) {
+        if (isReduxCarnomorphs(state)) {
+            // Redux fire is ordinary damage; there is no Carnomorph toughness card to draw.
+            for (const it of intrudersIn(state, id)) {
+                if (!state.intruders[it.uid]) continue;
+                if (it.type === 'butcher') {
+                    state.butcherHits = (state.butcherHits || 0) + 1;
+                    if (state.butcherHits >= 6) next(state, { op: 'butcher.card', player: null });
+                } else if (it.type === 'metagorger') {
+                    // Redux's Metagorger occupies the Larva slot: fire destroys it outright.
+                    removeIntruder(state, it.uid, false);
+                    log(state, INTRUDER_NAMES[it.type] + ' погибает от огня.', 'good');
+                    continue;
+                } else it.hits = (it.hits || 0) + 1;
+                log(state, INTRUDER_NAMES[it.type] + ' получает 1 ранение от огня (всего ' + (it.type === 'butcher' ? state.butcherHits : it.hits) + ').', 'combat');
+            }
+        } else if (!hasCarnomorphAdaptation(state, 'fireResistance')) {
             for (const it of intrudersIn(state, id)) if (state.intruders[it.uid]) carnPowerCheck(state, it, 1);
         }
         if (tileOf(state, id) === 'nest' && state.nestEggs > 0) {

@@ -1,23 +1,29 @@
 // Event execution uses the same serializable queue as Redux.
 import { shuffle } from '../rng.mjs';
 import { CARNOMORPH_EVENT_CARDS, CARNOMORPH_EVENT_BY_ID } from '../data/carnomorph-events.mjs';
+import { RX_CARNOMORPH_EVENT_CARDS, RX_CARNOMORPH_EVENT_BY_ID } from '../data/carnomorphs-redux.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { OPS, next, log, pname, room, roomName, playersInRoom, intrudersIn, removeIntruder,
     placeFire, removeFire, placeMalfunction, placeNoise, corridorsOf, findRoomsByTile, tileOf, turnOrder,
-    drawCards, discardCard, isContam, isInfected, canDestroyDoor } from './core.mjs';
+    drawCards, discardCard, isContam, isInfected, canDestroyDoor, loseHealth, gainContamination,
+    removeMalfunction } from './core.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { hasCarnomorphAdaptation, spawnCarnomorph, addCarnomorphToken } from './carnomorphs.mjs';
 import { startSelfDestruct } from './events.mjs';
-import { hyperAttackStep } from './intruders.mjs';
+import { hyperAttackStep, moveOneToward } from './intruders.mjs';
+import { infectionProcedure } from './actions.mjs';
 import { ROOM_TILES } from '../ship.mjs';
 
-const ranks = new Set(['metagorger', 'shambler', 'breeder', 'butcher']);
+const ranks = new Set(['metagorger', 'shambler', 'breeder', 'fleshbeast', 'butcher']);
 const heavy = new Set(['egg', 'carcass', 'charCorpse', 'corpse']);
 
 export function initCarnomorphEventDeck(state) {
-    state.eventDeck = shuffle(state, CARNOMORPH_EVENT_CARDS.map(c => c.id));
+    const deck = isReduxCarnomorphs(state) ? RX_CARNOMORPH_EVENT_CARDS : CARNOMORPH_EVENT_CARDS;
+    state.eventDeck = shuffle(state, deck.map(c => c.id));
     state.eventDiscard = [];
     state.carnomorphEventRemoved = [];
 }
+const eventById = state => isReduxCarnomorphs(state) ? RX_CARNOMORPH_EVENT_BY_ID : CARNOMORPH_EVENT_BY_ID;
 
 // Forced event movement still encounters closed doors; substitution bypasses them.
 function moveTo(state, it, exit) {
@@ -38,9 +44,211 @@ function hasHeavy(state, id) {
         playersInRoom(state, id).some(p => p.heavy.some(o => heavy.has(o.type)));
 }
 
+const rxRooms = state => Object.keys(state.ship.rooms).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+const rxActionCards = p => p.hand.filter(c => !String(c).startsWith('contam#'));
+function rxHeavyIn(state, id) {
+    return room(state, id).objects.some(o => heavy.has(o.type)) ||
+        playersInRoom(state, id).some(p => p.heavy.some(o => heavy.has(o.type)));
+}
+/** Printed sub-effect on several Redux cards: place one Metagorger in the lowest and highest
+ *  numbered rooms holding a Carcass or Egg, including ones carried by characters. */
+function rxPlaceMetagorgers(state) {
+    const candidates = rxRooms(state).filter(id => rxHeavyIn(state, id) &&
+        !intrudersIn(state, id).some(x => ranks.has(x.type)) &&
+        (room(state, id).objects.some(o => o.type === 'carcass' || o.type === 'egg') ||
+            playersInRoom(state, id).some(p => p.heavy.some(o => o.type === 'carcass' || o.type === 'egg'))));
+    for (const id of [candidates[0], candidates.at(-1)]) if (id) spawnCarnomorph(state, 'metagorger', id);
+}
+/** The Redux cards either wake and move the Butcher twice, or make characters with no Action
+ *  cards resolve an Encounter in turn order. */
+function rxButcherOrAttacks(state, attacks) {
+    const targets = state.players.filter(p => p.status === 'active' && !p.pod);
+    const butcher = Object.values(state.intruders).find(it => it.type === 'butcher');
+    if (butcher) {
+        for (let i = 0; i < 2; i++) moveOneToward(state, butcher, targets);
+        if (playersInRoom(state, butcher.room).length) attacks.push({ op: 'attack', intruder: butcher.uid, context: 'event' });
+        return;
+    }
+    for (const p of targets) {
+        if (rxActionCards(p).length) continue;
+        // Printed yellow alien head: resolve an Encounter (draw from the bag), not an attack
+        // from whichever Carnomorph happens to share the room.
+        attacks.push({ op: 'encounter', room: p.room, player: p.id,
+            reason: 'Событие: нет карт действий в руке — встреча' });
+    }
+}
+function rxIconRooms(state, color, count) {
+    return rxRooms(state).filter(id => {
+        const tile = tileOf(state, id);
+        return tile && ROOM_TILES[tile] && ROOM_TILES[tile].items.filter(x => x === color).length >= count;
+    });
+}
+/** Printed Airlock Procedure: close the room's doors, place the token (resolved at the end
+ *  of the Player Phase) and unpass everyone inside. */
+function rxStartAirlock(state, id) {
+    for (const c of corridorsOf(state, id)) {
+        if (c.id !== 'tech' && state.ship.corridors[c.id].door === 'open') state.ship.corridors[c.id].door = 'closed';
+    }
+    room(state, id).airlock = true;
+    for (const p of playersInRoom(state, id)) if (p.passed) p.passed = false;
+    log(state, '🌀 Жетон шлюзования: ' + roomName(state, id) + '. Комната будет продута в конце фазы игроков.', 'event');
+}
+function rxEventEffect(state, ev) {
+    const rooms = rxRooms(state);
+    const attacks = [];
+    switch (ev.effect) {
+        case 'airlockGlitch': {
+            const last = rxIconRooms(state, 'yellow', 3).filter(id => room(state, id).malfunction).at(-1);
+            if (last) {
+                removeMalfunction(state, last);
+                rxStartAirlock(state, last);
+            } else log(state, 'Процедура шлюзования: подходящего отсека уже нет.', 'minor');
+            rxPlaceMetagorgers(state);
+            break;
+        }
+        case 'ammoMeltdown': {
+            const target = rxIconRooms(state, 'red', 3).filter(id => !room(state, id).fire).at(-1);
+            if (target) placeFire(state, target, 'детонация амуниции');
+            else log(state, 'Детонация амуниции: подходящего отсека нет.', 'minor');
+            rxButcherOrAttacks(state, attacks);
+            break;
+        }
+        case 'beastOnProwl': {
+            const alive = Object.values(state.intruders).some(it => it.type === 'butcher');
+            for (let i = 0; i < (alive ? 3 : 2); i++) addCarnomorphToken(state, alive ? 'butcher' : 'shambler');
+            if (alive) log(state, 'Зверь на охоте: в мешок добавлены жетоны мясника.', 'event');
+            else log(state, 'Зверь на охоте: в мешок добавлены 2 жетона падальщика.', 'event');
+            break;
+        }
+        case 'bulkheadsOpen':
+            for (const c of Object.values(state.ship.corridors)) if (c.door !== 'destroyed') c.door = 'open';
+            rxPlaceMetagorgers(state);
+            break;
+        case 'chemicalFire': {
+            const target = rooms.filter(id => room(state, id).fire).at(-1);
+            if (!target) { log(state, 'Химический пожар: подходящего отсека нет.', 'minor'); break; }
+            placeMalfunction(state, target, 'химический пожар');
+            removeFire(state, target);
+            for (const e of state.ship.rooms[target].exits) {
+                if (state.shipDestroyed) break;
+                if (state.ship.corridors[e.corridor].door === 'closed' || e.corridor === 'tech') continue;
+                placeFire(state, e.to, 'химический пожар');
+            }
+            break;
+        }
+        case 'damagingFire': {
+            const before = new Set(rooms.filter(id => room(state, id).fire));
+            for (const id of before) placeMalfunction(state, id, 'огненная волна');
+            for (const id of before) for (const e of state.ship.rooms[id].exits) {
+                if (state.shipDestroyed) break;
+                if (state.ship.corridors[e.corridor].door === 'closed' || e.corridor === 'tech') continue;
+                if (!before.has(e.to)) placeFire(state, e.to, 'огненная волна');
+            }
+            break;
+        }
+        case 'podEjection': {
+            const pod = state.pods.find(p => p.num === 4 && !p.launched && !p.removed);
+            if (pod) {
+                pod.removed = true;
+                for (const pid of pod.occupants) { const p = state.players[pid]; if (p) p.pod = null; }
+                pod.occupants = [];
+                log(state, 'Капсула №4 удалена из игры.', 'event');
+            } else {
+                for (const t of ['evacA', 'evacB']) for (const id of findRoomsByTile(state, t)) placeMalfunction(state, id, 'событие');
+            }
+            rxPlaceMetagorgers(state);
+            break;
+        }
+        case 'generatorOverheats': {
+            const gen = findRoomsByTile(state, 'generator');
+            if (gen.some(id => room(state, id).malfunction)) startSelfDestruct(state);
+            else if (gen.length) placeMalfunction(state, gen[0], 'перегрев генератора');
+            break;
+        }
+        case 'malfunction': {
+            const target = rooms.find(id => !room(state, id).malfunction);
+            if (target) placeMalfunction(state, target, 'событие');
+            break;
+        }
+        case 'markedPrey':
+            for (const p of state.players.filter(o => o.status === 'active' && !o.pod)) {
+                if (rxHeavyIn(state, p.room) || p.heavy.some(o => heavy.has(o.type))) gainContamination(state, p, 1);
+            }
+            rxButcherOrAttacks(state, attacks);
+            break;
+        case 'quarantine':
+            for (const c of Object.values(state.ship.corridors)) {
+                if (c.door === 'destroyed') continue;
+                if ([c.a, c.b].some(id => playersInRoom(state, id).some(p => p.mutationCard))) c.door = 'closed';
+            }
+            break;
+        case 'rampantMutation':
+            for (const p of state.players.filter(o => o.status === 'active' && !o.pod)) {
+                const before = p.hand.length;
+                drawCards(state, p, 4, true);
+                const drawn = p.hand.slice(before);
+                if (!p.mutationCard) {
+                    // Printed: characters without a Mutation card still resolve the Infection
+                    // Procedure on everything they drew.
+                    infectionProcedure(state, p, false, 'rest');
+                } else {
+                    for (const card of drawn) if (isContam(card) && p.status === 'active') loseHealth(state, p, 1, 'бушующая мутация');
+                }
+                for (const card of drawn) if (p.hand.includes(card)) discardCard(state, p, card);
+            }
+            break;
+        case 'reawakening': case 'reawakeningB': {
+            for (const id of rooms) {
+                const objects = room(state, id).objects;
+                for (let i = 0; i < objects.length;) {
+                    if (objects[i].type !== 'carcass') { i++; continue; }
+                    const it = spawnCarnomorph(state, 'shambler', id);
+                    if (!it) break;
+                    objects.splice(i, 1);
+                    if (playersInRoom(state, id).length) attacks.push({ op: 'attack', intruder: it.uid, context: 'event' });
+                }
+            }
+            if (ev.effect === 'reawakening') rxPlaceMetagorgers(state);
+            break;
+        }
+        case 'scavengingBiomatter':
+            for (const it of Object.values(state.intruders)) {
+                if (!ranks.has(it.type)) continue;
+                const exits = state.ship.rooms[it.room].exits.filter(e => rxHeavyIn(state, e.to))
+                    .sort((a, b) => a.to.localeCompare(b.to, undefined, { numeric: true }));
+                if (!exits.length) continue;
+                const c = state.ship.corridors[exits[0].corridor];
+                if (c.door === 'closed' && !canDestroyDoor(state, it)) continue;
+                if (c.door === 'closed') c.door = 'destroyed';
+                it.room = exits[0].to;
+                log(state, INTRUDER_NAMES[it.type] + ' перемещается к биомассе в ' + roomName(state, it.room) + '.', 'event');
+                const h = hyperAttackStep(state, it); if (h) attacks.push(h);
+            }
+            rxPlaceMetagorgers(state);
+            break;
+        case 'shortCircuit':
+            for (const id of rxIconRooms(state, 'yellow', 3)) placeMalfunction(state, id, 'короткое замыкание');
+            break;
+        case 'stalking':
+            rxButcherOrAttacks(state, attacks);
+            break;
+        case 'structuralWeakness':
+            for (const id of rooms.filter(x => playersInRoom(state, x).length)) placeMalfunction(state, id, 'структурная уязвимость');
+            rxPlaceMetagorgers(state);
+            break;
+        case 'systemFailure':
+            for (const id of rxIconRooms(state, 'red', 3)) placeMalfunction(state, id, 'сбой системы');
+            rxButcherOrAttacks(state, attacks);
+            break;
+        default: throw new Error('Unknown Redux Carnomorph event effect: ' + ev.effect);
+    }
+    next(state, ...attacks);
+}
+
 OPS['carnomorph.eventEffect'] = (state, step) => {
-    const ev = CARNOMORPH_EVENT_BY_ID[step.id];
+    const ev = eventById(state)[step.id];
     if (!ev) throw new Error('Unknown Carnomorph event: ' + step.id);
+    if (isReduxCarnomorphs(state)) { rxEventEffect(state, ev); return; }
     const rooms = Object.keys(state.ship.rooms).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     switch (ev.effect) {
         case 'chemicalExplosion': {

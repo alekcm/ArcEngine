@@ -40,3 +40,29 @@ for idx, physical in enumerate(attack_indices, 1):
     save('attack', 'carnoAttack' + str(idx), extract(sheets['attack'], 5, 4, physical, (.25, .05, .96, .54)))
 for idx, name in enumerate(mutations, 1):
     save('mutation', name, extract(sheets['mutation'], 4, 3, idx, (.04, .03, .96, .33)))
+
+# Redux Carnomorph sheets. The stable data ids are in sheet order, so the physical card number
+# is simply the index here. Art is shared by duplicate attack/butcher cards to keep the deck small.
+redux_root = Path('Nemesis/dlc/Redux Карноморфы')
+redux_sheets = {label: Image.open(next(redux_root.glob(pattern))).convert('RGB') for label, pattern in {
+    'attack': '*CarnoAttackDeck.png',
+    'event': '*CarnoEventDeck.png',
+    'mutation': '*CarnoMutationDeck.png',
+    'butcher': '*CarnoButcherDeck.png',
+}.items()}
+redux_attacks = ['bash', 'bite', 'devour', 'miss', 'regurgitate', 'slash', 'spawn', 'whiplash']
+redux_mutations = ['adaptation', 'boilingBlood', 'claw', 'contortionist', 'escapeMaster', 'gastric',
+                   'geneticMalfunction', 'mimicry', 'regenerativeTissue', 'scream', 'shapeshift', 'sharpenedSenses']
+
+def save_redux(kind, name, image):
+    folder = out / 'redux' / kind
+    folder.mkdir(parents=True, exist_ok=True)
+    image.save(folder / (name + '.jpg'), quality=82, optimize=True, progressive=True)
+
+for idx, name in enumerate(redux_attacks, 1):
+    save_redux('attack', name, extract(redux_sheets['attack'], 4, 2, idx, (.02, .04, .98, .54)))
+for idx in range(1, 21):
+    save_redux('event', 'rxEvent' + str(idx), extract(redux_sheets['event'], 5, 4, idx, (.04, .04, .96, .34)))
+for idx, name in enumerate(redux_mutations, 1):
+    save_redux('mutation', name, extract(redux_sheets['mutation'], 4, 3, idx, (.03, .02, .97, .38)))
+save_redux('', 'butcher', extract(redux_sheets['butcher'], 3, 3, 1, (.02, .02, .98, .78)))

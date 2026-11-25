@@ -132,6 +132,7 @@ export function eventArt(id) {
     if (/^chyEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/event/' + (CHY_EVENT_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/event/' + id + '.jpg';
     if (/^carnoEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/event/' + id + '.jpg';
+    if (/^rxEvent(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/redux/event/' + id + '.jpg';
     return ART_EVENTS.includes(id) ? 'art/events/' + id + '.jpg' : null;
 }
 /** Attack cards share one illustration per name: claws1..3 -> claws, fury1/2 -> fury, scratch1..4 -> scratch, tail1/2 -> tail. */
@@ -142,9 +143,12 @@ export function attackArt(id) {
     if (/^chyAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/chytrids/attack/' + (CHY_ATTACK_ART_ALIAS[id] || id) + '.jpg';
     if (/^voidAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/voidseeders/attack/' + id + '.jpg';
     if (/^carnoAttack(?:[1-9]|1[0-9]|20)$/.test(id)) return 'art/carnomorph/attack/' + id + '.jpg';
+    const reduxAttack = /^rxAtk-([a-zA-Z]+)-\d+$/.exec(String(id));
+    if (reduxAttack) return 'art/carnomorph/redux/attack/' + reduxAttack[1] + '.jpg';
     const k = String(id).replace(/\d+$/, ''); return ART_ATTACK.includes(k) ? 'art/attack/' + k + '.jpg' : null;
 }
 export function panicArt(id) { return /^voidPanic(?:[1-9]|1[0-9]|20)$/.test(id) ? 'art/voidseeders/panic/' + id + '.jpg' : null; }
+export function butcherArt() { return 'art/carnomorph/redux/butcher.jpg'; }
 /** Shared illustrations: every Queen card uses one art, Computer cards one (Lock-down its red variant), objectives one per kind. */
 export function queenArt() { return 'art/misc/queen.jpg'; }
 export function computerArt(id) { return id === 'lockdown' ? 'art/misc/lockdown.jpg' : 'art/misc/computer.jpg'; }

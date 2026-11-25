@@ -1,31 +1,40 @@
 // Carnomorph mutation actions. All prompts and continuations are plain serializable steps.
 import { CARNOMORPH_MUTATIONS } from '../data/carnomorphs.mjs';
+import { RX_CARNOMORPH_MUTATIONS } from '../data/carnomorphs-redux.mjs';
+import { isReduxCarnomorphs } from '../dlc.mjs';
 import { INTRUDER_NAMES, WOUNDS } from '../data/cards.mjs';
 import { OPS, ask, next, log, player, pname, room, roomName, playersInRoom, intrudersIn, inCombat,
     isContam, isInfected, discardCard, removeCardFromGame, gainContamination, drawCards,
-    removeWound, restoreHealth, loseHealth, gainWound, maxAllowedHealth, needDice, fmtRoll } from './core.mjs';
+    removeWound, restoreHealth, loseHealth, gainWound, maxAllowedHealth, needDice, fmtRoll,
+    corridorsOf } from './core.mjs';
 import { removeCarnomorphMutation, mutationOptions } from './carnomorphs.mjs';
 import { dealHits, applyHitsNoRoll } from './combat.mjs';
 import { repelIntruder } from './intruders.mjs';
 
+const rxActiveCards = new Set(['adaptation', 'boilingBlood', 'claw', 'contortionist', 'escapeMaster', 'gastric',
+    'geneticMalfunction', 'mimicry', 'regenerativeTissue', 'scream', 'shapeshift', 'sharpenedSenses']);
 const activeCards = new Set(['adaptation', 'regeneration', 'gastric', 'boilingBlood', 'claw', 'scream', 'escapeArtist', 'genomeError', 'shapeChange', 'trickster']);
 const peaceful = new Set(['adaptation', 'regeneration', 'gastric', 'genomeError', 'shapeChange', 'trickster']);
-const types = new Set(['metagorger', 'shambler', 'breeder', 'butcher']);
+const types = new Set(['metagorger', 'shambler', 'breeder', 'fleshbeast', 'butcher']);
 const localTargets = (state, p) => intrudersIn(state, p.room).filter(i => types.has(i.type));
 const foodObjects = (state, p) => room(state, p.room).objects.map((o, i) => ({ ...o, i })).filter(o => o.type === 'egg' || o.type === 'carcass');
+const defs = state => isReduxCarnomorphs(state) ? RX_CARNOMORPH_MUTATIONS : CARNOMORPH_MUTATIONS;
+const isActive = (state, id) => isReduxCarnomorphs(state) ? rxActiveCards.has(id) : activeCards.has(id);
 
 /** Only the owner's menu sees an unrevealed card's identity. Reactive cards have no turn action. */
 export function mutationActionAvailability(state, p) {
-    const id = p.mutationCard, card = CARNOMORPH_MUTATIONS[id];
-    if (!card || !activeCards.has(id)) return null;
+    const id = p.mutationCard, card = defs(state)[id];
+    if (!card || !isActive(state, id)) return null;
     let reason = '';
     if (!p.hand.some(isContam)) reason = 'Нужна карта заражения в руке';
-    else if (peaceful.has(id) && inCombat(state, p)) reason = 'Нельзя в бою';
+    else if (!isReduxCarnomorphs(state) && peaceful.has(id) && inCombat(state, p)) reason = 'Нельзя в бою';
     else if (id === 'gastric' && !foodObjects(state, p).length) reason = 'В комнате нет яйца или останков';
     else if (id === 'claw' && !localTargets(state, p).length) reason = 'В комнате нет карноморфов';
-    else if (id === 'scream' && !localTargets(state, p).some(it => it.type !== 'metagorger')) reason = 'Нужен карноморф, кроме глодателя';
+    else if ((id === 'scream' && !isReduxCarnomorphs(state)) && !localTargets(state, p).some(it => it.type !== 'metagorger')) reason = 'Нужен карноморф, кроме глодателя';
+    else if (id === 'scream' && isReduxCarnomorphs(state) && !localTargets(state, p).length) reason = 'В комнате нет карноморфов';
     else if (id === 'escapeArtist' && !inCombat(state, p)) reason = 'Нужен бой с карноморфом';
-    else if (id === 'shapeChange' && (!state.ship.rooms[p.room].tech || !Object.values(state.ship.rooms).some(r => r.tech && r.id !== p.room))) reason = 'Нет подходящего входа в техкоридоры';
+    else if (id === 'geneticMalfunction' && !localTargets(state, p).some(it => it.type === 'shambler' || it.type === 'fleshbeast' || it.type === 'breeder')) reason = 'Нет подходящей цели';
+    else if ((id === 'shapeChange' || id === 'shapeshift') && (!state.ship.rooms[p.room].tech || !Object.values(state.ship.rooms).some(r => r.tech && r.id !== p.room))) reason = 'Нет подходящего входа в техкоридоры';
     return { label: 'Мутация: «' + card.name + '»', ok: !reason, reason };
 }
 
@@ -46,14 +55,173 @@ OPS['mutation.scan'] = (state, step) => {
     if (infected) discardCard(state, p, selected);
     else { removeCardFromGame(state, p, selected); gainContamination(state, p, 1); }
     // The result is coloured like the card itself: red for ЗАРАЖЁН, green for НЕ ЗАРАЖЁН.
-    log(state, pname(p) + ' раскрывает мутацию «' + CARNOMORPH_MUTATIONS[step.card].name + '»: ' + (infected ? 'ЗАРАЖЁН.' : 'НЕ ЗАРАЖЁН.'), infected ? 'bad' : 'good');
+    log(state, pname(p) + ' раскрывает мутацию «' + defs(state)[step.card].name + '»: ' + (infected ? 'ЗАРАЖЁН.' : 'НЕ ЗАРАЖЁН.'), infected ? 'bad' : 'good');
     if (p.status !== 'active') { next(state, step.then); return; }
     next(state, { op: 'carnomorph.gainMarker', player: p.id },
         { op: 'mutation.effect', player: p.id, card: step.card, infected, payload: step.payload, then: step.then });
 };
+/** Active halves of the twelve Redux mutation cards. */
+function rxMutationEffect(state, step) {
+    const p = player(state, step.player), then = step.then;
+    switch (step.card) {
+        case 'adaptation':
+            drawCards(state, p, 2);
+            next(state, then);
+            return;
+        case 'boilingBlood': {
+            const victims = playersInRoom(state, p.room).filter(o => o.id !== p.id && o.status === 'active');
+            const targets = localTargets(state, p).map(it => it.uid);
+            next(state, ...victims.map(o => ({ op: 'rx.bloodVictim', player: o.id })),
+                ...targets.map(uid => ({ op: 'rx.bloodHit', intruder: uid, hits: 2 })), then);
+            return;
+        }
+        case 'claw': {
+            const targets = localTargets(state, p);
+            if (!targets.length) { next(state, then); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Клешня: выберите цель',
+                options: targets.map(it => ({ id: it.uid, label: INTRUDER_NAMES[it.type] })) },
+                { op: 'rx.clawTarget', player: p.id, intruders: targets.map(it => it.uid), then });
+            return;
+        }
+        case 'contortionist':
+            next(state, { op: 'move.start', player: p.id, preserveDoor: true, noNoise: true, then }); return;
+        case 'escapeMaster':
+            next(state, { op: 'move.start', player: p.id, noAttacks: true, noNoise: true, then }); return;
+        case 'gastric': {
+            const objects = [...foodObjects(state, p), ...p.heavy.map((h, i) => ({ ...h, i: 'hand' + i }))
+                .filter(h => h.type === 'egg' || h.type === 'carcass')];
+            if (!objects.length) { next(state, then); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Гастрономическая революция: что поглотить?',
+                options: objects.map(o => ({ id: String(o.i), label: o.type === 'egg' ? 'Яйцо' : 'Туша' })) },
+                { op: 'rx.gastricEat', player: p.id, then });
+            return;
+        }
+        case 'geneticMalfunction': {
+            const targets = localTargets(state, p).filter(it => ['shambler', 'fleshbeast', 'breeder'].includes(it.type));
+            if (!targets.length) { next(state, then); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Генетическая неисправность: выберите цель',
+                options: targets.map(it => ({ id: it.uid, label: INTRUDER_NAMES[it.type] })) },
+                { op: 'rx.deEvolve', player: p.id, then });
+            return;
+        }
+        case 'mimicry': {
+            const attack = step.payload && step.payload.attack;
+            if (!attack) { next(state, then); return; }
+            const others = playersInRoom(state, p.room).filter(o => o.id !== p.id && o.status === 'active');
+            if (!others.length) { log(state, pname(p) + ': мимикрия игнорирует атаку.', 'good'); next(state, then); return; }
+            ask(state, { kind: 'choice', player: p.id, title: 'Мимикрия: кто станет целью атаки?',
+                options: others.map(o => ({ id: String(o.id), label: pname(o) })) },
+                { op: 'mutation.mimicryTarget', player: p.id, attack, then });
+            return;
+        }
+        case 'regenerativeTissue':
+            restoreHealth(state, p, 2);
+            next(state, then);
+            return;
+        case 'scream': {
+            const targets = localTargets(state, p);
+            if (!targets.length) { next(state, then); return; }
+            const target = targets[0];
+            repelIntruder(state, target, null, true);
+            next(state, then);
+            return;
+        }
+        case 'shapeshift': {
+            const rooms = Object.keys(state.ship.rooms).filter(r => state.ship.rooms[r].tech && r !== p.room);
+            if (!state.ship.rooms[p.room].tech || !rooms.length) { next(state, then); return; }
+            ask(state, { kind: 'room', player: p.id, title: 'Смена формы: куда через техкоридоры?', rooms },
+                { op: 'rx.shapeshift', player: p.id, then });
+            return;
+        }
+        case 'sharpenedSenses': {
+            const noise = step.payload && step.payload.noise;
+            if (noise) {
+                const first = step.payload.first;
+                if (!step.infected) {
+                    next(state, { ...noise, forced: undefined, mutationForced: undefined, mutationOffered: true, rerolled: true }, then);
+                    return;
+                }
+                const values = [1, 2, 3, 4, 'encounter'].filter(value => value !== first);
+                ask(state, { kind: 'choice', player: p.id, title: 'Обострённые чувства: выберите результат переброса',
+                    options: values.map(value => ({ id: String(value), label: value === 'encounter' ? 'Встреча' : 'Коридор ' + value })) },
+                    { op: 'mutation.sensesResult', player: p.id, noise, then });
+                return;
+            }
+            let cleared = 0;
+            for (const { id } of corridorsOf(state, p.room)) {
+                if (id === 'tech') {
+                    if (state.ship.techNoise) { state.ship.techNoise = false; cleared++; }
+                    continue;
+                }
+                const c = state.ship.corridors[id];
+                if (c && c.noise) { c.noise = false; cleared++; }
+            }
+            log(state, 'Обострённые чувства: сброшено символов «Опасность»: ' + cleared + '.', 'good');
+            next(state, then);
+            return;
+        }
+        default: next(state, then);
+    }
+}
+OPS['rx.bloodVictim'] = (state, step) => {
+    const p = player(state, step.player);
+    if (p && p.status === 'active') loseHealth(state, p, 1, 'кипящая кровь');
+};
+OPS['rx.bloodHit'] = (state, step) => {
+    const it = state.intruders[step.intruder];
+    if (it) applyHitsNoRoll(state, it, step.hits);
+};
+OPS['rx.clawTarget'] = (state, step) => {
+    const p = player(state, step.player), it = state.intruders[step.answer];
+    if (!it || it.room !== p.room) { next(state, step.then); return; }
+    if (needDice(state, step, 'combat', p.id, 'Бросок боя — мутация «Клешня»')) return;
+    dealHits(state, p, it, 3, 0, { mutationClaw: true });
+    next(state, step.then);
+};
+OPS['rx.gastricEat'] = (state, step) => {
+    const p = player(state, step.player), fromHand = String(step.answer).startsWith('hand');
+    const objects = room(state, p.room).objects;
+    if (fromHand) {
+        const i = Number(String(step.answer).slice(4));
+        if (p.heavy[i] && ['egg', 'carcass'].includes(p.heavy[i].type)) p.heavy.splice(i, 1);
+    } else {
+        const i = Number(step.answer);
+        if (objects[i] && ['egg', 'carcass'].includes(objects[i].type)) objects.splice(i, 1);
+    }
+    const wounds = [...new Set(p.wounds)];
+    const options = [{ id: 'health', label: 'Восстановить 3 здоровья' },
+        ...wounds.map(w => ({ id: w, label: 'Сбросить травму: ' + WOUNDS[w].name })),
+        ...wounds.map(w => ({ id: 'both:' + w, label: 'Сбросить травму и восстановить 3 здоровья' })),
+        { id: 'skip', label: 'Не лечить' }];
+    ask(state, { kind: 'choice', player: p.id, title: 'Гастрономическая революция: лечение', options },
+        { op: 'rx.gastricHeal', player: p.id, then: step.then });
+};
+OPS['rx.gastricHeal'] = (state, step) => {
+    const p = player(state, step.player);
+    if (step.answer === 'health' || String(step.answer).startsWith('both:')) restoreHealth(state, p, 3);
+    if (woundAnswer(step.answer)) removeWound(state, p, woundAnswer(step.answer));
+    next(state, step.then);
+};
+function woundAnswer(answer) {
+    const value = String(answer || '');
+    return value.startsWith('both:') ? value.slice(5) : value === 'health' || value === 'skip' ? null : value;
+}
+OPS['rx.deEvolve'] = (state, step) => {
+    const p = player(state, step.player), it = state.intruders[step.answer];
+    const lower = { fleshbeast: 'shambler', shambler: 'metagorger', breeder: 'shambler' }[it && it.type];
+    if (it && lower && Object.values(state.intruders).filter(x => x.type === lower).length < (lower === 'metagorger' ? 8 : 8)) {
+        it.type = lower;
+        log(state, 'Генетическая неисправность: ' + INTRUDER_NAMES[it.type] + ' понижен до ' + INTRUDER_NAMES[lower] + '.', 'good');
+    }
+    next(state, step.then);
+};
+OPS['rx.shapeshift'] = (state, step) => next(state,
+    { op: 'move.direct', player: step.player, dest: step.answer, noNoise: true, then: { op: 'turn.pass', player: step.player, then: step.then } });
+
 OPS['mutation.effect'] = (state, step) => {
     const p = player(state, step.player), then = step.then;
     if (!p || p.status !== 'active' || p.mutationCard !== step.card) { next(state, then); return; }
+    if (isReduxCarnomorphs(state)) { rxMutationEffect(state, step); return; }
     switch (step.card) {
         case 'adaptation': {
             removeCarnomorphMutation(state, p);
@@ -61,7 +229,7 @@ OPS['mutation.effect'] = (state, step) => {
             if (!cards.length) { log(state, 'Колода мутаций пуста.', 'minor'); next(state, then); return; }
             if (cards.length === 1) { p.mutationCard = cards[0]; p.mutationRevealed = false; next(state, then); return; }
             ask(state, { kind: 'choice', secret: true, player: p.id, title: 'Адаптация: выберите новую карту мутации',
-                options: mutationOptions(cards) },
+                options: mutationOptions(cards, state) },
                 { op: 'mutation.adaptationPick', player: p.id, cards, then });
             return;
         }

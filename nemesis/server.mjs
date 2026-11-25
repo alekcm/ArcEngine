@@ -17,7 +17,7 @@ import url from 'node:url';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { createGame } from './shared/engine/setup.mjs';
-import { playableEnemySet, validRulesMode, rulesModeOf, enemySetAllowed } from './shared/dlc.mjs';
+import { playableEnemySet, validRulesMode, rulesModeOf, enemySetAllowed, lobbyEnemySetId } from './shared/dlc.mjs';
 import { answer, claimDestination } from './shared/engine/core.mjs';
 import { viewFor } from './shared/view.mjs';
 import { CHARACTERS } from './shared/data/cards.mjs';
@@ -534,9 +534,16 @@ function onMessage(socket, m) {
             if (!enemySetAllowed(saveData.state.enemySet || 'redux', saveRules)) {
                 socket.send({ t: 'notice', text: 'Дополнение из сохранения ещё недоступно.', kind: 'error' }); return;
             }
+            // Older saves predate the separate lobby id: restore the variant marker explicitly.
+            if (saveData.state.enemySet === 'carnomorphs' && saveRules === 'redux') saveData.state.carnomorphRedux = true;
+            // Old Redux saves predate the per-player flag used by the Gastronomic passive.
+            if (saveData.state.carnomorphRedux) for (const p of saveData.state.players || []) {
+                if (p.mutationCard && p.mutationRedux === undefined) p.mutationRedux = true;
+            }
             game.state = saveData.state;
             game.phase = saveData.phase || 'playing';
-            game.settings = { ...game.settings, ...(saveData.settings || {}), rules: saveRules, enemySet: saveData.state.enemySet || 'redux' };
+            game.settings = { ...game.settings, ...(saveData.settings || {}), rules: saveRules,
+                enemySet: lobbyEnemySetId(saveData.state.enemySet || 'redux', saveRules) };
             // Old saves may contain secret answers in historical labels; their undo stack is
             // not restored, so discard untrusted legacy history rather than broadcasting it.
             game.history = saveData.historyRedacted === true && Array.isArray(saveData.history) ? saveData.history : [];

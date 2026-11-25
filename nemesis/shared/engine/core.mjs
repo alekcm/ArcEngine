@@ -26,6 +26,10 @@ export function run(state) {
         // Safety net: a chain can be cut short (e.g. the acting character died mid-action).
         // Fall back to the natural continuation of the current phase.
         if (!state.prompt && !state.queue.length && !state.result) {
+            if (state.pendingFleeAttacks && state.pendingFleeAttacks.length) {
+                state.queue.push(state.pendingFleeAttacks.shift());
+                continue;
+            }
             const cont = { player: 'turn.end', intruder: 'phase.event', event: 'event.finish', cleanup: 'phase.player' }[state.phase];
             if (cont && step.op !== cont) state.queue.push({ op: cont });
         }
@@ -345,7 +349,11 @@ export function maxAllowedHealth(p) {
 }
 export function handLimit(p) { return (p.wounds.includes('arm') ? 1 : 2) + (p.ductTaped || 0); }
 export function heavyCount(p) {
-    let n = p.heavy.length;
+    let freeFood = p.mutationRedux && p.mutationCard === 'gastric' ? 1 : 0;
+    let n = p.heavy.filter(h => {
+        if (freeFood && (h.type === 'carcass' || h.type === 'egg')) { freeFood--; return false; }
+        return true;
+    }).length;
     const hasRanged = p.items.some(i => ITEMS[i.item].weapon);
     for (const i of p.items) {
         const d = ITEMS[i.item];
@@ -589,7 +597,11 @@ export function handSlots(state, p) {
         if (d.bayonet && p.items.some(o => ITEMS[o.item].weapon)) continue;   // shares the ranged weapon slot
         put('item:' + i.uid, d.name, 'item', d.twoSlots);
     }
-    p.heavy.forEach((h, idx) => put('heavy:' + idx, HEAVY_NAMES[h.type] || h.type, 'object', false));
+    let freeFood = p.mutationRedux && p.mutationCard === 'gastric' ? 1 : 0;
+    p.heavy.forEach((h, idx) => {
+        if (freeFood && (h.type === 'carcass' || h.type === 'egg')) { freeFood--; return; }
+        put('heavy:' + idx, HEAVY_NAMES[h.type] || h.type, 'object', false);
+    });
     const limit = handLimit(p);
     const out = [];
     for (let k = 0; k < limit; k++) out.push(slots[k] || { ref: null, name: '', kind: 'empty' });
@@ -727,7 +739,7 @@ export function spawnIntruder(state, type, roomId) {
     const origBase = isOriginal(state) && state.enemySet === 'redux';
     const limit = (origBase
         ? { larva: 8, crawler: 3, adult: 8, drone: 2, queen: 1 }
-        : { larva: 8, crawler: 3, adult: 12, drone: 12, queen: 1, metagorger: 8, shambler: 8, breeder: 3, butcher: 1, lurker: 6, whisperer: 4, creeper: 1, despoiler: 1, lair: 3, stinkhorn: 8, deathcap: 3, chyQueen: 1 })[type];
+        : { larva: 8, crawler: 3, adult: 12, drone: 12, queen: 1, metagorger: 8, shambler: 8, breeder: 3, fleshbeast: 3, butcher: 1, lurker: 6, whisperer: 4, creeper: 1, despoiler: 1, lair: 3, stinkhorn: 8, deathcap: 3, chyQueen: 1 })[type];
     if (limit === undefined) throw new RangeError('Unknown intruder type: ' + type);
     // Original p. 15: when placing an Adult and all 8 Adult miniatures are on the board, non-combat Adults retreat into the bag first.
     if (origBase && type === 'adult' && onBoard >= limit) {
@@ -776,7 +788,7 @@ export function removeSlime(state, p) {
     log(state, '🟢 ' + pname(p) + ': маркер слизи удалён.', 'good');
     return true;
 }
-export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, crawler: 3, larva: 4, butcher: 0, breeder: 1, shambler: 2, metagorger: 3, chyQueen: 0, deathcap: 1, stinkhorn: 2 };
+export const INTRUDER_RANK = { queen: 0, drone: 1, adult: 2, crawler: 3, larva: 4, butcher: 0, breeder: 1, fleshbeast: 1, shambler: 2, metagorger: 3, chyQueen: 0, deathcap: 1, stinkhorn: 2 };
 /** Is the given intruder Adaptation currently active? */
 export function hasAdapt(state, key) { return !!(state.adaptations && state.adaptations.includes(key)); }
 /** Is the given intruder Weakness already revealed (weakness variant)? Hidden ones stay inactive. */
