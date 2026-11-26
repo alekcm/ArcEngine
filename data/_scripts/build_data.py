@@ -248,13 +248,18 @@ KIND_BY_SIZE = {
     (2150, 3024): 'checklist',
 }
 
-# dhash clusters >=10 members, ordered by size desc (verified contact sheet)
+# dhash clusters >=10 members, ordered by size desc (verified contact sheet):
+# БОЙ 158, ДИПЛОМАТИЯ 104, ПРЕДМЕТ 65, ВСТРЕЧА 30/30/20/20/10/10 = 447 backs.
+# The 7th cluster (13, «СОВЕТНИК» backs) is NOT part of the verified inventory
+# and stays a regular card (None label).
 BACK_LABELS = ['БОЙ', 'ДИПЛОМАТИЯ', 'ПРЕДМЕТ',
-               'ВСТРЕЧА', 'ВСТРЕЧА', 'ВСТРЕЧА', 'ВСТРЕЧА', 'ВСТРЕЧА', 'ВСТРЕЧА']
+               'ВСТРЕЧА', 'ВСТРЕЧА', 'ВСТРЕЧА', 'ВСТРЕЧА',
+               None,
+               'ВСТРЕЧА', 'ВСТРЕЧА']
 
 
 def dhash(path: Path, size: int = 8) -> int:
-    im = Image.open(path).convert('L').resize((size + 1, size), Image.LANCZOS)
+    im = Image.open(path).convert('L').resize((size + 1, size), Image.BOX)
     px = list(im.getdata())
     bits = 0
     for row in range(size):
@@ -264,7 +269,7 @@ def dhash(path: Path, size: int = 8) -> int:
 
 
 def cluster_backs(card_ids: list[str], img_of: dict[str, Path]) -> dict[str, str]:
-    """Connected components over dhash (hamming <= 6), clusters >=10 -> backs."""
+    """Connected components over identical dhashes (hamming == 0), clusters >=10."""
     hashes = {cid: dhash(img_of[cid]) for cid in card_ids}
     parent = {cid: cid for cid in card_ids}
 
@@ -282,7 +287,7 @@ def cluster_backs(card_ids: list[str], img_of: dict[str, Path]) -> dict[str, str
     for i, a in enumerate(card_ids):
         ha = hashes[a]
         for b in card_ids[i + 1:]:
-            if (ha ^ hashes[b]).bit_count() <= 6:
+            if (ha ^ hashes[b]).bit_count() == 0:
                 union(a, b)
     groups: dict[str, list[str]] = defaultdict(list)
     for cid in card_ids:
@@ -294,13 +299,18 @@ def cluster_backs(card_ids: list[str], img_of: dict[str, Path]) -> dict[str, str
               f'(sizes {[len(g) for g in big]})', file=sys.stderr)
     back_of: dict[str, str] = {}
     for label, group in zip(BACK_LABELS, big):
+        if label is None:
+            continue  # excluded cluster (СОВЕТНИК) — regular card
         for cid in group:
             back_of[cid] = label
     return back_of
 
 
 def best_number(results: dict, cid: str) -> str | None:
-    """Merge num3_ (psm3) preferred, then num_/num2_ by conf; digit-only conf>=60."""
+    """Merge num3_ (psm3) preferred, then num_/num2_ by conf; digit-only conf>=60.
+
+    Job ids are {num|num2|num3_}{stem[-40:]} — strip the leading 'c_' of cid."""
+    stem = cid[2:] if cid.startswith('c_') else cid
 
     def pick(jid: str) -> tuple[int, str] | None:
         r = results.get(jid)
@@ -312,12 +322,12 @@ def best_number(results: dict, cid: str) -> str | None:
         return None
 
     for pre in ('num3_',):
-        v = pick(pre + cid)
+        v = pick(pre + stem)
         if v:
             return v[1]
     best = None
     for pre in ('num_', 'num2_'):
-        v = pick(pre + cid)
+        v = pick(pre + stem)
         if v and (best is None or v[0] > best[0]):
             best = v
     return best[1] if best else None
@@ -331,7 +341,10 @@ def build_cards(results: dict, jobs: list[dict]) -> dict:
     card_ids = sorted(img_of)
     print(f'cards: {len(card_ids)}')
 
-    back_of = cluster_backs(card_ids, img_of)
+    # cluster only first-pass empty cards: verified backs are empty OCR-wise
+    empty_ids = [c for c in card_ids
+                 if not ((results.get(c) or {}).get('text') or '').strip()]
+    back_of = cluster_backs(empty_ids, img_of)
     print(f'backs: {len(back_of)} in {len(set(back_of.values()))} labels')
 
     cards: dict[str, dict] = {}
@@ -356,7 +369,6 @@ def build_cards(results: dict, jobs: list[dict]) -> dict:
         conf = main.get('conf', 0)
         text = main.get('text', '') or ''
         method = 'main'
-        confs.append(conf)
 
         # retry fallback: first-pass empty, retry conf>=55, >=15 cyrillic
         if not text.strip():
@@ -378,8 +390,10 @@ def build_cards(results: dict, jobs: list[dict]) -> dict:
             conf = None
             method = 'transcribed'
             n_back += 1
-        elif not text.strip():
-            n_empty += 1
+        else:
+            confs.append(conf)  # avg over final non-null confs (verified 73.8)
+            if not text.strip() and number is None:
+                n_empty += 1
 
         cards[cid] = {
             'file': f'Mods/Images/{src.name}',
@@ -432,7 +446,7 @@ def build_obj_index() -> dict:
 # ---------------------------------------------------------------- manifest
 
 
-def build_manifest(books: dict, letters: dict, card_stats: obj, obj_idx: dict) -> dict:
+def build_manifest(books: dict, letters: dict, card_stats: dict, obj_idx: dict) -> dict:
     pdfs = []
     for p in sorted((ROOT / 'Mods' / 'PDF').glob('*.pdf')):
         pdfs.append({'file': f'Mods/PDF/{p.name}', 'bytes': p.stat().st_size,
@@ -466,13 +480,23 @@ def build_manifest(books: dict, letters: dict, card_stats: obj, obj_idx: dict) -
 # ---------------------------------------------------------------- prep modes
 
 
+def retry_accepted(results: dict, cid: str) -> bool:
+    """retry pass counts only if conf >= 55 and >= 15 cyrillic chars."""
+    rr = results.get(f'retry_c_{cid}')
+    return bool(rr and rr['conf'] >= 55 and cyr_count(rr.get('text') or '') >= 15)
+
+
 def prep_retry(results: dict, jobs: list[dict]) -> None:
-    """First-pass empty cards -> 1.5x upscale retry jobs."""
+    """First-pass empty, non-back cards -> 1.5x upscale retry jobs."""
     from PIL import Image as I
+    img_of = {j['id']: Path(j['path']) for j in jobs if j['group'] == 'card'}
+    back_of = cluster_backs(sorted(img_of), img_of)
     out_jobs = []
     for job in jobs:
         if job['group'] != 'card':
             continue
+        if job['id'] in back_of:
+            continue  # backs win over retry — no retry job for them
         main = results.get(job['id'])
         if not main or main.get('text', '').strip():
             continue
@@ -489,16 +513,20 @@ def prep_retry(results: dict, jobs: list[dict]) -> None:
 
 def prep_num(results: dict, jobs: list[dict]) -> None:
     """Cards still empty after retry -> number jobs (3 recipe variants)."""
+    img_of = {j['id']: Path(j['path']) for j in jobs if j['group'] == 'card'}
+    back_of = cluster_backs(sorted(img_of), img_of)
     cands = []
     for job in jobs:
         if job['group'] != 'card':
             continue
         cid = job['id'][2:]
-        if f'retry_c_{cid}' in results:
-            continue  # retry already accepted (not empty anymore)
+        if job['id'] in back_of:
+            continue  # backs are transcribed labels, no numbers sought
         main = results.get(job['id'])
         if main and main.get('text', '').strip():
-            continue
+            continue  # has first-pass text
+        if retry_accepted(results, cid):
+            continue  # retry already recovered it
         cands.append((cid, job['path']))
     print(f'num candidates (still empty): {len(cands)}')
 
@@ -519,9 +547,14 @@ def prep_num(results: dict, jobs: list[dict]) -> None:
         p2 = PREP / f'num2_{cid}.jpg'
         crop.save(p2, 'JPEG', quality=92)
         jobs_out['num2_'].append({'id': f'num2_{cid}', 'path': str(p2), 'group': 'num2'})
-        # num3_: same prep as num_ but psm3
+        # num3_: centre-crop + white mask + 3x NEAREST, psm11 (verified: '14' conf 96)
+        cw, ch = int(base.width * 0.5), int(base.height * 0.35)
+        ctr = base.crop(((base.width - cw) // 2, (base.height - ch) // 2,
+                         (base.width - cw) // 2 + cw, (base.height - ch) // 2 + ch))
+        mask = ctr.point(lambda x: x if x > 170 else 0)
+        big3 = mask.resize((ctr.width * 3, ctr.height * 3), Image.NEAREST)
         p3 = PREP / f'num3_{cid}.jpg'
-        filt.save(p3, 'JPEG', quality=92)
+        big3.save(p3, 'JPEG', quality=95)
         jobs_out['num3_'].append({'id': f'num3_{cid}', 'path': str(p3), 'group': 'num3'})
     for pre, js in jobs_out.items():
         path = PREP / f'{pre}jobs.json'

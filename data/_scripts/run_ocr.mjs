@@ -13,7 +13,7 @@ const RESULTS = '/tmp/ocrprep/results.jsonl';
 
 const PSM = {
   book: '3', alt: '3', letter: '4', card: '3', retry: '3',
-  dig: '8', num: '7', num2: '3', num3: '3',
+  dig: '8', num: '7', num2: '3', num3: '11',
 };
 const DIGIT = new Set(['dig', 'num', 'num2', 'num3']);
 

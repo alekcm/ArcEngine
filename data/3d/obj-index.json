@@ -1,0 +1,23 @@
+{
+ "count": 2,
+ "models": [
+  {
+   "file": "Mods/Models/httpssteamusercontentaakamaihdnetugc18256491311908287017E5D7F6C2CC82FCA5433FDA3EFB7CB834B1EC0CA.obj",
+   "bytes": 682283,
+   "sha1": "7e5d7f6c2cc82fca5433fda3efb7cb834b1ec0ca",
+   "mtllib": "Smothcoub2.mtl",
+   "mtllib_missing": true,
+   "vertices": 4706,
+   "faces": 9408
+  },
+  {
+   "file": "Mods/Models/httpssteamusercontentaakamaihdnetugc18256494683913563946E0BC6082B428AB07756AD15BCCDCE6A67F662BC.obj",
+   "bytes": 48765,
+   "sha1": "6e0bc6082b428ab07756ad15bccdce6a67f662bc",
+   "mtllib": "untitled.mtl",
+   "mtllib_missing": true,
+   "vertices": 576,
+   "faces": 576
+  }
+ ]
+}

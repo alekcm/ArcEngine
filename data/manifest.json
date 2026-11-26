@@ -1,0 +1,138 @@
+{
+ "project": "Fall of Avalon — test data (Markdown + JSON)",
+ "sources": {
+  "pdfs": [
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc180988612598327972294BDADFA4D151B45F6FFC4A636685DD7C286760C.pdf",
+    "bytes": 18037250,
+    "sha1": "94bdadfa4d151b45f6ffc4a636685dd7c286760c"
+   },
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc18098861259908990786F6E62D7909AAA0C6E15347A95A44A986EA00CAF.pdf",
+    "bytes": 5074910,
+    "sha1": "6f6e62d7909aaa0c6e15347a95a44a986ea00caf"
+   },
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc18098861259909005673DB38C54295C88F596505B26DF2B907ABFE49B5D.pdf",
+    "bytes": 5914303,
+    "sha1": "3db38c54295c88f596505b26df2b907abfe49b5d"
+   },
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc1809886125990903314268462CF0546B8E9C27E2CE7F4F8C1204C665C9C.pdf",
+    "bytes": 6034078,
+    "sha1": "268462cf0546b8e9c27e2ce7f4f8c1204c665c9c"
+   },
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc1809886125990906790D354FF4AB0BA6C71A3ACACB10E5284C2C1EA7592.pdf",
+    "bytes": 4980586,
+    "sha1": "d354ff4ab0ba6c71a3acacb10e5284c2c1ea7592"
+   },
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc182564986304654056867014EEFF9352B5334499BFD961B6B1B615E5FA7.pdf",
+    "bytes": 5214635,
+    "sha1": "67014eeff9352b5334499bfd961b6b1b615e5fa7"
+   },
+   {
+    "file": "Mods/PDF/httpssteamusercontentaakamaihdnetugc1852683339376484424469DEB420206B959FDA1B1E47A78D7A689AAA29C.pdf",
+    "bytes": 38468222,
+    "sha1": "469deb420206b959fda1b1e47a78d7a689aaa29c"
+   },
+   {
+    "file": "/tmp/rarout/httpssteamusercontentaakamaihdnetugc1852683339376433041DD4D150DBBB7724272815287AFFD4CA3B11579BE.pdf",
+    "bytes": 151810518,
+    "sha1": "dd4d150dbbb7724272815287affd4ca3b11579be"
+   }
+  ],
+  "images": {
+   "count": 1528,
+   "bytes": 850047126
+  },
+  "assetbundles": {
+   "count": 9,
+   "bytes": 21196905
+  }
+ },
+ "outputs": {
+  "books": {
+   "rulebook": {
+    "file": "data/rules/rulebook.md",
+    "pages": 24,
+    "bytes": 237653,
+    "methods": {
+     "transcribed": 1,
+     "text-layer": 23
+    }
+   },
+   "journal": {
+    "file": "data/books/research-journal.md",
+    "pages": 76,
+    "bytes": 813069,
+    "methods": {
+     "ocr-spread": 67,
+     "text-layer": 9
+    }
+   },
+   "secrets": {
+    "file": "data/books/book-of-secrets.md",
+    "pages": 22,
+    "bytes": 284853,
+    "methods": {
+     "ocr-spread": 17,
+     "text-layer": 5
+    }
+   }
+  },
+  "letters": {
+   "ailey": {
+    "file": "data/letters/ailey.md",
+    "method": "text-layer",
+    "conf": 66,
+    "bytes": 3002
+   },
+   "arev": {
+    "file": "data/letters/arev.md",
+    "method": "text-layer",
+    "conf": 69,
+    "bytes": 2598
+   },
+   "beor": {
+    "file": "data/letters/beor.md",
+    "method": "text-layer",
+    "conf": 69,
+    "bytes": 2847
+   },
+   "maggot": {
+    "file": "data/letters/maggot.md",
+    "method": "ocr",
+    "conf": 67,
+    "bytes": 2754
+   },
+   "niamh": {
+    "file": "data/letters/niamh.md",
+    "method": "ocr",
+    "conf": 75,
+    "bytes": 2452
+   }
+  },
+  "cards": {
+   "avg_conf": 74.0,
+   "empty": 128,
+   "backs": 447,
+   "retry": 7,
+   "numbers": 28,
+   "dups": 0,
+   "kinds": {
+    "card": 1100,
+    "item-card": 284,
+    "location": 132,
+    "print-sheet": 4,
+    "character-sheet": 6,
+    "map": 1,
+    "checklist": 1
+   }
+  },
+  "obj_index": {
+   "count": 2
+  }
+ }
+}
