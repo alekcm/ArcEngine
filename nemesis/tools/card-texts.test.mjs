@@ -49,8 +49,9 @@ test('CARD-TEXT-02 every pack has its full deck, and every card has a descriptio
     }
 });
 
-test('CARD-TEXT-03 every DLC event ends with the Redux noise band', () => {
-    for (const list of [CARNOMORPH_EVENT_CARDS, VOID_EVENT_CARDS, CHYTRID_EVENT_CARDS]) {
+test('CARD-TEXT-03 original Carnomorph events do not acquire the Redux noise band', () => {
+    for (const c of CARNOMORPH_EVENT_CARDS) assert.ok(!eventTextFor(c).includes(EVENT_NOISE_TEXT), c.id);
+    for (const list of [VOID_EVENT_CARDS, CHYTRID_EVENT_CARDS]) {
         for (const c of list) assert.ok(eventTextFor(c).includes(EVENT_NOISE_TEXT), c.id);
     }
     assert.equal(EVENT_NOISE_TEXT, 'Бросок кубика: каждый персонаж делает бросок шума.');
@@ -75,5 +76,5 @@ test('CARD-TEXT-05 the document holds the texts themselves, not just their heade
     assert.ok(d.includes('Истощение хитина'), 'a chytrid weakness is listed');
     // and it also names what is still simplified, so nothing hides behind a table
     assert.match(d, /## Где эффект карты пока упрощён/);
-    assert.match(d, /Слизь не используется в Redux/);
+    assert.match(d, /Персонаж получает фишку слизи и 1 карту инфекции/);
 });

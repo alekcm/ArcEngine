@@ -6,7 +6,7 @@ import { isReduxCarnomorphs } from '../dlc.mjs';
 import { OPS, next, log, pname, room, roomName, playersInRoom, intrudersIn, removeIntruder,
     placeFire, removeFire, placeMalfunction, placeNoise, corridorsOf, findRoomsByTile, tileOf, turnOrder,
     drawCards, discardCard, isContam, isInfected, canDestroyDoor, loseHealth, gainContamination,
-    removeMalfunction } from './core.mjs';
+    removeMalfunction, giveSlime, isOriginal, recordTurretEntry } from './core.mjs';
 import { INTRUDER_NAMES } from '../data/cards.mjs';
 import { hasCarnomorphAdaptation, spawnCarnomorph, addCarnomorphToken } from './carnomorphs.mjs';
 import { startSelfDestruct } from './events.mjs';
@@ -329,9 +329,30 @@ OPS['carnomorph.eventEffect'] = (state, step) => {
             next(state, ...turnOrder(state).filter(p => p.status === 'active' && !p.pod)
                 .map(p => ({ op: 'carnomorph.eventMutation', player: p.id })));
             break;
-        case 'beastOnHunt': case 'markedPrey': case 'quarantine':
-            log(state, 'Слизь не используется: зависящий от неё эффект события пропущен.', 'minor');
+        case 'beastOnHunt': case 'markedPrey': case 'quarantine': {
+            if (!isOriginal(state)) {
+                log(state, 'Слизь не используется: зависящий от неё эффект события пропущен.', 'minor');
+                break;
+            }
+            const active = turnOrder(state).filter(p => p.status === 'active' && !p.pod);
+            if (ev.effect === 'markedPrey') {
+                for (const p of active) if (room(state, p.room).objects.some(o => heavy.has(o.type)) || p.heavy.some(o => heavy.has(o.type))) giveSlime(state, p);
+            } else if (ev.effect === 'quarantine') {
+                for (const p of active.filter(p => p.slime)) for (const c of corridorsOf(state, p.room)) {
+                    if (c.id !== 'tech' && state.ship.corridors[c.id].door === 'open') state.ship.corridors[c.id].door = 'closed';
+                }
+            } else {
+                const butcher = Object.values(state.intruders).find(it => it.type === 'butcher');
+                const targets = active.filter(p => p.slime);
+                if (!butcher) next(state, ...targets.map(p => ({ op: 'noise.roll', player: p.id, room: p.room })));
+                else if (!playersInRoom(state, butcher.room).length && targets.length) {
+                    butcher.room = targets[0].room;
+                    recordTurretEntry(state, 'intruder', butcher.uid, butcher.room);
+                    log(state, 'Зверь на охоте: мясник перемещается в ' + roomName(state, butcher.room) + '.', 'event');
+                }
+            }
             break;
+        }
         case 'detonation': {
             // Printed (Redux wording): fire in the lowest-numbered compartment with three red item
             // symbols and in every compartment next to it. Fire does not spread through closed

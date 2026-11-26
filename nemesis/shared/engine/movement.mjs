@@ -148,7 +148,7 @@ OPS['move.afterExplore'] = (state, step) => {
     turretOnCharacterEntry(state, p, p.room);
     if (p.status !== 'active') return;
     const rs = room(state, p.room);
-    if (isOriginal(state) && state.enemySet === 'redux' && rs.tile === 'contaminated') giveSlime(state, p);
+    if (isOriginal(state) && ['redux', 'carnomorphs'].includes(state.enemySet) && rs.tile === 'contaminated') giveSlime(state, p);
     const others = playersInRoom(state, p.room).filter(o => o.id !== p.id);
     const intr = intrudersIn(state, p.room);
     const then = step.then || { op: 'turn.choose' };

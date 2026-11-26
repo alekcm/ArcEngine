@@ -61,7 +61,7 @@ function packName(ev) {
  *  the effect of the card and the dice it demands. The table reads them one at a time instead of
  *  picking the requirement out of a single wall of printed text. */
 export function eventLogLines(ev) {
-    if (String(ev.id || '').startsWith('origEv')) {
+    if (String(ev.id || '').startsWith('origEv') || String(ev.id || '').startsWith('carnoEvent')) {
         const types = ((ev.move && ev.move.types) || []).map(t => INTRUDER_NAMES[t] || t).join(', ');
         return [
             '📜 Событие: «' + ev.name + '».',
@@ -132,7 +132,10 @@ OPS['event.movement'] = (state, step) => {
     // some of the miniatures; the table now moves the whole pack the same way, which is what a
     // single direction on the card means. Movements printed inside the effect (a queen going to
     // her nest, a figure stepping into a vent) stay exactly as that effect says.
-    if (ev.move.type === 'corridor') attacks = moveIntrudersByCorridor(state, ev.move.num, isOriginal(state) && state.enemySet === 'redux' ? ev.move.types : null);
+    if (ev.move.type === 'corridor') {
+        const printedTypes = isOriginal(state) && (state.enemySet === 'redux' || state.enemySet === 'carnomorphs');
+        attacks = moveIntrudersByCorridor(state, ev.move.num, printedTypes ? ev.move.types : null);
+    }
     else if (ev.move.type === 'closest') { attacks = moveIntrudersToClosest(state); if (id === 'onTheHunt') attacks = attacks.concat(moveIntrudersToClosest(state)); }
     else if (ev.move.type === 'closestTwice') attacks = moveIntrudersToClosest(state).concat(moveIntrudersToClosest(state));
     if (state.enemySet === 'voidseeders') {
@@ -451,6 +454,9 @@ OPS['event.noise'] = (state, step) => {
     // The noise band is read from the card of the pack in play; DLC cards carry `noise: 'all'` too.
     const ev = eventById(state, step.id);
     if (!ev) return;
+    // The original Carnomorph event sheet has no universal noise-roll band; only explicit card
+    // effects and the later bag-development step can call for one.
+    if (isOriginal(state) && state.enemySet === 'carnomorphs') return;
     // Two kinds of event end in an Encounter instead of a die — the printed card says «resolves
     // [Encounter] in turn order», not «makes a Noise roll»:
     //  * no Action cards in hand (Bulkheads Open, Damaging Fire, On the Hunt, System Failure);

@@ -44,8 +44,8 @@ export function intruderToughness(state, type) {
 /** How many Wounds one Battle die face deals to this target when Shooting (original rules, p. 18). */
 export function originalShootWounds(target, face) {
     const type = target && target.type;
-    const small = type === 'larva' || type === 'crawler';
-    const adult = small || type === 'adult';
+    const small = type === 'larva' || type === 'crawler' || type === 'metagorger';
+    const adult = small || type === 'adult' || type === 'shambler';
     if (face === 'two') return 2;
     if (face === 'one') return 1;
     if (face === 'adult') return adult ? 1 : 0;
@@ -198,7 +198,7 @@ export function originalDealHits(state, p, it, hits, mod, opts = {}) {
         if (s2 > s1) natural = second;
     }
     state.lastCombatNatural = natural;
-    let face = natural;
+    let face = opts.faceModifier ? opts.faceModifier(natural) : natural;
     // Scientist's Pistol (p. 19 example): rolled 2 Wounds counts as 1 Wound.
     if (shooting && opts.weapon.item === 'scientistPistol' && face === 'two') {
         face = 'one';
@@ -232,6 +232,7 @@ export function originalDealHits(state, p, it, hits, mod, opts = {}) {
         log(state, '🎲 Ближний бой: ' + (ORIGINAL_FACE_TEXT[natural] || String(natural)) + ' → ' + wounds + ' ран.', 'combat');
     }
 
+    if (opts.damageCheck) return opts.damageCheck(wounds);
     addWounds(state, it, wounds);
     if (!state.intruders[it.uid]) return true;
     const check = originalDeathCheck(state, it);

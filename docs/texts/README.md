@@ -8,7 +8,7 @@
 |---|---|---|
 | Правила Nemesis: Redux, 25 страниц | [RULEBOOK_REDUX_EN.md](RULEBOOK_REDUX_EN.md) | Расшифровка английского текста; полная независимая сверка ещё нужна. |
 | Оригинальные русские правила | [указатель страниц 6–28](ORIGINAL_BASE_STATUS_RU.md), [охват](RULES_ORIGINAL_RU.md), [черновой OCR](RULES_ORIGINAL_RU_OCR.md) | Игровые разделы страниц 6–28 перенесены со сканов; схемы и повторная сверка остаются. Страницы 1–5 не найдены. |
-| Карноморфы — русские правила | [RULES_CARNOMORPHS_RU.md](RULES_CARNOMORPHS_RU.md) | Извлечена текстовая подложка PDF; расположение колонок и отдельные символы могут быть неверны. |
+| Оригинальные Карноморфы — правила и карты | [правила](RULES_CARNOMORPHS_ORIGINAL_RU.md), [события](CARDS_CARNOMORPHS_ORIGINAL_EVENTS_RU.md), [атаки](CARDS_CARNOMORPHS_ORIGINAL_ATTACKS_RU.md), [мутации и адаптации](CARDS_EXPANSIONS_RU_CHECKED.md) | По русской книге и листам оригинального дополнения; сверка не завершена, известные ограничения — в [аудите](AUDIT_CARNOMORPHS_ORIGINAL_RU.md). [Подложка PDF](RULES_CARNOMORPHS_RU.md). |
 | Кошмары / Сеятели Пустоты — русские правила | [RULES_VOIDSEEDERS_RU.md](RULES_VOIDSEEDERS_RU.md) | Извлечена текстовая подложка PDF; стр. 7 — иллюстрация. |
 | Карноморфы в Redux | [RULEBOOK_CARNOMORPHS_REDUX_EN.md](RULEBOOK_CARNOMORPHS_REDUX_EN.md) | Текст страниц PDF перенесён с изображения; полной независимой проверки нет. Черновой OCR: [PDF_OCR.md](PDF_OCR.md). |
 | Хитриды / Lockdown — правила | [RULES_CHYTRIDS_RU_OCR.md](RULES_CHYTRIDS_RU_OCR.md), [состав дополнения](CHYTRIDS_COMPONENTS_RU.md) | Стр. 2–9: OCR по колонкам, не проверен; состав на стр. 3 перенесён вручную. Сканы стр. 10–16 в папке отсутствуют. |

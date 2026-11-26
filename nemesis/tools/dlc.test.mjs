@@ -1258,7 +1258,7 @@ test('Carnomorph event face and acknowledgement include movement and adapted eff
     s.fx = []; s.queue = []; s.prompt = null;
     OPS['event.reveal'](s, { id: 'carnoEvent8' });
     const text = s.fx.find(f => f.type === 'event').text;
-    assert.match(text, /Движение: все карноморфы — коридор 2/);
+    assert.match(text, /Движение \(Мясник\): коридор 2/);
     assert.match(text, /тяжёлым объектом/);
     assert.equal(s.prompt.text, text);
 });
@@ -1443,7 +1443,7 @@ import { CHYTRID_EVENT_CARDS as CHY_EVENTS } from '../shared/data/chytrids.mjs';
 import { EVENT_NOISE_TEXT, eventTextFor } from '../shared/data/event-text.mjs';
 
 test('every DLC event carries the Redux noise band in its text and rolls it as its last step', () => {
-    const packs = [['carnomorphs', CARNOMORPH_EVENT_CARDS], ['voidseeders', VOID_EVENTS], ['chytrids', CHY_EVENTS]];
+    const packs = [['voidseeders', VOID_EVENTS], ['chytrids', CHY_EVENTS]];
     const hasRoll = step => !step ? false : step.op === 'noise.roll' || hasRoll(step.then);
     for (const [pack, cards] of packs) {
         for (const card of cards) {
@@ -1457,13 +1457,13 @@ test('every DLC event carries the Redux noise band in its text and rolls it as i
     }
 });
 
-test('the printed Ammunition Detonation card carries the Redux wording the table reads', () => {
+test('original Ammunition Detonation retains the printed colour and item counter', () => {
     const card = CARNOMORPH_EVENT_BY_ID['carnoEvent15'];
     assert.equal(card.name, 'Детонация амуниции');
-    assert.match(card.text, /^Поместите фишку огня в отсек с тремя красными символами с наименьшим номером и в каждый соседний отсек\./);
+    assert.match(card.text, /на 0 счётчик предметов в красном отсеке с наименьшим номером/);
     assert.match(card.text, /Огонь не распространяется через закрытые двери и технические коридоры\./);
     assert.equal(card.finish, 'remove');
-    assert.match(eventTextFor(card), /Детонация амуниции|тремя красными символами/);
+    assert.match(eventTextFor(card), /красном отсеке/);
 });
 
 import { readFileSync } from 'node:fs';
@@ -1472,6 +1472,6 @@ import { dlcReference } from './dlc-reference.mjs';
 test('docs/NEMESIS_DLC_REFERENCE.md is the generator output, never a hand copy', () => {
     const doc = readFileSync(new URL('../../docs/NEMESIS_DLC_REFERENCE.md', import.meta.url), 'utf8');
     assert.equal(doc, dlcReference(), 'run: node nemesis/tools/dlc-reference.mjs --write');
-    assert.match(doc, /Поместите фишку огня в отсек с тремя красными символами/);
+    assert.match(doc, /на 0 счётчик предметов в красном отсеке/);
     assert.match(doc, /Броски шума — последний шаг события/);
 });

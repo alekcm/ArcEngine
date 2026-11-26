@@ -31,10 +31,10 @@ function carnomorphs() {
             TOUGH(c.metagorger), TOUGH(c.other), c.text])));
     out.push('', '### События (20 карт)', '');
     out.push(table(['ID', 'Название', 'Движение', 'Эффект', 'После розыгрыша', 'Шум'],
-        CARNOMORPH_EVENT_CARDS.map(c => [c.id, c.name, 'все карноморфы — коридор ' + c.move.num, c.text,
+        CARNOMORPH_EVENT_CARDS.map(c => [c.id, c.name, c.move.types.map(t => INTRUDER_NAMES[t]).join(', ') + ' — коридор ' + c.move.num, c.text,
             c.finish === 'remove' ? 'убрать из игры, сброс замешать' : c.finish === 'self' ? 'замешать карту в колоду' : 'в сброс',
-            c.noise === 'all' ? 'все' : 'нет'])));
-    out.push('', 'Броски шума — последний шаг события: «' + EVENT_NOISE_TEXT + '».');
+            'только если указан в эффекте'])));
+    out.push('', 'В оригинальном дополнении общего броска шума после каждой карты события нет.');
     out.push('', '### Адаптации (8 карт, 3 в игре)', '');
     out.push(table(['Ключ', 'Название', 'Текст'],
         Object.entries(CARNOMORPH_ADAPTATIONS).map(([k, a]) => [k, a.name, a.text])));

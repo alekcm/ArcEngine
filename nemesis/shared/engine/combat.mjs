@@ -894,6 +894,20 @@ export function dealHits(state, p, it, hits, mod, opts = {}) {
     // Only the base intruders use the original wound rules; each expansion keeps the toughness
     // check printed in its own book.
     if (isOriginal(state) && state.enemySet === 'redux') return originalDealHits(state, p, it, hits, mod, opts);
+    if (isOriginal(state) && state.enemySet === 'carnomorphs') {
+        if (opts.weapon && opts.weapon.item === 'flamethrower' && hasCarnomorphAdaptation(state, 'fireResistance')) {
+            log(state, '🧬 Сопротивление огню: огнемёт не наносит карноморфу урон.', 'combat');
+            return false;
+        }
+        return originalDealHits(state, p, it, hits, mod, { ...opts,
+            faceModifier: face => face === 'small' && hasCarnomorphAdaptation(state, 'agility') ? 'miss' : face,
+            damageCheck: wounds => {
+                const result = carnPowerCheck(state, it, wounds);
+                if (result && result.result === 'killed') { onKill(state, p, opts); return true; }
+                return false;
+            },
+        });
+    }
     if (it.type === 'larva') { log(state, 'Личинка погибает.', 'good'); removeIntruder(state, it.uid, false); return true; }
     // Energy Vulnerability: an Energy-weapon attack that deals at least 1 Injury deals +1.
     if (hits >= 1 && opts.weapon && ITEMS[opts.weapon.item].weapon.energy && hasWeak(state, 'energyVuln')) { hits += 1; log(state, '⚡ Уязвимость к энергии: +1 ранение.', 'good'); }
@@ -1008,7 +1022,10 @@ export function applyHitsNoRoll(state, it, n) {
         log(state, INTRUDER_NAMES[it.type] + ' получает ' + n + ' ранений (всего ' + it.hits + ').', 'combat');
         return false;
     }
-    if (state.enemySet === 'carnomorphs') { const result = carnDiceCheck(state, it, n, [roll(state, COMBAT_DIE), roll(state, COMBAT_DIE)]); return !!result && result.result === 'killed'; }
+    if (state.enemySet === 'carnomorphs') {
+        const result = isOriginal(state) ? carnPowerCheck(state, it, n) : carnDiceCheck(state, it, n, [roll(state, COMBAT_DIE), roll(state, COMBAT_DIE)]);
+        return !!result && result.result === 'killed';
+    }
     if (it.type === 'larva') { removeIntruder(state, it.uid, false); log(state, 'Личинка погибает.', 'good'); return; }
     if (it.type === 'queen') { state.queenHits += n; log(state, 'Королева получает ' + n + ' ранений (всего ' + state.queenHits + ').', 'combat'); if (state.queenHits >= 6) next(state, { op: 'queen.card', player: null }); return; }
     it.hits += n;

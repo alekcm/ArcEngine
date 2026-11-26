@@ -165,7 +165,6 @@ export function analyzeCarnomorphAdaptation(state, type) {
     const normalized = type === 'charCorpse' ? 'corpse' : type;
     const rank = { corpse: 'shambler', carcass: rxThird(state), egg: 'butcher' }[normalized];
     if (!rank) return false;
-    state.analyzed[normalized] = true;
     const id = state.carnomorphAdaptations && state.carnomorphAdaptations[rank];
     if ((state.carnomorphRemoved || []).includes(rank)) {
         log(state, '🧬 Адаптация этого объекта уже удалена.', 'minor');
@@ -174,7 +173,8 @@ export function analyzeCarnomorphAdaptation(state, type) {
     // The agreed Redux adaptation allows analysis to remove a face-down card as well.
     // Its identity remains secret if it was not already revealed.
     const hidden = state.secret.carnomorphAdaptations && state.secret.carnomorphAdaptations[rank];
-    if (!id && !hidden) return false;
+    if ((!id && state.rules === 'original') || (!id && !hidden)) return false;
+    state.analyzed[normalized] = true;
     state.carnomorphAdaptations[rank] = null;
     (state.carnomorphRemoved || (state.carnomorphRemoved = [])).push(rank);
     state.adaptationsRemoved = (state.adaptationsRemoved || 0) + 1;
@@ -230,10 +230,10 @@ export function carnomorphAttackEffects(card, it, p) {
     if (card.lines) return rxCarnomorphAttackEffects(card, it);
     if (!card.targets.includes(it.type)) return [{ op: 'carnoMiss' }];
     switch (card.effect) {
-        case 'vomit': return [{ op: 'contam' }, { op: 'carnoCarcass' }];
+        case 'vomit': return [{ op: 'origSlime' }, { op: 'contam' }, { op: 'carnoCarcass' }];
         case 'powerful': return [{ op: 'wound', n: 1 }, { op: 'contam' }];
         case 'devour': return [{ op: 'carnoHeal' }, p.wounds.length >= 1 ? { op: 'carnoKill' } : { op: 'wound', n: 1 }];
-        case 'multiply': return [{ op: 'carnoSpawn' }];
+        case 'multiply': return [{ op: 'carnoSpawn' }, { op: 'origSlime' }];
         case 'bite': return [p.wounds.length >= 2 ? { op: 'carnoKill' } : { op: 'wound', n: 1 }];
         case 'lash': return [{ op: 'dmg', n: 2 }, { op: 'contam' }];
         case 'scratch': return [{ op: 'dmg', n: 1 }, { op: 'contam' }];
@@ -256,6 +256,13 @@ export function resolveCarnomorphEncounter(state, step) {
     const token = step.token;
     if (!token) return;
     if (token === 'blank') {
+        if (state.rules === 'original' && state.enemySet === 'carnomorphs') {
+            noiseAround(state, step.room);
+            if (!state.bag.length) addCarnomorphToken(state, 'metagorger');
+            state.bag.push('blank');
+            if (state.bagLast) state.bagLast.effect = 'Пустой жетон: шум во всех коридорах; если мешок был пуст, добавлен жетон глодателя.';
+            return;
+        }
         // Redux 7.7: no Intruder, return the Blank, then add up to two Adult tokens to the bag.
         // Redux's Adult slot is the Shambler; the classic pack uses its Adult tokens.
         state.bag.push('blank');
@@ -385,8 +392,9 @@ export function developCarnomorphBag(state, token) {
         state.bag.push(token);
         const targetRooms = new Set();
         for (const it of Object.values(state.intruders)) if (it.type === 'metagorger') targetRooms.add(it.room);
-        for (const [id, rs] of Object.entries(state.roomState)) if (rs.objects.length) targetRooms.add(id);
-        for (const p of state.players) if (p.status === 'active' && !p.pod && p.heavy.length) targetRooms.add(p.room);
+        const heavyTypes = new Set(['egg', 'carcass', 'charCorpse', 'corpse']);
+        for (const [id, rs] of Object.entries(state.roomState)) if (rs.objects.some(o => heavyTypes.has(o.type))) targetRooms.add(id);
+        for (const p of state.players) if (p.status === 'active' && !p.pod && p.heavy.some(o => heavyTypes.has(o.type))) targetRooms.add(p.room);
         if (state.nestDiscovered && !state.nestDestroyed) {
             const nest = Object.keys(state.ship.rooms).find(id => tileOf(state, id) === 'nest');
             if (nest) targetRooms.add(nest);
@@ -395,6 +403,15 @@ export function developCarnomorphBag(state, token) {
         return [];
     }
     if (type === 'butcher') {
+        if (state.rules === 'original') {
+            const candidates = state.players.filter(p => p.status === 'active' && !p.pod && p.slime)
+                .sort((a, b) => a.hand.length - b.hand.length || a.id - b.id);
+            const p = candidates[0] || turnOrder(state).find(o => o.status === 'active' && !o.pod);
+            if (!p) { state.carnomorphSupply.push(token); return []; }
+            // Reuse the token just drawn: a second bag draw would spawn an unrelated monster.
+            const drawn = typeof token === 'string' ? { type: 'butcher', value: 4 } : token;
+            return [{ op: 'encounter', player: p.id, room: p.room, token: drawn, reason: 'Мясник: столкновение при развитии мешка' }];
+        }
         state.carnomorphSupply.push(token);
         const p = state.players[state.firstPlayer];
         if (!p || p.status !== 'active' || p.pod) return [];

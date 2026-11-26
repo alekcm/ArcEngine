@@ -234,9 +234,8 @@ export const ORIGINAL_INTRUDERS = Object.freeze({
 });
 /** The Battle die a character rolls under the current ruleset. */
 export function combatDieFor(state, p) {
-    // The original Battle die belongs to the base game only: the expansions keep the Redux die
-    // (numbers and crits) that their own dice checks are written against.
-    if (isOriginal(state) && state.enemySet === 'redux') return ORIGINAL_COMBAT_DIE;
+    // Original Carnomorphs change the death check, not the base game's battle die.
+    if (isOriginal(state) && (state.enemySet === 'redux' || state.enemySet === 'carnomorphs')) return ORIGINAL_COMBAT_DIE;
     return p && p.armor && p.armor.item === 'battleSuit' ? BLUE_DIE : COMBAT_DIE;
 }
 /** The Noise die of the current ruleset (the original game only owns the twelve-face die). */
@@ -778,12 +777,12 @@ export function intruderLabel(state, it) {
     return INTRUDER_NAMES[it.type] + (!isOriginal(state) && it.type === 'queen' ? ' (ранений ' + state.queenHits + ')' : it.hits ? ' (ранений ' + it.hits + ')' : '');
 }
 export function giveSlime(state, p) {
-    if (!isOriginal(state) || state.enemySet !== 'redux' || !p || p.status !== 'active' || p.slime) return;
+    if (!isOriginal(state) || !['redux', 'carnomorphs'].includes(state.enemySet) || !p || p.status !== 'active' || p.slime) return;
     p.slime = true;
     log(state, '🟢 ' + pname(p) + ' получает маркер слизи.', 'bad');
 }
 export function removeSlime(state, p) {
-    if (!isOriginal(state) || state.enemySet !== 'redux' || !p || !p.slime) return false;
+    if (!isOriginal(state) || !['redux', 'carnomorphs'].includes(state.enemySet) || !p || !p.slime) return false;
     delete p.slime;
     log(state, '🟢 ' + pname(p) + ': маркер слизи удалён.', 'good');
     return true;

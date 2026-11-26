@@ -6,8 +6,9 @@ import { INTRUDER_NAMES, WOUNDS } from '../data/cards.mjs';
 import { OPS, ask, next, log, player, pname, room, roomName, playersInRoom, intrudersIn, inCombat,
     isContam, isInfected, discardCard, removeCardFromGame, gainContamination, drawCards,
     removeWound, restoreHealth, loseHealth, gainWound, maxAllowedHealth, needDice, fmtRoll,
-    corridorsOf } from './core.mjs';
-import { removeCarnomorphMutation, mutationOptions } from './carnomorphs.mjs';
+    corridorsOf, isOriginal, combatDieFor, dieId, roll } from './core.mjs';
+import { removeCarnomorphMutation, mutationOptions, hasCarnomorphAdaptation } from './carnomorphs.mjs';
+import { originalShootWounds } from './original.mjs';
 import { dealHits, applyHitsNoRoll } from './combat.mjs';
 import { repelIntruder } from './intruders.mjs';
 
@@ -351,7 +352,24 @@ OPS['mutation.clawTarget'] = (state, step) => {
     const it = state.intruders[step.answer], p = player(state, step.player);
     if (!it || it.room !== p.room) { next(state, step.then); return; }
     if (!step.infected) { applyHitsNoRoll(state, it, 1); next(state, step.then); return; }
+    if (isOriginal(state)) {
+        applyHitsNoRoll(state, it, 1);
+        next(state, { op: 'mutation.originalClawRoll', player: p.id, intruder: it.uid, then: step.then });
+        return;
+    }
     next(state, { op: 'mutation.clawAttack', player: p.id, intruder: it.uid, then: step.then });
+};
+OPS['mutation.originalClawRoll'] = (state, step) => {
+    const p = player(state, step.player), it = state.intruders[step.intruder];
+    if (!p || p.status !== 'active') { next(state, step.then); return; }
+    const die = combatDieFor(state, p);
+    if (needDice(state, step, dieId(die), p.id, 'Бросок боя — мутация «Клешня»')) return;
+    let face = roll(state, die);
+    if (face === 'small' && hasCarnomorphAdaptation(state, 'agility')) face = 'miss';
+    const wounds = it ? originalShootWounds(it, face) : 0;
+    log(state, '🎲 Клешня: ' + fmtRoll(face) + ' → ' + wounds + ' дополнительного урона.', 'combat');
+    if (it && wounds) applyHitsNoRoll(state, it, wounds);
+    next(state, step.then);
 };
 OPS['mutation.clawAttack'] = (state, step) => {
     const p = player(state, step.player), it = state.intruders[step.intruder];

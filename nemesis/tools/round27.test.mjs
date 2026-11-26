@@ -60,7 +60,7 @@ test('Original view exposes room search counters and contaminated rooms cannot b
     assert.equal(s.prompt, null);
 });
 
-test('Slime is a base Original rule, can be removed, and never leaks into DLC player state', () => {
+test('Slime is available in the base Original game and original Carnomorphs, but not Redux Carnomorphs', () => {
     const s = originalGame(), p = s.players[0];
     giveSlime(s, p);
     assert.equal(p.slime, true);
@@ -70,7 +70,10 @@ test('Slime is a base Original rule, can be removed, and never leaks into DLC pl
     const dlc = createGame({ enemySet: 'carnomorphs', seed: 'round27-no-slime', players: [{ name: 'DLC', charId: 'soldier' }] });
     const dp = dlc.players[0];
     giveSlime(dlc, dp);
-    assert.equal(Object.hasOwn(dp, 'slime'), false);
+    assert.equal(dp.slime, true);
+    const rx = createGame({ rules: 'redux', enemySet: 'carnomorphsRedux', players: [{ name: 'Redux', charId: 'soldier' }] });
+    giveSlime(rx, rx.players[0]);
+    assert.equal(Object.hasOwn(rx.players[0], 'slime'), false);
 });
 
 test('Original melee against a Nest Egg has no miss wound or contamination and rolls Noise after each attempt', () => {
