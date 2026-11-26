@@ -227,7 +227,7 @@ def build_letters(results: dict, texts: dict) -> dict:
                     f'OCR conf (вариант `{tag}`): {best["conf"]}.')
         if signer:
             head.append(f'Подпись: {signer}.')
-        path = OUT / f'{slug}.md'
+        path = OUT / 'letters' / f'{slug}.md'
         path.write_text('\n'.join(head) + '\n\n' + text + '\n', encoding='utf-8')
         summary[slug] = {'file': f'data/letters/{slug}.md', 'method': method,
                          'conf': best['conf'], 'bytes': path.stat().st_size}
