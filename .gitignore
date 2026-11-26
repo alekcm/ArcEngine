@@ -6,3 +6,11 @@
 /build/
 /dist/
 __pycache__/
+
+# временные файлы транскрипции (Порция 8)
+/back_*.png
+/empties_*.png
+/empty_sheet_*.png
+/esp_*.jpg
+/zoom_*.png
+/zoom_*.jpg
