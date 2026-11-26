@@ -24,9 +24,10 @@ OPS['move.start'] = (state, step) => {
     const p = player(state, step.player);
     const dests = [];
     for (const e of state.ship.rooms[p.room].exits) {
-        // A closed door does not lock a character in: they open it on the way through (move.go).
-        // Doors exist to stop intruders — a crew member walking back into the room they just left
-        // must not be told there is nowhere to go.
+        const door = state.ship.corridors[e.corridor];
+        // Closed doors block ordinary character movement. A mutation may explicitly allow passage
+        // without opening the door (Carnomorph Contortionist / Trickster).
+        if (door.door === 'closed' && !step.preserveDoor) continue;
         const explored = room(state, e.to).explored;
         if (step.filter === 'explored' && !explored) continue;
         if (step.filter === 'unexplored' && explored) continue;
@@ -68,10 +69,14 @@ OPS['move.go'] = (state, step) => {
     const laikaOnArrival = state.players.some(o => o.status === 'active' && !o.pod && o.laika === step.dest);
     const exit = state.ship.rooms[from].exits.find(e => e.to === step.dest);
     const door = exit ? state.ship.corridors[exit.corridor] : null;
+    if (door && door.door === 'closed' && !step.preserveDoor) {
+        log(state, 'Дверь ' + door.id + ' закрыта — пройти нельзя.', 'bad');
+        next(state, step.then || { op: 'turn.choose' });
+        return;
+    }
     p.room = step.dest;
     p.movedThisRound = true;
     log(state, pname(p) + ' переходит: ' + roomName(state, from) + ' → ' + roomName(state, step.dest) + '.', 'action');
-    if (door && door.door === 'closed' && !step.preserveDoor) { door.door = 'open'; log(state, pname(p) + ' открывает дверь ' + door.id + '.', 'action'); }
     resolveFollows(state);   // "Blood Sense": the intruder follows the character to the destination
     if (step.companion !== undefined) {
         const c = player(state, step.companion);

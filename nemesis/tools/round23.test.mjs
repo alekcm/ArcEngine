@@ -65,12 +65,12 @@ test('R23-01: the careful move can be aimed at a corridor that already carries n
     assert.equal(s.prompt && s.prompt.kind, 'turn', 'the turn goes on after the encounter');
 });
 
-test('R23-02: clicking a neighbouring room on the board offers the move, closed door or not', () => {
+test('R23-02: clicking a neighbouring room offers movement only through the server menu', () => {
     const app = clientFile('app.js');
     const at = app.indexOf('function onRoomClick');
     assert.ok(at > 0, 'the board click handler exists');
     const body = app.slice(at, app.indexOf('\nfunction ', at + 10));
-    assert.doesNotMatch(body, /door !== 'closed'/, 'a closed door must not answer for the room');
+    assert.doesNotMatch(body, /door !== 'closed'/, 'door passability is validated by the engine, not the click handler');
     assert.match(body, /find\(e => e\.to === id\)/, 'the neighbour is found by its destination');
     // The move is offered from the room popup, exactly as the action panel offers it.
     assert.match(body, /openWorldPop\(/);

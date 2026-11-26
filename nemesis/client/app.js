@@ -1536,8 +1536,8 @@ function onRoomClick(id) {
         return;
     }
     if (!menu) { scene.focusRoom(id); return; }
-    // A closed door does not make a neighbour unreachable: it opens on the way through (the same
-    // rule the action list follows), so the click must offer the move exactly like the list does.
+    // Keep neighbour selection consistent with the action list; the engine filters destinations
+    // behind closed doors when it builds the actual movement prompt.
     const exit = (v.ship.rooms[me.room].exits || []).find(e => e.to === id);
     if (!exit) { scene.focusRoom(id); return; }   // not a neighbour: just look at it
     const mv = menuActionOf(menu, 'move'), cw = menuActionOf(menu, 'careful');

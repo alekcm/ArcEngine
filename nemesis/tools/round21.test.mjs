@@ -214,7 +214,7 @@ test('R21-04: a room nobody has revealed is never named', () => {
     assert.ok(clientFile('dice.js').includes('(opts && opts.title)'), 'DiceUI принимает заголовок с маской');
 });
 
-test('R21-05: the door that closed behind you does not lock you out of the room you left', () => {
+test('R21-05: a closed door blocks ordinary movement and remains closed', () => {
     const s = fresh();
     const p = s.players[0];
     for (const id of ['003', '007']) {
@@ -226,11 +226,24 @@ test('R21-05: the door that closed behind you does not lock you out of the room 
     next(s, { op: 'move.start', player: 0 });
     run(s);
     assert.equal(s.prompt && s.prompt.kind, 'room');
-    assert.ok(s.prompt.rooms.includes('007'), '007 снова доступна следующим действием');
-    const id = s.prompt.id;
-    s.pendingRoll = { die: 'noise', value: 'silence' };   // no encounter on the way
-    assert.equal(answer(s, 0, id, '007'), true);
-    assert.equal(p.room, '007', 'персонаж вернулся в покинутую комнату');
-    assert.equal(s.ship.corridors['003-007'].door, 'open', 'дверь открылась, чтобы пройти');
-    assert.ok(s.log.some(l => /открывает дверь 003-007/.test(l.text)), 'об этом сказано в журнале');
+    assert.ok(!s.prompt.rooms.includes('007'), 'нельзя выбрать комнату за закрытой дверью');
+    assert.equal(p.room, '003', 'персонаж остаётся в исходной комнате');
+    assert.equal(s.ship.corridors['003-007'].door, 'closed', 'движение не открывает дверь автоматически');
+});
+
+test('R21-06: an explicit mutation passage crosses a closed door without opening it', () => {
+    const s = fresh(), p = s.players[0];
+    for (const id of ['003', '007']) {
+        s.roomState[id].explored = true;
+        s.roomState[id].tile = s.secret.tiles[id];
+    }
+    p.room = '003';
+    s.ship.corridors['003-007'].door = 'closed';
+    next(s, { op: 'move.start', player: p.id, preserveDoor: true, noNoise: true, then: { op: 'noop' } });
+    run(s);
+    assert.ok(s.prompt.rooms.includes('007'), 'разрешённый эффект показывает комнату за закрытой дверью');
+    assert.equal(answer(s, p.id, s.prompt.id, '007'), true);
+    run(s);
+    assert.equal(p.room, '007', 'персонаж проходит по исключению эффекта');
+    assert.equal(s.ship.corridors['003-007'].door, 'closed', 'дверь остаётся закрытой');
 });
