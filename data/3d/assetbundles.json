@@ -1,0 +1,137 @@
+{
+ "beor": {
+  "source": "httpssteamusercontentaakamaihdnetugc1644343591140294238927BCCB45C6DA61315F3F87E228BAF6633893260.unity3d",
+  "mesh": {
+   "name": "beor",
+   "file": "models/beor.obj",
+   "vertices": 37834,
+   "triangles": 49999
+  },
+  "texture": {
+   "name": "beor",
+   "file": "textures/beor.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "ailei": {
+  "source": "httpssteamusercontentaakamaihdnetugc164434359114029990766F5BDF6BFD8F615B3360CEBCE8BE26D8A68434D.unity3d",
+  "mesh": {
+   "name": "ailei",
+   "file": "models/ailei.obj",
+   "vertices": 38214,
+   "triangles": 50021
+  },
+  "texture": {
+   "name": "ailei",
+   "file": "textures/ailei.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "arev": {
+  "source": "httpssteamusercontentaakamaihdnetugc16443435911403007394BDC97E60AC7BF5DD897B0B454E54963E5A70D5D.unity3d",
+  "mesh": {
+   "name": "arev",
+   "file": "models/arev.obj",
+   "vertices": 37573,
+   "triangles": 50005
+  },
+  "texture": {
+   "name": "arev",
+   "file": "textures/arev.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "maggot": {
+  "source": "httpssteamusercontentaakamaihdnetugc1644343591140323604F4265ED4962D2FC2ABF5C3B38F21C4531E07B256.unity3d",
+  "mesh": {
+   "name": "maggot",
+   "file": "models/maggot.obj",
+   "vertices": 34878,
+   "triangles": 50004
+  },
+  "texture": {
+   "name": "maggot",
+   "file": "textures/maggot.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "menhir1": {
+  "source": "httpssteamusercontentaakamaihdnetugc164434359114034902094C901B5A5F2E7625C687DFE2599BBF55C93E17C.unity3d",
+  "mesh": {
+   "name": "menhir1",
+   "file": "models/menhir1.obj",
+   "vertices": 42585,
+   "triangles": 49926
+  },
+  "texture": {
+   "name": "menhir1",
+   "file": "textures/menhir1.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "best2": {
+  "source": "httpssteamusercontentaakamaihdnetugc182564913119332857609AE39D189D0D9513C7F632070A22969BA1D7927.unity3d",
+  "mesh": {
+   "name": "counter",
+   "file": "models/counter.obj",
+   "vertices": 64,
+   "triangles": 44
+  },
+  "texture": {
+   "name": "counter",
+   "file": "textures/counter.png",
+   "width": 16,
+   "height": 32
+  }
+ },
+ "niamh": {
+  "source": "httpssteamusercontentaakamaihdnetugc183467750081265876505B70D7484ABB80A19EBC70EA873BA78A7D25453.unity3d",
+  "mesh": {
+   "name": "niamh.001",
+   "file": "models/niamh.001.obj",
+   "vertices": 38080,
+   "triangles": 50016
+  },
+  "texture": {
+   "name": "niamh",
+   "file": "textures/niamh.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "menhir3": {
+  "source": "httpssteamusercontentaakamaihdnetugc18470539131634879275504258D2DC6D2E718F362E6E5FA1840850CE57C.unity3d",
+  "mesh": {
+   "name": "menhir3",
+   "file": "models/menhir3.obj",
+   "vertices": 45517,
+   "triangles": 50139
+  },
+  "texture": {
+   "name": "menhir3",
+   "file": "textures/menhir3.png",
+   "width": 2048,
+   "height": 2048
+  }
+ },
+ "menhir2": {
+  "source": "httpssteamusercontentaakamaihdnetugc1847053913163489220257BD95A680F62A0FBF3785941BE6434AF428F7F.unity3d",
+  "mesh": {
+   "name": "menhir2",
+   "file": "models/menhir2.obj",
+   "vertices": 40128,
+   "triangles": 50012
+  },
+  "texture": {
+   "name": "menhir2",
+   "file": "textures/menhir2.png",
+   "width": 2048,
+   "height": 2048
+  }
+ }
+}
