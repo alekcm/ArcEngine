@@ -5,3 +5,4 @@
 /_utils/.backups/
 /build/
 /dist/
+__pycache__/
