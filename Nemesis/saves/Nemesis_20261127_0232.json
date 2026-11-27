@@ -1,0 +1,2195 @@
+{
+  "version": 1,
+  "timestamp": 1795728741034,
+  "name": "Nemesis_20261127_0232",
+  "state": {
+    "version": 1,
+    "enemySet": "redux",
+    "rules": "redux",
+    "carnomorphRedux": false,
+    "seedStr": "1795728662799",
+    "rng": 1821067475,
+    "mode": "original",
+    "round": 1,
+    "phase": "player",
+    "players": [
+      {
+        "id": 0,
+        "number": 4,
+        "name": "Смачная Милфа",
+        "charId": "pilot",
+        "colors": {},
+        "parts": {
+          "hair": "classic",
+          "optics": "classic",
+          "coat": "classic",
+          "headset": "classic",
+          "sidearm": "classic"
+        },
+        "room": "011",
+        "health": 10,
+        "hand": [
+          "pilot.knowledgeOfShip#0",
+          "pilot.determination#0",
+          "pilot.rest#0",
+          "pilot.search#0",
+          "pilot.computerSkills#0"
+        ],
+        "deck": [
+          "pilot.demolition#0",
+          "pilot.piloting#0",
+          "pilot.repairs#0",
+          "pilot.weakSpot#0",
+          "pilot.interruption#0"
+        ],
+        "discard": [],
+        "wounds": [],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it1",
+            "item": "pilotShotgun",
+            "ammo": 2,
+            "broken": false,
+            "start": true
+          }
+        ],
+        "heavy": [],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it2",
+            "item": "pilotEvacKey",
+            "open": false
+          }
+        ],
+        "knowledge": 1,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "pristine",
+            "kind": "personal"
+          },
+          {
+            "id": "rightMoment",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": false,
+        "pod": null,
+        "knownEngines": {},
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": false,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "noAttacks": false
+      },
+      {
+        "id": 1,
+        "number": 1,
+        "name": "Милый Ублюдок",
+        "charId": "mechanic",
+        "colors": {
+          "skin": "#d29b7c",
+          "hair": "#8a1f1f",
+          "overall": "#686664",
+          "helmet": "#a2a8a9",
+          "gloves": "#f39c12",
+          "lights": "#005485"
+        },
+        "parts": {
+          "shield": "framed",
+          "outfit": "armored",
+          "belt": "tools",
+          "pack": "gauges",
+          "welder": "torch"
+        },
+        "room": "011",
+        "health": 10,
+        "hand": [
+          "mechanic.ingenuity#0",
+          "mechanic.interruption#0",
+          "mechanic.fightFire#0",
+          "mechanic.computerSkills#0",
+          "mechanic.demolition#0"
+        ],
+        "deck": [
+          "mechanic.search#0",
+          "mechanic.rest#0",
+          "mechanic.fastRepairs#0",
+          "mechanic.duckAndCover#0",
+          "mechanic.technicalCorridors#0"
+        ],
+        "discard": [],
+        "wounds": [],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it3",
+            "item": "sawedOff",
+            "ammo": 2,
+            "broken": false,
+            "start": true
+          }
+        ],
+        "heavy": [],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it4",
+            "item": "plasmaTorch",
+            "open": false
+          }
+        ],
+        "knowledge": 1,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "oldestFriend",
+            "kind": "personal"
+          },
+          {
+            "id": "bugHunt",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": false,
+        "pod": null,
+        "knownEngines": {},
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": false,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "noAttacks": false
+      },
+      {
+        "id": 2,
+        "number": 2,
+        "name": "Бизон",
+        "charId": "captain",
+        "colors": {
+          "skin": "#e8b89a",
+          "hair": "#ff0000",
+          "armor": "#fafafa",
+          "shirt": "#7a1f1f",
+          "gloves": "#d7b193",
+          "lights": "#015483"
+        },
+        "parts": {
+          "hair": "classic",
+          "shoulders": "layered",
+          "vest": "radio",
+          "uniform": "field",
+          "sidearm": "compact"
+        },
+        "room": "011",
+        "health": 10,
+        "hand": [
+          "captain.demolition#0",
+          "captain.rest#0",
+          "captain.reload#0",
+          "captain.coveringFire#0",
+          "captain.motivation#0"
+        ],
+        "deck": [
+          "captain.fanning#0",
+          "captain.interruption#0",
+          "captain.search#0",
+          "captain.authority#0",
+          "captain.repairs#0"
+        ],
+        "discard": [],
+        "wounds": [],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it5",
+            "item": "sixShooter",
+            "ammo": 6,
+            "broken": false,
+            "start": true
+          },
+          {
+            "uid": "it6",
+            "item": "sixShooterCartridge",
+            "broken": false,
+            "start": true
+          }
+        ],
+        "heavy": [],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it7",
+            "item": "intercom",
+            "open": false
+          }
+        ],
+        "knowledge": 1,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "hoarder",
+            "kind": "personal"
+          },
+          {
+            "id": "abOvo",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": false,
+        "pod": null,
+        "knownEngines": {},
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": false,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "noAttacks": false
+      },
+      {
+        "id": 3,
+        "number": 3,
+        "name": "сексуальный урод",
+        "charId": "convict",
+        "colors": {
+          "skin": "#0400ff",
+          "pants": "#fbff00",
+          "mask": "#fb00ff",
+          "tattoo": "#ff0000",
+          "chains": "#00ff11",
+          "lights": "#3bff7a"
+        },
+        "parts": {
+          "muzzle": "guard",
+          "plates": "shoulder",
+          "chains": "heavy",
+          "trousers": "reinforced",
+          "tattoos": "tribal"
+        },
+        "room": "011",
+        "health": 10,
+        "hand": [
+          "convict.search#0",
+          "convict.interruption#0",
+          "convict.rest#0",
+          "convict.shortTemper#0",
+          "convict.demolition#0"
+        ],
+        "deck": [
+          "convict.intimidate#0",
+          "convict.bash#0",
+          "convict.repairs#0",
+          "convict.duckAndCover#0",
+          "convict.catchThis#0"
+        ],
+        "discard": [],
+        "wounds": [],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it8",
+            "item": "cuffs",
+            "broken": false,
+            "charge": 6,
+            "start": true
+          }
+        ],
+        "heavy": [],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it9",
+            "item": "pipe",
+            "open": false
+          }
+        ],
+        "knowledge": 1,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "trophyHunter",
+            "kind": "personal"
+          },
+          {
+            "id": "greener",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": false,
+        "pod": null,
+        "knownEngines": {},
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": false,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "noAttacks": false
+      }
+    ],
+    "firstPlayer": 1,
+    "current": 1,
+    "queue": [],
+    "prompt": {
+      "id": 1,
+      "kind": "turn",
+      "player": 1,
+      "title": "Ваш ход — действий осталось: 2",
+      "actions": [
+        {
+          "id": "move",
+          "label": "Перемещение",
+          "cost": 1,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "careful",
+          "label": "Осторожное перемещение",
+          "cost": 2,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "shoot",
+          "label": "Стрелять",
+          "cost": 1,
+          "enabled": false,
+          "reason": "Нет чужих в комнате"
+        },
+        {
+          "id": "melee",
+          "label": "Ближний бой",
+          "cost": 1,
+          "enabled": false,
+          "reason": "Нет чужих в комнате"
+        },
+        {
+          "id": "pickup",
+          "label": "Поднять тяжёлый объект",
+          "cost": 1,
+          "enabled": false,
+          "reason": "В комнате нет объектов"
+        },
+        {
+          "id": "trade",
+          "label": "Передать предмет",
+          "cost": 1,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "computer",
+          "label": "Компьютер",
+          "cost": 1,
+          "enabled": false,
+          "reason": "Нет компьютера"
+        },
+        {
+          "id": "room",
+          "label": "Действие комнаты: Гибернаторий",
+          "cost": 2,
+          "enabled": false,
+          "reason": "Гибернация недоступна (время > 8)"
+        },
+        {
+          "id": "quest",
+          "label": "Открыть квестовый предмет: «Плазменный резак»",
+          "cost": 1,
+          "enabled": false,
+          "reason": "Нужна комната «Двигатель»"
+        },
+        {
+          "id": "pass",
+          "label": "Спасовать",
+          "cost": 0,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "objective",
+          "label": "Выбрать цель (бесплатно)",
+          "cost": 0,
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "drop",
+          "label": "Выбросить предмет (бесплатно)",
+          "cost": 0,
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "cards": [
+        {
+          "id": "mechanic.ingenuity#0",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "mechanic.interruption#0",
+          "enabled": false,
+          "reason": "Реакция — играется автоматически"
+        },
+        {
+          "id": "mechanic.fightFire#0",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "mechanic.computerSkills#0",
+          "enabled": true,
+          "reason": ""
+        },
+        {
+          "id": "mechanic.demolition#0",
+          "enabled": true,
+          "reason": ""
+        }
+      ],
+      "items": []
+    },
+    "resume": {
+      "op": "turn.do",
+      "player": 1
+    },
+    "promptSeq": 1,
+    "log": [
+      {
+        "n": 1,
+        "text": "Номера игроков: 1 — Милый Ублюдок, 2 — Бизон, 3 — сексуальный урод, 4 — Смачная Милфа.",
+        "kind": "info",
+        "round": 0
+      },
+      {
+        "n": 2,
+        "text": "Игра началась. Корабль: оригинальный «Немезида». Первый игрок — Милый Ублюдок (Механик) (Игрок 1).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 3,
+        "text": "Все персонажи просыпаются в Гибернатории.",
+        "kind": "info",
+        "round": 1
+      },
+      {
+        "n": 4,
+        "text": "Правила: Redux.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 5,
+        "text": "🔬 Слабости чужих: 3 скрытые карты — человеческий труп, туша чужого и яйцо чужого хранят по одной. Анализируйте объекты в Лаборатории, чтобы открыть их.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 6,
+        "text": "Кубик шума: d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 7,
+        "text": "Доступные подвиги: «Взлом», «Откровение», «Реквизиция», «Превосходство», «Рывок», «Переход».",
+        "kind": "info",
+        "round": 1
+      },
+      {
+        "n": 8,
+        "text": "— Раунд 1: фаза игроков —",
+        "kind": "phase",
+        "round": 1
+      },
+      {
+        "n": 9,
+        "text": "Ход: Милый Ублюдок (Механик).",
+        "kind": "turn",
+        "round": 1
+      }
+    ],
+    "logSeq": 9,
+    "secret": {
+      "tiles": {
+        "002": "comms",
+        "003": "laboratory",
+        "004": "fireControl",
+        "005": "emergency",
+        "006": "engineRoom",
+        "007": "contaminated",
+        "008": "airlock",
+        "009": "repository",
+        "010": "evacA",
+        "012": "generator",
+        "013": "archives",
+        "014": "server",
+        "015": "storage",
+        "016": "nest",
+        "017": "evacB",
+        "018": "surgery"
+      },
+      "tokens": {
+        "002": "fire",
+        "003": "door",
+        "004": "door",
+        "005": "malfunction",
+        "006": "malfunction",
+        "007": "door",
+        "008": "malfunction",
+        "009": "malfunction",
+        "010": "door",
+        "012": "corpse",
+        "013": "malfunction",
+        "014": "corpse",
+        "015": "malfunction",
+        "016": "malfunction",
+        "017": "malfunction",
+        "018": "fire"
+      },
+      "contamInfected": {},
+      "engines": [
+        {
+          "no": 1,
+          "working": true
+        },
+        {
+          "no": 2,
+          "working": true
+        },
+        {
+          "no": 3,
+          "working": true
+        }
+      ],
+      "coordinates": "coordE",
+      "turretStatuses": [],
+      "weaknesses": {
+        "corpse": "fireVuln",
+        "carcass": "attackHabits",
+        "egg": "weakSpots"
+      }
+    },
+    "roomState": {
+      "001": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "002": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "003": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "004": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "005": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "006": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "007": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "008": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "009": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "010": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "011": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "012": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "013": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "014": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "015": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "016": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "017": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "018": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "019": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "020": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "021": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      }
+    },
+    "intruders": {},
+    "intruderSeq": 0,
+    "contamSeq": 0,
+    "itemSeq": 9,
+    "turrets": [],
+    "turretEntries": [],
+    "bag": [
+      "blank",
+      "larva",
+      "larva",
+      "larva",
+      "larva",
+      "adult",
+      "adult",
+      "adult",
+      "adult",
+      "adult",
+      "adult",
+      "adult",
+      "adult",
+      "adult"
+    ],
+    "fireLeft": 8,
+    "malfLeft": 8,
+    "claims": {
+      "destination": null,
+      "engines": {}
+    },
+    "lastComputerAction": null,
+    "time": 15,
+    "selfDestruct": 0,
+    "destination": "B",
+    "shipDestroyed": false,
+    "podsUnlocked": false,
+    "pods": [
+      {
+        "num": 1,
+        "section": "A",
+        "locked": true,
+        "occupants": [],
+        "launched": false,
+        "removed": false
+      },
+      {
+        "num": 2,
+        "section": "B",
+        "locked": true,
+        "occupants": [],
+        "launched": false,
+        "removed": false
+      },
+      {
+        "num": 3,
+        "section": "A",
+        "locked": true,
+        "occupants": [],
+        "launched": false,
+        "removed": false
+      }
+    ],
+    "attackDeck": [
+      "bite",
+      "bite",
+      "fury1",
+      "bite",
+      "bite",
+      "miss",
+      "scratch4",
+      "scratch1",
+      "bite",
+      "scratch3",
+      "claws2",
+      "tail1",
+      "infecting",
+      "claws3",
+      "bloodSense",
+      "bite",
+      "scratch2",
+      "fury2",
+      "claws1",
+      "tail2"
+    ],
+    "attackDiscard": [],
+    "eventDeck": [
+      "flammable",
+      "damage",
+      "fireWave",
+      "breakingIn",
+      "podEjection",
+      "generatorOverheats",
+      "shortCircuit",
+      "systemFailure",
+      "protectAndServe",
+      "lurking",
+      "queenAwakens",
+      "lifeSupport",
+      "hatching",
+      "leavingShell",
+      "bulkheadsOpen",
+      "scentOfPrey",
+      "malfunction",
+      "damagingFire",
+      "onTheHunt",
+      "eggProtection"
+    ],
+    "eventDiscard": [],
+    "woundDeck": [
+      "hand",
+      "arm",
+      "eyes",
+      "knee",
+      "arm",
+      "body",
+      "hand",
+      "leg",
+      "body",
+      "body",
+      "hand",
+      "knee",
+      "guts",
+      "arm",
+      "leg",
+      "bleeding",
+      "guts",
+      "bleeding",
+      "leg",
+      "eyes",
+      "bleeding",
+      "knee",
+      "guts",
+      "eyes"
+    ],
+    "woundDiscard": [],
+    "itemDecks": {
+      "green": [
+        "synthFood",
+        "adrenaline",
+        "medkit",
+        "autodoc",
+        "adrenaline",
+        "caffeine",
+        "medkit",
+        "stapler",
+        "autodoc",
+        "stapler",
+        "stapler",
+        "synthFood",
+        "medkit",
+        "caffeine",
+        "stimulants",
+        "stapler",
+        "medkit",
+        "stapler",
+        "synthFood",
+        "antiseptic",
+        "antiseptic",
+        "stapler",
+        "stimulants",
+        "stapler",
+        "autodoc",
+        "adrenaline",
+        "medkit",
+        "caffeine",
+        "antiseptic",
+        "stimulants"
+      ],
+      "red": [
+        "grenade",
+        "detonator",
+        "energyCharge",
+        "grenade",
+        "taser",
+        "logCodes",
+        "taser",
+        "energyCharge",
+        "energyCharge",
+        "armor",
+        "selfDestructKey",
+        "taser",
+        "energyCharge",
+        "armor",
+        "grenade",
+        "energyCharge",
+        "grenade",
+        "evacKey",
+        "flashbang",
+        "supportCrate",
+        "energyCharge",
+        "energyCharge",
+        "grenade",
+        "flashbang",
+        "detonator",
+        "energyCharge",
+        "armor",
+        "flashbang",
+        "energyCharge",
+        "energyCharge"
+      ],
+      "yellow": [
+        "extinguisher",
+        "glowstick",
+        "cables",
+        "cables",
+        "nemesisPlans",
+        "techPlan",
+        "ductTape",
+        "ductTape",
+        "extinguisher",
+        "glowstick",
+        "extinguisher",
+        "extinguisher",
+        "reagent",
+        "reagent",
+        "glowstick",
+        "nemesisPlans",
+        "tools",
+        "engineKey",
+        "engineKey",
+        "tools",
+        "tools",
+        "techPlan",
+        "tools",
+        "reagent",
+        "ductTape",
+        "cables",
+        "extinguisher",
+        "techPlan"
+      ],
+      "support": [
+        "tacticalHatchet",
+        "engineeringEquipment",
+        "drumMagRifle",
+        "utilityVest",
+        "sniperRifle",
+        "automaticShotgun",
+        "bayonet",
+        "smg",
+        "handCannon",
+        "grenadeLauncher",
+        "assaultShotgun",
+        "sonicGun",
+        "biohazardArmor",
+        "tacticalArmor",
+        "riotgun",
+        "smartRifle",
+        "securityControl",
+        "assaultRifle",
+        "gatlingGun",
+        "autoloaderBelt",
+        "hardenedArmor",
+        "bfGun",
+        "plasmaGun",
+        "flamethrower",
+        "perimeterDevice"
+      ]
+    },
+    "itemDiscard": {},
+    "fieldDataDeck": [
+      "field.resourceful#0",
+      "field.evasiveManeuvering#0",
+      "field.damageExpertise#0",
+      "field.safetyInNumbers#0",
+      "field.precisionShot#0",
+      "field.containment#0",
+      "field.hunkerDown#0",
+      "field.restoration#0",
+      "field.behavioralInsight#0",
+      "field.circleStrafe#0",
+      "field.asymptomatic#0",
+      "field.advanceTactics#0",
+      "field.rapidResponse#0",
+      "field.quickHands#0",
+      "field.reposition#0",
+      "field.riskPrevention#0",
+      "field.predictableMovements#0",
+      "field.criticalAnalysis#0"
+    ],
+    "computerDeck": [
+      "actionC",
+      "actionB",
+      "actionD",
+      "lockdown",
+      "actionE"
+    ],
+    "computerCard": "actionA",
+    "computerDiscard": [],
+    "queenDeck": [
+      8,
+      7,
+      12,
+      2,
+      1,
+      9,
+      10,
+      5,
+      4,
+      13,
+      3,
+      11,
+      6,
+      0
+    ],
+    "queenPlayed": [],
+    "queenHits": 0,
+    "queenDead": false,
+    "nestEggs": 5,
+    "nestDestroyed": false,
+    "nestDiscovered": false,
+    "analyzed": {
+      "corpse": false,
+      "carcass": false,
+      "egg": false
+    },
+    "adaptations": [],
+    "adaptationsRemoved": 0,
+    "finishOrder": [],
+    "carcassCount": 0,
+    "weaknesses": [],
+    "weaknessMode": true,
+    "ui": {
+      "bagClick": true,
+      "eventAck": true
+    },
+    "bagSeq": 0,
+    "bagLast": null,
+    "lastEvent": null,
+    "lastEventN": 0,
+    "result": null,
+    "ship": {
+      "mode": "original",
+      "rooms": {
+        "001": {
+          "id": "001",
+          "kind": "cockpit",
+          "x": 95,
+          "y": 460,
+          "tech": false,
+          "exits": [
+            {
+              "to": "002",
+              "corridor": "001-002",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "003",
+              "corridor": "001-003",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "004",
+              "corridor": "001-004",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "002": {
+          "id": "002",
+          "kind": "slot1",
+          "x": 330,
+          "y": 240,
+          "tech": true,
+          "exits": [
+            {
+              "to": "006",
+              "corridor": "002-006",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "001",
+              "corridor": "001-002",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": [
+            1,
+            2
+          ]
+        },
+        "003": {
+          "id": "003",
+          "kind": "slot1",
+          "x": 300,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "007",
+              "corridor": "003-007",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "001",
+              "corridor": "001-003",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "004": {
+          "id": "004",
+          "kind": "slot1",
+          "x": 330,
+          "y": 730,
+          "tech": true,
+          "exits": [
+            {
+              "to": "008",
+              "corridor": "004-008",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "001",
+              "corridor": "001-004",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "techNums": [
+            2,
+            3
+          ]
+        },
+        "005": {
+          "id": "005",
+          "kind": "slot1",
+          "x": 590,
+          "y": 110,
+          "tech": true,
+          "exits": [
+            {
+              "to": "010",
+              "corridor": "005-010",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "006",
+              "corridor": "005-006",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": [
+            4
+          ]
+        },
+        "006": {
+          "id": "006",
+          "kind": "slot2",
+          "x": 600,
+          "y": 290,
+          "tech": false,
+          "exits": [
+            {
+              "to": "011",
+              "corridor": "006-011",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "007",
+              "corridor": "006-007",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "002",
+              "corridor": "002-006",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "005",
+              "corridor": "005-006",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "007": {
+          "id": "007",
+          "kind": "slot2",
+          "x": 465,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "006",
+              "corridor": "006-007",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "008",
+              "corridor": "007-008",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "003",
+              "corridor": "003-007",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "008": {
+          "id": "008",
+          "kind": "slot2",
+          "x": 600,
+          "y": 640,
+          "tech": false,
+          "exits": [
+            {
+              "to": "011",
+              "corridor": "008-011",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "009",
+              "corridor": "008-009",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "004",
+              "corridor": "004-008",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "007",
+              "corridor": "007-008",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "009": {
+          "id": "009",
+          "kind": "slot1",
+          "x": 590,
+          "y": 820,
+          "tech": true,
+          "exits": [
+            {
+              "to": "008",
+              "corridor": "008-009",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "012",
+              "corridor": "009-012",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": [
+            3
+          ]
+        },
+        "010": {
+          "id": "010",
+          "kind": "slot1",
+          "x": 790,
+          "y": 170,
+          "tech": false,
+          "exits": [
+            {
+              "to": "013",
+              "corridor": "010-013",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "005",
+              "corridor": "005-010",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "011": {
+          "id": "011",
+          "kind": "hibernatorium",
+          "x": 745,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "014",
+              "corridor": "011-014",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "015",
+              "corridor": "011-015",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "008",
+              "corridor": "008-011",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "006",
+              "corridor": "006-011",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "012": {
+          "id": "012",
+          "kind": "slot1",
+          "x": 790,
+          "y": 780,
+          "tech": false,
+          "exits": [
+            {
+              "to": "016",
+              "corridor": "012-016",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "009",
+              "corridor": "009-012",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "013": {
+          "id": "013",
+          "kind": "slot1",
+          "x": 1030,
+          "y": 180,
+          "tech": false,
+          "exits": [
+            {
+              "to": "019",
+              "corridor": "013-019",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "014",
+              "corridor": "013-014",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "010",
+              "corridor": "010-013",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "014": {
+          "id": "014",
+          "kind": "slot2",
+          "x": 930,
+          "y": 330,
+          "tech": true,
+          "exits": [
+            {
+              "to": "013",
+              "corridor": "013-014",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "017",
+              "corridor": "014-017",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "011",
+              "corridor": "011-014",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "techNums": [
+            3
+          ]
+        },
+        "015": {
+          "id": "015",
+          "kind": "slot2",
+          "x": 930,
+          "y": 590,
+          "tech": true,
+          "exits": [
+            {
+              "to": "018",
+              "corridor": "015-018",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "016",
+              "corridor": "015-016",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "011",
+              "corridor": "011-015",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            }
+          ],
+          "techNums": [
+            4
+          ]
+        },
+        "016": {
+          "id": "016",
+          "kind": "slot1",
+          "x": 1030,
+          "y": 760,
+          "tech": false,
+          "exits": [
+            {
+              "to": "021",
+              "corridor": "016-021",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "012",
+              "corridor": "012-016",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "015",
+              "corridor": "015-016",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "017": {
+          "id": "017",
+          "kind": "slot1",
+          "x": 1120,
+          "y": 330,
+          "tech": false,
+          "exits": [
+            {
+              "to": "019",
+              "corridor": "017-019",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "020",
+              "corridor": "017-020",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "014",
+              "corridor": "014-017",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "018": {
+          "id": "018",
+          "kind": "slot1",
+          "x": 1120,
+          "y": 600,
+          "tech": false,
+          "exits": [
+            {
+              "to": "020",
+              "corridor": "018-020",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "021",
+              "corridor": "018-021",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "015",
+              "corridor": "015-018",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "019": {
+          "id": "019",
+          "kind": "engine",
+          "x": 1270,
+          "y": 180,
+          "tech": true,
+          "exits": [
+            {
+              "to": "017",
+              "corridor": "017-019",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "013",
+              "corridor": "013-019",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "engineNo": 3,
+          "techNums": [
+            3,
+            4
+          ]
+        },
+        "020": {
+          "id": "020",
+          "kind": "engine",
+          "x": 1270,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "018",
+              "corridor": "018-020",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "017",
+              "corridor": "017-020",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            }
+          ],
+          "engineNo": 2,
+          "techNums": []
+        },
+        "021": {
+          "id": "021",
+          "kind": "engine",
+          "x": 1270,
+          "y": 760,
+          "tech": true,
+          "exits": [
+            {
+              "to": "016",
+              "corridor": "016-021",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "018",
+              "corridor": "018-021",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "engineNo": 1,
+          "techNums": [
+            2,
+            3
+          ]
+        }
+      },
+      "corridors": {
+        "001-002": {
+          "id": "001-002",
+          "a": "001",
+          "b": "002",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              150,
+              330
+            ]
+          ]
+        },
+        "001-003": {
+          "id": "001-003",
+          "a": "001",
+          "b": "003",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "001-004": {
+          "id": "001-004",
+          "a": "001",
+          "b": "004",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              150,
+              600
+            ]
+          ]
+        },
+        "002-006": {
+          "id": "002-006",
+          "a": "002",
+          "b": "006",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              430,
+              230
+            ],
+            [
+              520,
+              300
+            ]
+          ]
+        },
+        "003-007": {
+          "id": "003-007",
+          "a": "003",
+          "b": "007",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              380,
+              520
+            ]
+          ]
+        },
+        "004-008": {
+          "id": "004-008",
+          "a": "004",
+          "b": "008",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              470,
+              735
+            ]
+          ]
+        },
+        "005-006": {
+          "id": "005-006",
+          "a": "005",
+          "b": "006",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "005-010": {
+          "id": "005-010",
+          "a": "005",
+          "b": "010",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "006-007": {
+          "id": "006-007",
+          "a": "006",
+          "b": "007",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "006-011": {
+          "id": "006-011",
+          "a": "006",
+          "b": "011",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              690,
+              330
+            ]
+          ]
+        },
+        "007-008": {
+          "id": "007-008",
+          "a": "007",
+          "b": "008",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "008-009": {
+          "id": "008-009",
+          "a": "008",
+          "b": "009",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "008-011": {
+          "id": "008-011",
+          "a": "008",
+          "b": "011",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              690,
+              610
+            ]
+          ]
+        },
+        "009-012": {
+          "id": "009-012",
+          "a": "009",
+          "b": "012",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "010-013": {
+          "id": "010-013",
+          "a": "010",
+          "b": "013",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "011-014": {
+          "id": "011-014",
+          "a": "011",
+          "b": "014",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              850,
+              380
+            ]
+          ]
+        },
+        "011-015": {
+          "id": "011-015",
+          "a": "011",
+          "b": "015",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              850,
+              560
+            ]
+          ]
+        },
+        "012-016": {
+          "id": "012-016",
+          "a": "012",
+          "b": "016",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              900,
+              800
+            ]
+          ]
+        },
+        "013-014": {
+          "id": "013-014",
+          "a": "013",
+          "b": "014",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              1010,
+              270
+            ]
+          ]
+        },
+        "013-019": {
+          "id": "013-019",
+          "a": "013",
+          "b": "019",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "014-017": {
+          "id": "014-017",
+          "a": "014",
+          "b": "017",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "015-016": {
+          "id": "015-016",
+          "a": "015",
+          "b": "016",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "015-018": {
+          "id": "015-018",
+          "a": "015",
+          "b": "018",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "016-021": {
+          "id": "016-021",
+          "a": "016",
+          "b": "021",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "017-019": {
+          "id": "017-019",
+          "a": "017",
+          "b": "019",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "017-020": {
+          "id": "017-020",
+          "a": "017",
+          "b": "020",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "018-020": {
+          "id": "018-020",
+          "a": "018",
+          "b": "020",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "018-021": {
+          "id": "018-021",
+          "a": "018",
+          "b": "021",
+          "door": "open",
+          "noise": false,
+          "path": []
+        }
+      },
+      "techNoise": false,
+      "bounds": {
+        "minX": 95,
+        "maxX": 1270,
+        "minY": 110,
+        "maxY": 820
+      }
+    },
+    "aftermathRooms": false,
+    "feats": [
+      "breach",
+      "revelation",
+      "appropriation",
+      "overpower",
+      "rush",
+      "traverse"
+    ],
+    "featsUsed": [],
+    "noiseVariant": true,
+    "seating": [
+      1,
+      2,
+      3,
+      0
+    ],
+    "pendingRoll": null,
+    "pendingRollPlayer": null,
+    "turnCursor": 0,
+    "turnSeq": 1,
+    "actionsLeft": 2
+  },
+  "phase": "playing",
+  "settings": {
+    "rules": "redux",
+    "enemySet": "redux",
+    "mode": "original",
+    "seed": "",
+    "draft": false,
+    "adaptations": "3",
+    "noiseVariant": true,
+    "alienMode": "weaknesses",
+    "aftermathRooms": false,
+    "undoAnyone": false
+  },
+  "seats": [
+    {
+      "name": "Смачная Милфа",
+      "charId": "pilot",
+      "colors": {}
+    },
+    {
+      "name": "Милый Ублюдок",
+      "charId": "mechanic",
+      "colors": {
+        "skin": "#d29b7c",
+        "hair": "#8a1f1f",
+        "overall": "#686664",
+        "helmet": "#a2a8a9",
+        "gloves": "#f39c12",
+        "lights": "#005485"
+      }
+    },
+    {
+      "name": "Бизон",
+      "charId": "captain",
+      "colors": {
+        "skin": "#e8b89a",
+        "hair": "#ff0000",
+        "armor": "#fafafa",
+        "shirt": "#7a1f1f",
+        "gloves": "#d7b193",
+        "lights": "#015483"
+      }
+    },
+    {
+      "name": "сексуальный урод",
+      "charId": "convict",
+      "colors": {
+        "skin": "#0400ff",
+        "pants": "#fbff00",
+        "mask": "#fb00ff",
+        "tattoo": "#ff0000",
+        "chains": "#00ff11",
+        "lights": "#3bff7a"
+      }
+    }
+  ],
+  "history": [],
+  "historyRedacted": true,
+  "poses": {}
+}

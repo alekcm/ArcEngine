@@ -1,0 +1,3278 @@
+{
+  "version": 1,
+  "timestamp": 1795734351883,
+  "name": "Nemesis_20261127_0405",
+  "state": {
+    "version": 1,
+    "enemySet": "carnomorphs",
+    "rules": "redux",
+    "carnomorphRedux": true,
+    "seedStr": "1795733037475",
+    "rng": 2203716913,
+    "mode": "original",
+    "round": 1,
+    "phase": "event",
+    "players": [
+      {
+        "id": 0,
+        "number": 2,
+        "name": "Смачная Милфа",
+        "charId": "medic",
+        "colors": {},
+        "parts": {
+          "hair": "classic",
+          "mask": "classic",
+          "kit": "classic",
+          "coat": "classic",
+          "injector": "classic"
+        },
+        "room": "018",
+        "health": 9,
+        "hand": [],
+        "deck": [
+          "medic.search#0",
+          "medic.synthesizedDrugs#0",
+          "medic.rest#0",
+          "medic.fieldSurgery#0"
+        ],
+        "discard": [
+          "medic.interruption#0",
+          "medic.neurotoxicGas#0",
+          "medic.firstAid#0",
+          "medic.computerSkills#0",
+          "medic.demolition#0",
+          "medic.repairs#0",
+          "contam#2"
+        ],
+        "wounds": [],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it1",
+            "item": "needleGun",
+            "ammo": 2,
+            "broken": false,
+            "start": true
+          }
+        ],
+        "heavy": [
+          {
+            "type": "corpse"
+          }
+        ],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it2",
+            "item": "surgeryKit",
+            "open": false
+          }
+        ],
+        "knowledge": 1,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "insuranceFraud",
+            "kind": "personal"
+          },
+          {
+            "id": "perfectSpecimen",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": true,
+        "pod": null,
+        "knownEngines": {
+          "1": false
+        },
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": true,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "mutationCard": "escapeMaster",
+        "mutationRevealed": false,
+        "mutationMarkers": 0,
+        "mutationRedux": true,
+        "noAttacks": false,
+        "firePaidThisTurn": false
+      },
+      {
+        "id": 1,
+        "number": 1,
+        "name": "Апштеин",
+        "charId": "ceo",
+        "colors": {
+          "hair": "#c4c4c4",
+          "coat": "#004d99",
+          "shirt": "#7a1f1f",
+          "robot": "#c24e00",
+          "lights": "#f36dfd"
+        },
+        "parts": {
+          "hair": "spiky",
+          "collar": "high",
+          "robot": "armored",
+          "coat": "tailcoat",
+          "sidearm": "classic"
+        },
+        "room": "013",
+        "health": 5,
+        "hand": [],
+        "deck": [
+          "ceo.protect#0",
+          "ceo.justOneMoreThing#0",
+          "ceo.rest#0",
+          "ceo.search#0",
+          "ceo.fastRepairs#0",
+          "ceo.stopIt#0",
+          "ceo.roboticPunch#0"
+        ],
+        "discard": [
+          "ceo.command#0",
+          "ceo.demolition#0",
+          "ceo.interruption#0",
+          "ceo.backupBattery#0",
+          "ceo.computerSkills#0"
+        ],
+        "wounds": [
+          "body"
+        ],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it3",
+            "item": "robot",
+            "broken": false,
+            "charge": 5,
+            "start": true
+          },
+          {
+            "uid": "it7",
+            "item": "techPlan",
+            "broken": false
+          }
+        ],
+        "heavy": [],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it4",
+            "item": "shipCodes",
+            "open": false
+          }
+        ],
+        "knowledge": 1,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "disclosure",
+            "kind": "personal"
+          },
+          {
+            "id": "extremeBiology",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": true,
+        "pod": null,
+        "knownEngines": {},
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": true,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "mutationCard": null,
+        "mutationRevealed": false,
+        "mutationMarkers": 0,
+        "mutationRedux": true,
+        "noAttacks": false,
+        "firePaidThisTurn": false
+      },
+      {
+        "id": 2,
+        "number": 3,
+        "name": "Милый Ублюдок",
+        "charId": "convict",
+        "colors": {
+          "skin": "#5e3b26"
+        },
+        "parts": {
+          "muzzle": "classic",
+          "plates": "classic",
+          "chains": "classic",
+          "trousers": "classic",
+          "tattoos": "classic"
+        },
+        "room": "017",
+        "health": 7,
+        "hand": [
+          "convict.bash#0"
+        ],
+        "deck": [
+          "convict.duckAndCover#0",
+          "convict.catchThis#0",
+          "convict.repairs#0",
+          "convict.intimidate#0",
+          "convict.search#0"
+        ],
+        "discard": [
+          "convict.demolition#0",
+          "convict.rest#0",
+          "convict.shortTemper#0",
+          "convict.interruption#0",
+          "contam#1"
+        ],
+        "wounds": [],
+        "larva": false,
+        "items": [
+          {
+            "uid": "it5",
+            "item": "cuffs",
+            "broken": false,
+            "charge": 5,
+            "start": true
+          }
+        ],
+        "heavy": [],
+        "armor": null,
+        "quests": [
+          {
+            "uid": "it6",
+            "item": "pipe",
+            "open": false
+          }
+        ],
+        "knowledge": 2,
+        "knowledgeActive": false,
+        "signal": false,
+        "supportUsed": false,
+        "objectives": [
+          {
+            "id": "pristine",
+            "kind": "personal"
+          },
+          {
+            "id": "harsh",
+            "kind": "corporate"
+          }
+        ],
+        "objective": null,
+        "status": "active",
+        "passed": true,
+        "pod": null,
+        "knownEngines": {},
+        "knownCoords": null,
+        "analyzedEgg": false,
+        "analyzed": {
+          "corpse": false,
+          "carcass": false,
+          "egg": false
+        },
+        "movedThisRound": true,
+        "firstShotUsed": false,
+        "rifleDrawUsed": false,
+        "adrenalineTurn": false,
+        "tissue": 0,
+        "mutationCard": null,
+        "mutationRevealed": false,
+        "mutationMarkers": 0,
+        "mutationRedux": true,
+        "noAttacks": false,
+        "firePaidThisTurn": false
+      }
+    ],
+    "firstPlayer": 1,
+    "current": 2,
+    "queue": [
+      {
+        "op": "phase.cleanup"
+      }
+    ],
+    "prompt": {
+      "id": 59,
+      "kind": "bag",
+      "player": 1,
+      "title": "Вытяните жетон из мешка",
+      "text": "Развитие мешка — конец фазы событий",
+      "count": 13
+    },
+    "resume": {
+      "op": "bag.drawn",
+      "player": 1,
+      "reason": "Развитие мешка — конец фазы событий",
+      "then": {
+        "op": "bag.develop",
+        "reason": "Развитие мешка — конец фазы событий"
+      }
+    },
+    "promptSeq": 59,
+    "log": [
+      {
+        "n": 1,
+        "text": "Номера игроков: 1 — Апштеин, 2 — Смачная Милфа, 3 — Милый Ублюдок.",
+        "kind": "info",
+        "round": 0
+      },
+      {
+        "n": 2,
+        "text": "Игра началась. Корабль: оригинальный «Немезида». Первый игрок — Апштеин (Директор) (Игрок 1).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 3,
+        "text": "Все персонажи просыпаются в Гибернатории.",
+        "kind": "info",
+        "round": 1
+      },
+      {
+        "n": 4,
+        "text": "Правила: Redux.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 5,
+        "text": "🧬 Адаптации карноморфов закрыты до появления соответствующих типов.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 6,
+        "text": "Кубик шума: d10 без граней «Встреча» (когти — Опасность, ✕ — Тишина).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 7,
+        "text": "Доступные подвиги: «Откровение», «Взлом», «Превосходство», «Переход», «Снабжение», «Решимость».",
+        "kind": "info",
+        "round": 1
+      },
+      {
+        "n": 8,
+        "text": "— Раунд 1: фаза игроков —",
+        "kind": "phase",
+        "round": 1
+      },
+      {
+        "n": 9,
+        "text": "Ход: Апштеин (Директор).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 10,
+        "text": "Апштеин (Директор) играет карту «Приказ».",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 11,
+        "text": "Смачная Милфа (Медик) берёт 1 карт.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 12,
+        "text": "Смачная Милфа (Медик) переходит: Гибернаторий [011] → ??? [015].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 13,
+        "text": "🔎 Разведана комната 015: Командный центр.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 14,
+        "text": "⚙ Поломка: Командный центр [015] (жетон разведки).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 15,
+        "text": "🎲 Шум (Смачная Милфа (Медик), Командный центр [015]): Тишина.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 16,
+        "text": "Апштеин (Директор) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 17,
+        "text": "Апштеин (Директор) переходит: Гибернаторий [011] → ??? [014].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 18,
+        "text": "🔎 Разведана комната 014: Склад.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 19,
+        "text": "Дверь закрывается за спиной: коридор 011-014.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 20,
+        "text": "🎲 Шум (Апштеин (Директор), Склад [014]): 1.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 21,
+        "text": "Шум в коридоре 1 (→ ??? [013]).",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 22,
+        "text": "Ход: Смачная Милфа (Медик).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 23,
+        "text": "Смачная Милфа (Медик) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 24,
+        "text": "Смачная Милфа (Медик) переходит: Командный центр [015] → ??? [016].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 25,
+        "text": "🔎 Разведана комната 016: Операционная.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 26,
+        "text": "Дверь закрывается за спиной: коридор 015-016.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 27,
+        "text": "🎲 Шум (Смачная Милфа (Медик), Операционная [016]): 3.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 28,
+        "text": "Шум в коридоре 3/4 (→ ??? [012]).",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 29,
+        "text": "Смачная Милфа (Медик) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 30,
+        "text": "Смачная Милфа (Медик) переходит: Операционная [016] → Двигатель №1 [021].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 31,
+        "text": "🎲 Шум (Смачная Милфа (Медик), Двигатель №1 [021]): Опасность.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 32,
+        "text": "Опасность: шум во всех коридорах вокруг.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 33,
+        "text": "Ход: Милый Ублюдок (Заключённый).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 34,
+        "text": "Милый Ублюдок (Заключённый) играет карту «Подрыв».",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 35,
+        "text": "💥 Дверь 011-014 уничтожена.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 36,
+        "text": "Милый Ублюдок (Заключённый) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 37,
+        "text": "Милый Ублюдок (Заключённый) переходит: Гибернаторий [011] → Склад [014].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 38,
+        "text": "Комната занята — бросок шума не делается.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 39,
+        "text": "Ход: Апштеин (Директор).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 40,
+        "text": "Апштеин (Директор) сбрасывает 2 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 41,
+        "text": "Апштеин (Директор) использует комнату «Склад».",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 42,
+        "text": "Апштеин (Директор) получает предмет «План тех. коридоров».",
+        "kind": "good",
+        "round": 1
+      },
+      {
+        "n": 43,
+        "text": "🎲 Шум (Апштеин (Директор), Склад [014]): Тишина.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 44,
+        "text": "Апштеин (Директор) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 45,
+        "text": "Апштеин (Директор) переходит: Склад [014] → ??? [013].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 46,
+        "text": "🔎 Разведана комната 013: Медпункт.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 47,
+        "text": "🔥 Пожар: Медпункт [013] (жетон разведки).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 48,
+        "text": "🎲 Шум (Апштеин (Директор), Медпункт [013]): 2.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 49,
+        "text": "Шум в коридоре 2 (→ Двигатель №3 [019]).",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 50,
+        "text": "Апштеин (Директор) теряет 1 здоровья (пожар в комнате) — ранен, 6 HP.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 51,
+        "text": "Ход: Смачная Милфа (Медик).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 52,
+        "text": "Смачная Милфа (Медик) сбрасывает 2 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 53,
+        "text": "Смачная Милфа (Медик) использует комнату «Двигатель».",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 54,
+        "text": "Смачная Милфа (Медик) отмечает для остальных: двигатель №1 — исправен.",
+        "kind": "info",
+        "round": 1
+      },
+      {
+        "n": 55,
+        "text": "Смачная Милфа (Медик) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 56,
+        "text": "Смачная Милфа (Медик) переходит: Двигатель №1 [021] → ??? [018].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 57,
+        "text": "🔎 Разведана комната 018: Лаборатория.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 58,
+        "text": "В комнате найден человеческий труп.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 59,
+        "text": "🎲 Шум (Смачная Милфа (Медик), Лаборатория [018]): 2.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 60,
+        "text": "Шум в коридоре 1/2 (→ Двигатель №2 [020]).",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 61,
+        "text": "Ход: Милый Ублюдок (Заключённый).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 62,
+        "text": "Милый Ублюдок (Заключённый) играет карту «Вспыльчивость».",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 63,
+        "text": "Наручники: осталось жетонов 5.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 64,
+        "text": "🎲 Шум (Милый Ублюдок (Заключённый), Склад [014]): 3.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 65,
+        "text": "В технических коридорах уже был шум — ВСТРЕЧА!",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 66,
+        "text": "👾 Мясник появляется: Склад [014].",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 67,
+        "text": "🧬 Мясник: раскрыта адаптация «Щупальце».",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 68,
+        "text": "Внезапная атака: Мясник нападает на Милый Ублюдок (Заключённый) — карт в руке 2 < 4.",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 69,
+        "text": "⚔ Мясник атакует Милый Ублюдок (Заключённый): «Промах».",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 70,
+        "text": "Атака карноморфа промахнулась: колода атак перемешана.",
+        "kind": "good",
+        "round": 1
+      },
+      {
+        "n": 71,
+        "text": "Милый Ублюдок (Заключённый) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 72,
+        "text": "Милый Ублюдок (Заключённый) пытается уйти из комнаты с чужими — атаки при бегстве.",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 73,
+        "text": "⚔ Мясник атакует Милый Ублюдок (Заключённый): «Хлёсткий удар».",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 74,
+        "text": "Милый Ублюдок (Заключённый) теряет 2 здоровья (атака карноморфа) — здоров, 8 HP.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 75,
+        "text": "Милый Ублюдок (Заключённый) получает карту заражения.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 76,
+        "text": "🧬 Щупальце: цель теряет ещё 1 здоровье.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 77,
+        "text": "Милый Ублюдок (Заключённый) теряет 1 здоровья (щупальце карноморфа) — ранен, 7 HP.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 78,
+        "text": "Милый Ублюдок (Заключённый) переходит: Склад [014] → ??? [017].",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 79,
+        "text": "🔎 Разведана комната 017: Гнездо.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 80,
+        "text": "Милый Ублюдок (Заключённый) первым находит Гнездо: +1 знание.",
+        "kind": "good",
+        "round": 1
+      },
+      {
+        "n": 81,
+        "text": "Милый Ублюдок (Заключённый): знания 1 → 2.",
+        "kind": "good",
+        "round": 1
+      },
+      {
+        "n": 82,
+        "text": "🎲 Шум (Милый Ублюдок (Заключённый), Гнездо [017]): 4.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 83,
+        "text": "Шум в коридоре 3/4 (→ Двигатель №2 [020]).",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 84,
+        "text": "Ход: Апштеин (Директор).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 85,
+        "text": "Апштеин (Директор) пасует.",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 86,
+        "text": "Апштеин (Директор) теряет 1 здоровья (пожар в комнате) — ранен, 5 HP.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 87,
+        "text": "Ход: Смачная Милфа (Медик).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 88,
+        "text": "Смачная Милфа (Медик) сбрасывает 1 карт(ы) для оплаты.",
+        "kind": "minor",
+        "round": 1
+      },
+      {
+        "n": 89,
+        "text": "Смачная Милфа (Медик) поднимает: Человеческий труп.",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 90,
+        "text": "Смачная Милфа (Медик) пасует.",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 91,
+        "text": "Ход: Милый Ублюдок (Заключённый).",
+        "kind": "turn",
+        "round": 1
+      },
+      {
+        "n": 92,
+        "text": "Милый Ублюдок (Заключённый) пасует.",
+        "kind": "action",
+        "round": 1
+      },
+      {
+        "n": 93,
+        "text": "— Фаза чужих —",
+        "kind": "phase",
+        "round": 1
+      },
+      {
+        "n": 94,
+        "text": "⏱ Время: 14.",
+        "kind": "info",
+        "round": 1
+      },
+      {
+        "n": 95,
+        "text": "— Фаза событий —",
+        "kind": "phase",
+        "round": 1
+      },
+      {
+        "n": 96,
+        "text": "📜 Событие: «Химический пожар».\nДвижение чужих: Все чужие движутся по коридору 2.\nЭффект: Поместите неисправность в отсек с наибольшим номером, где есть огонь. Уберите оттуда огонь, затем поместите огонь в каждый соседний отсек. Огонь не распространяется через закрытые двери и технические коридоры.\nБросок кубика: Каждый персонаж делает бросок шума.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 97,
+        "text": "Мясник переходит по коридору 2 в Гнездо [017].",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 98,
+        "text": "⚙ Поломка: Медпункт [013] (химический пожар).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 99,
+        "text": "Огонь потушен: Медпункт [013].",
+        "kind": "good",
+        "round": 1
+      },
+      {
+        "n": 100,
+        "text": "🔥 Пожар: Двигатель №3 [019] (химический пожар).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 101,
+        "text": "🔥 Пожар: Склад [014] (химический пожар).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 102,
+        "text": "🔥 Пожар: ??? [010] (химический пожар).",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 103,
+        "text": "Броски шума по событию.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 104,
+        "text": "🎲 Шум (Апштеин (Директор), Медпункт [013]): 4.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 105,
+        "text": "Шум в коридоре 3/4 (→ ??? [010]).",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 106,
+        "text": "🎲 Шум (Смачная Милфа (Медик), Лаборатория [018]): 1.",
+        "kind": "noise",
+        "round": 1
+      },
+      {
+        "n": 107,
+        "text": "В коридоре 1/2 (→ Двигатель №2 [020]) уже был шум — ВСТРЕЧА!",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 108,
+        "text": "👾 Глодатель появляется: Лаборатория [018].",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 109,
+        "text": "Внезапная атака: Глодатель нападает на Смачная Милфа (Медик) — карт в руке 0 < 1.",
+        "kind": "combat",
+        "round": 1
+      },
+      {
+        "n": 110,
+        "text": "Смачная Милфа получает карту мутации лицом вниз.",
+        "kind": "event",
+        "round": 1
+      },
+      {
+        "n": 111,
+        "text": "Смачная Милфа (Медик) получает карту заражения.",
+        "kind": "bad",
+        "round": 1
+      },
+      {
+        "n": 112,
+        "text": "Смачная Милфа (Медик) теряет 1 здоровья (атака) — здоров, 9 HP.",
+        "kind": "bad",
+        "round": 1
+      }
+    ],
+    "logSeq": 112,
+    "secret": {
+      "tiles": {
+        "002": "evacB",
+        "003": "archives",
+        "004": "generator",
+        "005": "fireControl",
+        "006": "contaminated",
+        "007": "armory",
+        "008": "engineRoom",
+        "009": "repository",
+        "010": "evacA",
+        "012": "comms",
+        "013": "emergency",
+        "014": "storage",
+        "015": "commandCenter",
+        "016": "surgery",
+        "017": "nest",
+        "018": "laboratory"
+      },
+      "tokens": {
+        "002": "malfunction",
+        "003": "malfunction",
+        "004": "corpse",
+        "005": "malfunction",
+        "006": "door",
+        "007": "fire",
+        "008": "malfunction",
+        "009": "malfunction",
+        "010": "door",
+        "012": "malfunction",
+        "013": "fire",
+        "014": "door",
+        "015": "malfunction",
+        "016": "door",
+        "017": "malfunction",
+        "018": "corpse"
+      },
+      "contamInfected": {
+        "contam#1": false,
+        "contam#2": false
+      },
+      "engines": [
+        {
+          "no": 1,
+          "working": false
+        },
+        {
+          "no": 2,
+          "working": false
+        },
+        {
+          "no": 3,
+          "working": false
+        }
+      ],
+      "coordinates": "coordA",
+      "turretStatuses": [],
+      "carnomorphAdaptations": {
+        "shambler": "agile",
+        "fleshbeast": "changeling",
+        "butcher": "tentacle"
+      }
+    },
+    "roomState": {
+      "001": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "002": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "003": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "004": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "005": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "006": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "007": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "008": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "009": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "010": {
+        "tile": null,
+        "explored": false,
+        "fire": true,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "011": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "012": {
+        "tile": null,
+        "explored": false,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "013": {
+        "tile": "emergency",
+        "explored": true,
+        "fire": false,
+        "malfunction": true,
+        "objects": [],
+        "token": null
+      },
+      "014": {
+        "tile": "storage",
+        "explored": true,
+        "fire": true,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "015": {
+        "tile": "commandCenter",
+        "explored": true,
+        "fire": false,
+        "malfunction": true,
+        "objects": [],
+        "token": null
+      },
+      "016": {
+        "tile": "surgery",
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "017": {
+        "tile": "nest",
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "018": {
+        "tile": "laboratory",
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "019": {
+        "tile": null,
+        "explored": true,
+        "fire": true,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "020": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      },
+      "021": {
+        "tile": null,
+        "explored": true,
+        "fire": false,
+        "malfunction": false,
+        "objects": [],
+        "token": null
+      }
+    },
+    "intruders": {
+      "i1": {
+        "uid": "i1",
+        "type": "butcher",
+        "room": "017",
+        "hits": 0
+      }
+    },
+    "intruderSeq": 2,
+    "contamSeq": 2,
+    "itemSeq": 7,
+    "turrets": [],
+    "turretEntries": [],
+    "bag": [
+      {
+        "id": "rx-metagorger-2-7",
+        "type": "metagorger",
+        "value": 2
+      },
+      {
+        "id": "rx-fleshbeast-4-7",
+        "type": "fleshbeast",
+        "value": 4
+      },
+      {
+        "id": "rx-metagorger-1-4",
+        "type": "metagorger",
+        "value": 1
+      },
+      "blank",
+      {
+        "id": "rx-fleshbeast-4-3",
+        "type": "fleshbeast",
+        "value": 4
+      },
+      {
+        "id": "rx-metagorger-1-1",
+        "type": "metagorger",
+        "value": 1
+      },
+      {
+        "id": "rx-shambler-3-5",
+        "type": "shambler",
+        "value": 3
+      },
+      {
+        "id": "rx-shambler-2-3",
+        "type": "shambler",
+        "value": 2
+      },
+      {
+        "id": "rx-shambler-4-9",
+        "type": "shambler",
+        "value": 4
+      },
+      {
+        "id": "rx-fleshbeast-3-0",
+        "type": "fleshbeast",
+        "value": 3
+      },
+      {
+        "id": "rx-metagorger-2-6",
+        "type": "metagorger",
+        "value": 2
+      },
+      {
+        "id": "rx-fleshbeast-4-6",
+        "type": "fleshbeast",
+        "value": 4
+      },
+      {
+        "id": "rx-shambler-3-7",
+        "type": "shambler",
+        "value": 3
+      }
+    ],
+    "fireLeft": 5,
+    "malfLeft": 6,
+    "claims": {
+      "destination": null,
+      "engines": {
+        "1": {
+          "working": true,
+          "by": 0,
+          "round": 1
+        }
+      }
+    },
+    "lastComputerAction": null,
+    "time": 14,
+    "selfDestruct": 0,
+    "destination": "B",
+    "shipDestroyed": false,
+    "podsUnlocked": false,
+    "pods": [
+      {
+        "num": 1,
+        "section": "A",
+        "locked": true,
+        "occupants": [],
+        "launched": false,
+        "removed": false
+      },
+      {
+        "num": 2,
+        "section": "B",
+        "locked": true,
+        "occupants": [],
+        "launched": false,
+        "removed": false
+      },
+      {
+        "num": 3,
+        "section": "A",
+        "locked": true,
+        "occupants": [],
+        "launched": false,
+        "removed": false
+      }
+    ],
+    "attackDeck": [
+      "rxAtk-slash-1",
+      "rxAtk-whiplash-1",
+      "rxAtk-bite-0",
+      "rxAtk-bash-1",
+      "rxAtk-whiplash-0",
+      "rxAtk-regurgitate-1",
+      "rxAtk-bite-3",
+      "rxAtk-slash-2",
+      "rxAtk-regurgitate-0",
+      "rxAtk-slash-0",
+      "rxAtk-devour-0",
+      "rxAtk-bite-2",
+      "rxAtk-spawn-1",
+      "rxAtk-spawn-0",
+      "rxAtk-devour-1",
+      "rxAtk-bash-0",
+      "rxAtk-bite-1",
+      "rxAtk-whiplash-2",
+      "rxAtk-miss-0"
+    ],
+    "attackDiscard": [
+      "rxAtk-whiplash-3"
+    ],
+    "eventDeck": [
+      "rxEvent16",
+      "rxEvent11",
+      "rxEvent14",
+      "rxEvent18",
+      "rxEvent17",
+      "rxEvent19",
+      "rxEvent7",
+      "rxEvent2",
+      "rxEvent8",
+      "rxEvent6",
+      "rxEvent20",
+      "rxEvent3",
+      "rxEvent1",
+      "rxEvent4",
+      "rxEvent13",
+      "rxEvent12",
+      "rxEvent9",
+      "rxEvent15",
+      "rxEvent10"
+    ],
+    "eventDiscard": [
+      "rxEvent5"
+    ],
+    "woundDeck": [
+      "bleeding",
+      "leg",
+      "hand",
+      "guts",
+      "body",
+      "knee",
+      "knee",
+      "hand",
+      "eyes",
+      "guts",
+      "arm",
+      "leg",
+      "arm",
+      "body",
+      "bleeding",
+      "guts",
+      "bleeding",
+      "body",
+      "eyes",
+      "hand",
+      "knee",
+      "arm",
+      "leg",
+      "eyes"
+    ],
+    "woundDiscard": [],
+    "itemDecks": {
+      "green": [
+        "caffeine",
+        "stimulants",
+        "stapler",
+        "antiseptic",
+        "stapler",
+        "autodoc",
+        "stimulants",
+        "synthFood",
+        "autodoc",
+        "medkit",
+        "synthFood",
+        "adrenaline",
+        "caffeine",
+        "stapler",
+        "antiseptic",
+        "medkit",
+        "stapler",
+        "adrenaline",
+        "autodoc",
+        "antiseptic",
+        "stapler",
+        "stapler",
+        "stapler",
+        "adrenaline",
+        "medkit",
+        "caffeine",
+        "medkit",
+        "stimulants",
+        "medkit",
+        "synthFood"
+      ],
+      "red": [
+        "flashbang",
+        "energyCharge",
+        "grenade",
+        "supportCrate",
+        "flashbang",
+        "energyCharge",
+        "energyCharge",
+        "selfDestructKey",
+        "logCodes",
+        "flashbang",
+        "evacKey",
+        "energyCharge",
+        "detonator",
+        "detonator",
+        "armor",
+        "energyCharge",
+        "taser",
+        "energyCharge",
+        "taser",
+        "energyCharge",
+        "grenade",
+        "energyCharge",
+        "energyCharge",
+        "taser",
+        "energyCharge",
+        "armor",
+        "grenade",
+        "grenade",
+        "armor",
+        "grenade"
+      ],
+      "yellow": [
+        "tools",
+        "tools",
+        "reagent",
+        "glowstick",
+        "extinguisher",
+        "extinguisher",
+        "reagent",
+        "ductTape",
+        "nemesisPlans",
+        "techPlan",
+        "engineKey",
+        "cables",
+        "glowstick",
+        "glowstick",
+        "extinguisher",
+        "ductTape",
+        "extinguisher",
+        "nemesisPlans",
+        "reagent",
+        "techPlan",
+        "tools",
+        "cables",
+        "ductTape",
+        "extinguisher",
+        "cables",
+        "engineKey",
+        "tools"
+      ],
+      "support": [
+        "securityControl",
+        "assaultRifle",
+        "handCannon",
+        "bfGun",
+        "sniperRifle",
+        "automaticShotgun",
+        "assaultShotgun",
+        "gatlingGun",
+        "smartRifle",
+        "bayonet",
+        "sonicGun",
+        "biohazardArmor",
+        "engineeringEquipment",
+        "tacticalHatchet",
+        "plasmaGun",
+        "riotgun",
+        "perimeterDevice",
+        "autoloaderBelt",
+        "utilityVest",
+        "smg",
+        "hardenedArmor",
+        "flamethrower",
+        "drumMagRifle",
+        "tacticalArmor",
+        "grenadeLauncher"
+      ]
+    },
+    "itemDiscard": {},
+    "fieldDataDeck": [
+      "field.riskPrevention#0",
+      "field.asymptomatic#0",
+      "field.damageExpertise#0",
+      "field.rapidResponse#0",
+      "field.precisionShot#0",
+      "field.safetyInNumbers#0",
+      "field.circleStrafe#0",
+      "field.resourceful#0",
+      "field.quickHands#0",
+      "field.advanceTactics#0",
+      "field.hunkerDown#0",
+      "field.reposition#0",
+      "field.predictableMovements#0",
+      "field.restoration#0",
+      "field.behavioralInsight#0",
+      "field.evasiveManeuvering#0",
+      "field.criticalAnalysis#0",
+      "field.containment#0"
+    ],
+    "computerDeck": [
+      "actionE",
+      "actionA",
+      "actionC",
+      "actionD",
+      "lockdown"
+    ],
+    "computerCard": "actionB",
+    "computerDiscard": [],
+    "queenDeck": [
+      6,
+      8,
+      9,
+      3,
+      0,
+      4,
+      11,
+      1,
+      7,
+      12,
+      13,
+      5,
+      10,
+      2
+    ],
+    "queenPlayed": [],
+    "queenHits": 0,
+    "queenDead": false,
+    "nestEggs": 8,
+    "nestDestroyed": false,
+    "nestDiscovered": true,
+    "analyzed": {
+      "corpse": false,
+      "carcass": false,
+      "egg": false
+    },
+    "adaptations": [],
+    "adaptationsRemoved": 0,
+    "finishOrder": [],
+    "carcassCount": 0,
+    "weaknesses": [],
+    "weaknessMode": false,
+    "ui": {
+      "bagClick": true,
+      "eventAck": true
+    },
+    "bagSeq": 2,
+    "bagLast": {
+      "n": 2,
+      "token": {
+        "id": "rx-metagorger-1-3",
+        "type": "metagorger",
+        "value": 1
+      },
+      "left": 12,
+      "by": 0,
+      "reason": "Встреча: шум в коридоре, где уже был жетон шума",
+      "meaning": "Жетон карноморфа со значением 1: эффект зависит от причины вытягивания.",
+      "effect": "Появляется Глодатель · жетон 1: внезапная атака, если карт в руке меньше 1."
+    },
+    "lastEvent": "rxEvent5",
+    "lastEventN": 1,
+    "result": null,
+    "ship": {
+      "mode": "original",
+      "rooms": {
+        "001": {
+          "id": "001",
+          "kind": "cockpit",
+          "x": 95,
+          "y": 460,
+          "tech": false,
+          "exits": [
+            {
+              "to": "002",
+              "corridor": "001-002",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "003",
+              "corridor": "001-003",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "004",
+              "corridor": "001-004",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "002": {
+          "id": "002",
+          "kind": "slot1",
+          "x": 330,
+          "y": 240,
+          "tech": true,
+          "exits": [
+            {
+              "to": "006",
+              "corridor": "002-006",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "001",
+              "corridor": "001-002",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": [
+            1,
+            2
+          ]
+        },
+        "003": {
+          "id": "003",
+          "kind": "slot1",
+          "x": 300,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "007",
+              "corridor": "003-007",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "001",
+              "corridor": "001-003",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "004": {
+          "id": "004",
+          "kind": "slot1",
+          "x": 330,
+          "y": 730,
+          "tech": true,
+          "exits": [
+            {
+              "to": "008",
+              "corridor": "004-008",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "001",
+              "corridor": "001-004",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "techNums": [
+            2,
+            3
+          ]
+        },
+        "005": {
+          "id": "005",
+          "kind": "slot1",
+          "x": 590,
+          "y": 110,
+          "tech": true,
+          "exits": [
+            {
+              "to": "010",
+              "corridor": "005-010",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "006",
+              "corridor": "005-006",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": [
+            4
+          ]
+        },
+        "006": {
+          "id": "006",
+          "kind": "slot2",
+          "x": 600,
+          "y": 290,
+          "tech": false,
+          "exits": [
+            {
+              "to": "011",
+              "corridor": "006-011",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "007",
+              "corridor": "006-007",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "002",
+              "corridor": "002-006",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "005",
+              "corridor": "005-006",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "007": {
+          "id": "007",
+          "kind": "slot2",
+          "x": 465,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "006",
+              "corridor": "006-007",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "008",
+              "corridor": "007-008",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "003",
+              "corridor": "003-007",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "008": {
+          "id": "008",
+          "kind": "slot2",
+          "x": 600,
+          "y": 640,
+          "tech": false,
+          "exits": [
+            {
+              "to": "011",
+              "corridor": "008-011",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "009",
+              "corridor": "008-009",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "004",
+              "corridor": "004-008",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "007",
+              "corridor": "007-008",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "009": {
+          "id": "009",
+          "kind": "slot1",
+          "x": 590,
+          "y": 820,
+          "tech": true,
+          "exits": [
+            {
+              "to": "008",
+              "corridor": "008-009",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "012",
+              "corridor": "009-012",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": [
+            3
+          ]
+        },
+        "010": {
+          "id": "010",
+          "kind": "slot1",
+          "x": 790,
+          "y": 170,
+          "tech": false,
+          "exits": [
+            {
+              "to": "013",
+              "corridor": "010-013",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "005",
+              "corridor": "005-010",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "011": {
+          "id": "011",
+          "kind": "hibernatorium",
+          "x": 745,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "014",
+              "corridor": "011-014",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "015",
+              "corridor": "011-015",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "008",
+              "corridor": "008-011",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "006",
+              "corridor": "006-011",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "012": {
+          "id": "012",
+          "kind": "slot1",
+          "x": 790,
+          "y": 780,
+          "tech": false,
+          "exits": [
+            {
+              "to": "016",
+              "corridor": "012-016",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "009",
+              "corridor": "009-012",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "013": {
+          "id": "013",
+          "kind": "slot1",
+          "x": 1030,
+          "y": 180,
+          "tech": false,
+          "exits": [
+            {
+              "to": "019",
+              "corridor": "013-019",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "014",
+              "corridor": "013-014",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "010",
+              "corridor": "010-013",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "014": {
+          "id": "014",
+          "kind": "slot2",
+          "x": 930,
+          "y": 330,
+          "tech": true,
+          "exits": [
+            {
+              "to": "013",
+              "corridor": "013-014",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "017",
+              "corridor": "014-017",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "011",
+              "corridor": "011-014",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "techNums": [
+            3
+          ]
+        },
+        "015": {
+          "id": "015",
+          "kind": "slot2",
+          "x": 930,
+          "y": 590,
+          "tech": true,
+          "exits": [
+            {
+              "to": "018",
+              "corridor": "015-018",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            },
+            {
+              "to": "016",
+              "corridor": "015-016",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            },
+            {
+              "to": "011",
+              "corridor": "011-015",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            }
+          ],
+          "techNums": [
+            4
+          ]
+        },
+        "016": {
+          "id": "016",
+          "kind": "slot1",
+          "x": 1030,
+          "y": 760,
+          "tech": false,
+          "exits": [
+            {
+              "to": "021",
+              "corridor": "016-021",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "012",
+              "corridor": "012-016",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "015",
+              "corridor": "015-016",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "017": {
+          "id": "017",
+          "kind": "slot1",
+          "x": 1120,
+          "y": 330,
+          "tech": false,
+          "exits": [
+            {
+              "to": "019",
+              "corridor": "017-019",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "020",
+              "corridor": "017-020",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            },
+            {
+              "to": "014",
+              "corridor": "014-017",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "018": {
+          "id": "018",
+          "kind": "slot1",
+          "x": 1120,
+          "y": 600,
+          "tech": false,
+          "exits": [
+            {
+              "to": "020",
+              "corridor": "018-020",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "021",
+              "corridor": "018-021",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            },
+            {
+              "to": "015",
+              "corridor": "015-018",
+              "num": 3,
+              "nums": [
+                3
+              ]
+            }
+          ],
+          "techNums": []
+        },
+        "019": {
+          "id": "019",
+          "kind": "engine",
+          "x": 1270,
+          "y": 180,
+          "tech": true,
+          "exits": [
+            {
+              "to": "017",
+              "corridor": "017-019",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "013",
+              "corridor": "013-019",
+              "num": 2,
+              "nums": [
+                2
+              ]
+            }
+          ],
+          "engineNo": 3,
+          "techNums": [
+            3,
+            4
+          ]
+        },
+        "020": {
+          "id": "020",
+          "kind": "engine",
+          "x": 1270,
+          "y": 470,
+          "tech": false,
+          "exits": [
+            {
+              "to": "018",
+              "corridor": "018-020",
+              "num": 1,
+              "nums": [
+                1,
+                2
+              ]
+            },
+            {
+              "to": "017",
+              "corridor": "017-020",
+              "num": 3,
+              "nums": [
+                3,
+                4
+              ]
+            }
+          ],
+          "engineNo": 2,
+          "techNums": []
+        },
+        "021": {
+          "id": "021",
+          "kind": "engine",
+          "x": 1270,
+          "y": 760,
+          "tech": true,
+          "exits": [
+            {
+              "to": "016",
+              "corridor": "016-021",
+              "num": 1,
+              "nums": [
+                1
+              ]
+            },
+            {
+              "to": "018",
+              "corridor": "018-021",
+              "num": 4,
+              "nums": [
+                4
+              ]
+            }
+          ],
+          "engineNo": 1,
+          "techNums": [
+            2,
+            3
+          ]
+        }
+      },
+      "corridors": {
+        "001-002": {
+          "id": "001-002",
+          "a": "001",
+          "b": "002",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              150,
+              330
+            ]
+          ]
+        },
+        "001-003": {
+          "id": "001-003",
+          "a": "001",
+          "b": "003",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "001-004": {
+          "id": "001-004",
+          "a": "001",
+          "b": "004",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              150,
+              600
+            ]
+          ]
+        },
+        "002-006": {
+          "id": "002-006",
+          "a": "002",
+          "b": "006",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              430,
+              230
+            ],
+            [
+              520,
+              300
+            ]
+          ]
+        },
+        "003-007": {
+          "id": "003-007",
+          "a": "003",
+          "b": "007",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              380,
+              520
+            ]
+          ]
+        },
+        "004-008": {
+          "id": "004-008",
+          "a": "004",
+          "b": "008",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              470,
+              735
+            ]
+          ]
+        },
+        "005-006": {
+          "id": "005-006",
+          "a": "005",
+          "b": "006",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "005-010": {
+          "id": "005-010",
+          "a": "005",
+          "b": "010",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "006-007": {
+          "id": "006-007",
+          "a": "006",
+          "b": "007",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "006-011": {
+          "id": "006-011",
+          "a": "006",
+          "b": "011",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              690,
+              330
+            ]
+          ]
+        },
+        "007-008": {
+          "id": "007-008",
+          "a": "007",
+          "b": "008",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "008-009": {
+          "id": "008-009",
+          "a": "008",
+          "b": "009",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "008-011": {
+          "id": "008-011",
+          "a": "008",
+          "b": "011",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              690,
+              610
+            ]
+          ]
+        },
+        "009-012": {
+          "id": "009-012",
+          "a": "009",
+          "b": "012",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "010-013": {
+          "id": "010-013",
+          "a": "010",
+          "b": "013",
+          "door": "open",
+          "noise": true,
+          "path": []
+        },
+        "011-014": {
+          "id": "011-014",
+          "a": "011",
+          "b": "014",
+          "door": "destroyed",
+          "noise": false,
+          "path": [
+            [
+              850,
+              380
+            ]
+          ]
+        },
+        "011-015": {
+          "id": "011-015",
+          "a": "011",
+          "b": "015",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              850,
+              560
+            ]
+          ]
+        },
+        "012-016": {
+          "id": "012-016",
+          "a": "012",
+          "b": "016",
+          "door": "open",
+          "noise": true,
+          "path": [
+            [
+              900,
+              800
+            ]
+          ]
+        },
+        "013-014": {
+          "id": "013-014",
+          "a": "013",
+          "b": "014",
+          "door": "open",
+          "noise": false,
+          "path": [
+            [
+              1010,
+              270
+            ]
+          ]
+        },
+        "013-019": {
+          "id": "013-019",
+          "a": "013",
+          "b": "019",
+          "door": "open",
+          "noise": true,
+          "path": []
+        },
+        "014-017": {
+          "id": "014-017",
+          "a": "014",
+          "b": "017",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "015-016": {
+          "id": "015-016",
+          "a": "015",
+          "b": "016",
+          "door": "closed",
+          "noise": false,
+          "path": []
+        },
+        "015-018": {
+          "id": "015-018",
+          "a": "015",
+          "b": "018",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "016-021": {
+          "id": "016-021",
+          "a": "016",
+          "b": "021",
+          "door": "open",
+          "noise": true,
+          "path": []
+        },
+        "017-019": {
+          "id": "017-019",
+          "a": "017",
+          "b": "019",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "017-020": {
+          "id": "017-020",
+          "a": "017",
+          "b": "020",
+          "door": "open",
+          "noise": true,
+          "path": []
+        },
+        "018-020": {
+          "id": "018-020",
+          "a": "018",
+          "b": "020",
+          "door": "open",
+          "noise": false,
+          "path": []
+        },
+        "018-021": {
+          "id": "018-021",
+          "a": "018",
+          "b": "021",
+          "door": "open",
+          "noise": false,
+          "path": []
+        }
+      },
+      "techNoise": false,
+      "bounds": {
+        "minX": 95,
+        "maxX": 1270,
+        "minY": 110,
+        "maxY": 820
+      }
+    },
+    "aftermathRooms": false,
+    "feats": [
+      "revelation",
+      "breach",
+      "overpower",
+      "traverse",
+      "requisition",
+      "conviction"
+    ],
+    "featsUsed": [],
+    "noiseVariant": true,
+    "seating": [
+      1,
+      0,
+      2
+    ],
+    "carnomorphSupply": [
+      {
+        "id": "rx-metagorger-1-0",
+        "type": "metagorger",
+        "value": 1
+      },
+      {
+        "id": "rx-metagorger-1-2",
+        "type": "metagorger",
+        "value": 1
+      },
+      {
+        "id": "rx-metagorger-2-5",
+        "type": "metagorger",
+        "value": 2
+      },
+      {
+        "id": "rx-shambler-2-1",
+        "type": "shambler",
+        "value": 2
+      },
+      {
+        "id": "rx-butcher-3-2",
+        "type": "butcher",
+        "value": 3
+      },
+      {
+        "id": "rx-shambler-3-8",
+        "type": "shambler",
+        "value": 3
+      },
+      {
+        "id": "rx-fleshbeast-3-1",
+        "type": "fleshbeast",
+        "value": 3
+      },
+      {
+        "id": "rx-butcher-4-6",
+        "type": "butcher",
+        "value": 4
+      },
+      {
+        "id": "rx-butcher-4-4",
+        "type": "butcher",
+        "value": 4
+      },
+      {
+        "id": "rx-butcher-3-1",
+        "type": "butcher",
+        "value": 3
+      },
+      {
+        "id": "rx-shambler-2-2",
+        "type": "shambler",
+        "value": 2
+      },
+      {
+        "id": "rx-shambler-2-0",
+        "type": "shambler",
+        "value": 2
+      },
+      {
+        "id": "rx-shambler-4-11",
+        "type": "shambler",
+        "value": 4
+      },
+      {
+        "id": "rx-fleshbeast-3-2",
+        "type": "fleshbeast",
+        "value": 3
+      },
+      {
+        "id": "rx-fleshbeast-4-4",
+        "type": "fleshbeast",
+        "value": 4
+      },
+      {
+        "id": "rx-butcher-4-5",
+        "type": "butcher",
+        "value": 4
+      },
+      {
+        "id": "rx-shambler-3-6",
+        "type": "shambler",
+        "value": 3
+      },
+      {
+        "id": "rx-fleshbeast-4-5",
+        "type": "fleshbeast",
+        "value": 4
+      },
+      {
+        "id": "rx-shambler-3-4",
+        "type": "shambler",
+        "value": 3
+      },
+      {
+        "id": "rx-butcher-4-7",
+        "type": "butcher",
+        "value": 4
+      },
+      {
+        "id": "rx-shambler-4-10",
+        "type": "shambler",
+        "value": 4
+      },
+      {
+        "id": "rx-butcher-3-0",
+        "type": "butcher",
+        "value": 3
+      },
+      {
+        "id": "rx-butcher-4-3",
+        "type": "butcher",
+        "value": 4
+      },
+      {
+        "id": "rx-metagorger-1-3",
+        "type": "metagorger",
+        "value": 1
+      }
+    ],
+    "carnomorphButcherDead": false,
+    "carnomorphRevealed": [
+      "butcher"
+    ],
+    "carnomorphAdaptations": {
+      "shambler": null,
+      "fleshbeast": null,
+      "butcher": "tentacle"
+    },
+    "carnomorphRemoved": [],
+    "butcherHits": 0,
+    "butcherDeck": [
+      "rxButcher-repel-1-0",
+      "rxButcher-repel-1-1",
+      "rxButcher-repel-0-0",
+      "rxButcher-contam-2-0",
+      "rxButcher-spawn-3-1",
+      "rxButcher-bag-3-0",
+      "rxButcher-spawn-3-0",
+      "rxButcher-contam-2-1",
+      "rxButcher-mutationMarkers-0-0",
+      "rxButcher-draw2-0-0",
+      "rxButcher-contam-1-0",
+      "rxButcher-malf-2-0"
+    ],
+    "butcherPlayed": [],
+    "butcherDead": false,
+    "mutationDeck": [
+      "geneticMalfunction",
+      "claw",
+      "boilingBlood",
+      "contortionist",
+      "shapeshift",
+      "gastric",
+      "mimicry",
+      "adaptation",
+      "regenerativeTissue",
+      "sharpenedSenses",
+      "scream"
+    ],
+    "mutationDiscard": [],
+    "carnomorphEventRemoved": [],
+    "pendingRoll": null,
+    "pendingRollPlayer": null,
+    "turnCursor": 2,
+    "turnSeq": 10,
+    "actionsLeft": 2,
+    "fxSeq": 42,
+    "fx": [
+      {
+        "n": 1,
+        "type": "play",
+        "player": 1,
+        "card": "ceo.command#0",
+        "seq": 1
+      },
+      {
+        "n": 2,
+        "type": "discard",
+        "player": 1,
+        "card": "ceo.command#0",
+        "fromHand": true,
+        "seq": 2
+      },
+      {
+        "n": 1,
+        "type": "draw",
+        "player": 0,
+        "seq": 3
+      },
+      {
+        "n": 4,
+        "type": "explore",
+        "room": "015",
+        "tile": "commandCenter",
+        "seq": 4
+      },
+      {
+        "n": 5,
+        "type": "discard",
+        "player": 1,
+        "card": "ceo.demolition#0",
+        "fromHand": true,
+        "seq": 5
+      },
+      {
+        "n": 6,
+        "type": "explore",
+        "room": "014",
+        "tile": "storage",
+        "seq": 6
+      },
+      {
+        "n": 7,
+        "type": "discard",
+        "player": 0,
+        "card": "medic.interruption#0",
+        "fromHand": true,
+        "seq": 7
+      },
+      {
+        "n": 8,
+        "type": "explore",
+        "room": "016",
+        "tile": "surgery",
+        "seq": 8
+      },
+      {
+        "n": 9,
+        "type": "discard",
+        "player": 0,
+        "card": "medic.neurotoxicGas#0",
+        "fromHand": true,
+        "seq": 9
+      },
+      {
+        "n": 10,
+        "type": "play",
+        "player": 2,
+        "card": "convict.demolition#0",
+        "seq": 10
+      },
+      {
+        "n": 11,
+        "type": "discard",
+        "player": 2,
+        "card": "convict.demolition#0",
+        "fromHand": true,
+        "seq": 11
+      },
+      {
+        "n": 12,
+        "type": "discard",
+        "player": 2,
+        "card": "convict.rest#0",
+        "fromHand": true,
+        "seq": 12
+      },
+      {
+        "n": 13,
+        "type": "discard",
+        "player": 1,
+        "card": "ceo.interruption#0",
+        "fromHand": true,
+        "seq": 13
+      },
+      {
+        "n": 14,
+        "type": "discard",
+        "player": 1,
+        "card": "ceo.backupBattery#0",
+        "fromHand": true,
+        "seq": 14
+      },
+      {
+        "n": 15,
+        "type": "item",
+        "deck": "green",
+        "quiet": false,
+        "seq": 15
+      },
+      {
+        "n": 16,
+        "type": "item",
+        "deck": "red",
+        "quiet": false,
+        "seq": 16
+      },
+      {
+        "n": 17,
+        "type": "item",
+        "deck": "yellow",
+        "quiet": false,
+        "seq": 17
+      },
+      {
+        "n": 18,
+        "type": "discard",
+        "player": 1,
+        "card": "ceo.computerSkills#0",
+        "fromHand": true,
+        "seq": 18
+      },
+      {
+        "n": 19,
+        "type": "explore",
+        "room": "013",
+        "tile": "emergency",
+        "seq": 19
+      },
+      {
+        "n": 1,
+        "type": "damage",
+        "player": 1,
+        "seq": 20
+      },
+      {
+        "n": 21,
+        "type": "discard",
+        "player": 0,
+        "card": "medic.firstAid#0",
+        "fromHand": true,
+        "seq": 21
+      },
+      {
+        "n": 22,
+        "type": "discard",
+        "player": 0,
+        "card": "medic.computerSkills#0",
+        "fromHand": true,
+        "seq": 22
+      },
+      {
+        "n": 23,
+        "type": "discard",
+        "player": 0,
+        "card": "medic.demolition#0",
+        "fromHand": true,
+        "seq": 23
+      },
+      {
+        "n": 24,
+        "type": "explore",
+        "room": "018",
+        "tile": "laboratory",
+        "seq": 24
+      },
+      {
+        "n": 25,
+        "type": "play",
+        "player": 2,
+        "card": "convict.shortTemper#0",
+        "seq": 25
+      },
+      {
+        "n": 26,
+        "type": "discard",
+        "player": 2,
+        "card": "convict.shortTemper#0",
+        "fromHand": true,
+        "seq": 26
+      },
+      {
+        "n": 27,
+        "type": "bag",
+        "token": {
+          "id": "rx-butcher-4-3",
+          "type": "butcher",
+          "value": 4
+        },
+        "left": 13,
+        "reason": "Встреча: шум в коридоре, где уже был жетон шума",
+        "seq": 27
+      },
+      {
+        "n": 28,
+        "type": "spawn",
+        "intruder": "butcher",
+        "room": "014",
+        "seq": 28
+      },
+      {
+        "n": 29,
+        "type": "attack",
+        "card": "rxAtk-miss-0",
+        "name": "Промах",
+        "intruder": "butcher",
+        "player": 2,
+        "effect": "Ничего не происходит. Перемешайте колоду атак карноморфов.",
+        "text": "Ничего не происходит. Перемешайте колоду атак карноморфов.",
+        "seq": 29
+      },
+      {
+        "n": 30,
+        "type": "discard",
+        "player": 2,
+        "card": "convict.interruption#0",
+        "fromHand": true,
+        "seq": 30
+      },
+      {
+        "n": 31,
+        "type": "attack",
+        "card": "rxAtk-whiplash-3",
+        "name": "Хлёсткий удар",
+        "intruder": "butcher",
+        "player": 2,
+        "effect": "Потеряйте 2 здоровья и получите 1 карту заражения.",
+        "text": "Потеряйте 2 здоровья и получите 1 карту заражения.",
+        "seq": 31
+      },
+      {
+        "n": 2,
+        "type": "damage",
+        "player": 2,
+        "seq": 32
+      },
+      {
+        "n": 1,
+        "type": "contam",
+        "player": 2,
+        "seq": 33
+      },
+      {
+        "n": 1,
+        "type": "damage",
+        "player": 2,
+        "seq": 34
+      },
+      {
+        "n": 35,
+        "type": "explore",
+        "room": "017",
+        "tile": "nest",
+        "seq": 35
+      },
+      {
+        "n": 1,
+        "type": "damage",
+        "player": 1,
+        "seq": 36
+      },
+      {
+        "n": 37,
+        "type": "discard",
+        "player": 0,
+        "card": "medic.repairs#0",
+        "fromHand": true,
+        "seq": 37
+      },
+      {
+        "n": 38,
+        "type": "event",
+        "card": "rxEvent5",
+        "name": "Химический пожар",
+        "text": "Движение: все карноморфы — коридор 2. Поместите неисправность в отсек с наибольшим номером, где есть огонь. Уберите оттуда огонь, затем поместите огонь в каждый соседний отсек. Огонь не распространяется через закрытые двери и технические коридоры. Бросок кубика: каждый персонаж делает бросок шума.",
+        "seq": 38
+      },
+      {
+        "n": 39,
+        "type": "bag",
+        "token": {
+          "id": "rx-metagorger-1-3",
+          "type": "metagorger",
+          "value": 1
+        },
+        "left": 12,
+        "reason": "Встреча: шум в коридоре, где уже был жетон шума",
+        "seq": 39
+      },
+      {
+        "n": 40,
+        "type": "spawn",
+        "intruder": "metagorger",
+        "room": "018",
+        "seq": 40
+      },
+      {
+        "n": 1,
+        "type": "contam",
+        "player": 0,
+        "seq": 41
+      },
+      {
+        "n": 1,
+        "type": "damage",
+        "player": 0,
+        "seq": 42
+      }
+    ],
+    "pendingFollows": [],
+    "rollSeq": 11,
+    "lastRoll": {
+      "n": 11,
+      "die": "noise",
+      "value": 1,
+      "player": 0
+    },
+    "combatSeq": 2,
+    "lastCombatAction": {
+      "n": 2,
+      "type": "intruderAttacks",
+      "player": 2,
+      "intruder": "i1",
+      "room": "014"
+    }
+  },
+  "phase": "playing",
+  "settings": {
+    "rules": "redux",
+    "enemySet": "carnomorphsRedux",
+    "mode": "original",
+    "seed": "",
+    "draft": false,
+    "adaptations": "3",
+    "noiseVariant": true,
+    "alienMode": "evolutions",
+    "aftermathRooms": false,
+    "undoAnyone": true
+  },
+  "seats": [
+    {
+      "name": "Смачная Милфа",
+      "charId": "medic",
+      "colors": {}
+    },
+    {
+      "name": "Апштеин",
+      "charId": "ceo",
+      "colors": {
+        "hair": "#c4c4c4",
+        "coat": "#004d99",
+        "shirt": "#7a1f1f",
+        "robot": "#c24e00",
+        "lights": "#f36dfd"
+      }
+    },
+    {
+      "name": "Милый Ублюдок",
+      "charId": "convict",
+      "colors": {
+        "skin": "#5e3b26"
+      }
+    }
+  ],
+  "history": [
+    "Апштеин: карта",
+    "Смачная Милфа: Апштеин (Директор) играет карту «Приказ». Сыграть «Вмешательство» и отменить эффект? → Нет",
+    "Милый Ублюдок: Апштеин (Директор) играет карту «Приказ». Сыграть «Вмешательство» и отменить эффект? → Нет",
+    "Апштеин: Приказ: кому? → Смачная Милфа (Медик) — Гибернаторий [011]",
+    "Апштеин: Что делает Смачная Милфа (Медик)? → Переместиться",
+    "Смачная Милфа: Перемещение: куда? → 015",
+    "Смачная Милфа: Бросок шума — Командный центр [015]",
+    "Апштеин: Перемещение",
+    "Апштеин: Перемещение: куда? → 014",
+    "Апштеин: Перемещение: оплата",
+    "Милый Ублюдок: Апштеин (Директор) перемещается. Сыграть «Вмешательство» и отменить эффект? → Нет",
+    "Апштеин: Бросок шума — Склад [014]",
+    "Смачная Милфа: Перемещение",
+    "Смачная Милфа: Перемещение: оплата",
+    "Смачная Милфа: Бросок шума — Операционная [016]",
+    "Смачная Милфа: Перемещение",
+    "Смачная Милфа: Перемещение: оплата",
+    "Смачная Милфа: Бросок шума — Двигатель №1 [021]",
+    "Милый Ублюдок: карта",
+    "Милый Ублюдок: Подрыв → Уничтожить закрытую дверь 011-014",
+    "Милый Ублюдок: Перемещение",
+    "Милый Ублюдок: Перемещение: куда? → 014",
+    "Милый Ублюдок: Перемещение: оплата",
+    "Апштеин: Действие комнаты: Склад",
+    "Апштеин: Действие комнаты: оплата",
+    "Милый Ублюдок: Апштеин (Директор) использует действие комнаты. Сыграть «Вмешательство» и отменить эффект? → Нет",
+    "Апштеин: скрытое действие",
+    "Апштеин: Бросок шума — Склад [014]",
+    "Апштеин: Перемещение",
+    "Апштеин: Перемещение: куда? → 013",
+    "Апштеин: Перемещение: оплата",
+    "Милый Ублюдок: Апштеин (Директор) перемещается. Сыграть «Вмешательство» и отменить эффект? → Нет",
+    "Апштеин: Бросок шума — Медпункт [013]",
+    "Смачная Милфа: Действие комнаты: Двигатель",
+    "Смачная Милфа: Действие комнаты: оплата",
+    "Смачная Милфа: скрытое действие",
+    "Смачная Милфа: Перемещение",
+    "Смачная Милфа: Перемещение: оплата",
+    "Смачная Милфа: Бросок шума — Лаборатория [018]",
+    "Милый Ублюдок: карта",
+    "Милый Ублюдок: Вспыльчивость → Снять 1 жетон с наручников",
+    "Милый Ублюдок: Бросок шума — Склад [014]",
+    "Милый Ублюдок: вытягивает жетон из мешка",
+    "Милый Ублюдок: Перемещение",
+    "Милый Ублюдок: Перемещение: куда? → 017",
+    "Милый Ублюдок: Перемещение: оплата",
+    "Милый Ублюдок: Бросок шума — Гнездо [017]",
+    "Апштеин: Спасовать",
+    "Смачная Милфа: Поднять тяжёлый объект",
+    "Смачная Милфа: Поднять объект: оплата",
+    "Смачная Милфа: Спасовать",
+    "Милый Ублюдок: Спасовать",
+    "Милый Ублюдок: Пас: можете сбросить любые карты, в том числе заражения",
+    "Милый Ублюдок: готово",
+    "Смачная Милфа: готово",
+    "Апштеин: готово",
+    "Апштеин: Бросок шума — Медпункт [013]",
+    "Смачная Милфа: Бросок шума — Лаборатория [018]",
+    "Смачная Милфа: вытягивает жетон из мешка",
+    "Смачная Милфа: скрытое действие"
+  ],
+  "historyRedacted": true,
+  "poses": {
+    "0": {
+      "dx": -1.85,
+      "dz": 2.28,
+      "rot": -2.62
+    },
+    "1": {
+      "dx": -2.31,
+      "dz": 0.32,
+      "rot": 0
+    },
+    "2": {
+      "dx": -3.95,
+      "dz": 4.21,
+      "rot": 0
+    }
+  }
+}
