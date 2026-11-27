@@ -37,7 +37,7 @@ export function htmlFiles() {
 /** The classic scripts of the rules engine, in the order index.html loads them. */
 export function engineFiles() {
     return htmlFiles().filter(f => f.startsWith('js/fs/') && f.endsWith('.js')
-        && !/FSNet\.js|FSView\.js|FSUI\.js|FSGame\.js|FSIcons\.js/.test(f));
+        && !/FSNet\.js|FSModelLoaders\.js|FSView\.js|FSUI\.js|FSGame\.js|FSIcons\.js/.test(f));
 }
 
 /** The names a tool may need after loading: every global the scripts define. */

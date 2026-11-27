@@ -987,7 +987,7 @@ const FSView = {
             "огрины": ["Warhammer/Имперская гвардия/", "httpcloud3steamusercontentcomugc26496097488230945447A6EE60C64DC360A66F170C11DA907C59DE3A1D.obj"],
             "танки-леман-русс": ["Warhammer/Имперская гвардия/", "httpcloud3steamusercontentcomugc2649609748823623469F753CAF7D6C1BF58A61A877D82D25C238B8E10F.obj"],
             "линкоры": ["Warhammer/Имперская гвардия/", "httpswwwdropboxcomsid3nfm1xvj9s2q3Imperial20Battleshipobjdl1.obj"],
-            "титаны": ["Warhammer/Имперская гвардия/", "httppastebincomrawphpi5WJEx919.obj"],
+            "титаны": ["Warhammer/Имперская гвардия/", "42C0F2AB8E2EAA44283EFCFB3F2831ED1376CC59_GIT3.obj"],
         },
         "инквизиция": {
             "инквизиторские-штурмовики": ["Warhammer/Инквизиция/", "95B7BC4021996924208CB2160EF132E56E03B730_IT0.obj"],
@@ -1055,10 +1055,18 @@ const FSView = {
         },
         "эльдары": {
             "аспектные-воины": ["Warhammer/Эльдары/", "Аспектные воины.obj"],
+            "фрегаты-класса-хелебор": ["Warhammer/Эльдары/", "Хелебор.unity3d"],
             "призрачные-стражи": ["Warhammer/Эльдары/", "EldarWraithguard01.obj"],
             "гравитанки-сокол": ["Warhammer/Эльдары/", "EldarFalcon02.obj"],
             "исследователи-пустоты": ["Warhammer/Эльдары/", "EldarStalker02.obj"],
             "боевые-титаны-класса-варлок": ["Warhammer/Эльдары/", "EldarTitan.obj"],
+        },
+        "темные-эльдары": {
+            "каббалиты-воины": ["Warhammer/Тёмные эльдары/", "085F623BF953FE8A518C507DE1F4EA7D1D398B20_DET0.obj"],
+            "крейсеры-пыток": ["Warhammer/Тёмные эльдары/", "8A77DA9A78BE067E7A7C14589AD184C0B4B90752_DE_0.obj"],
+            "ведьмы": ["Warhammer/Тёмные эльдары/", "06B4FC4DB30FB73D7ED273981FB315D4BCF14CA8_Wych3kabal1.obj"],
+            "опустошители": ["Warhammer/Тёмные эльдары/", "E431D7EB8CF705C4A0F49874489FD2D98BAEDD31_DET2.obj"],
+            "гаснущие-солнца": ["Warhammer/Тёмные эльдары/", "8D52815467AB422CB8E65D8EB87FA0C04340CEE9_DE_2.obj"],
         },
     },
 
@@ -1075,6 +1083,7 @@ const FSView = {
     structureModel(view, type) {
         const file = this.STRUCTURE_MODELS[type];
         if (!file) return null;
+        if (typeof FSModelLoaders !== 'undefined') FSModelLoaders.register();
         if (!view.structureModelCache) view.structureModelCache = new Map();
         if (!view.structureModelLoads) view.structureModelLoads = new Map();
         const key = type;
@@ -1408,6 +1417,7 @@ const FSView = {
         const key = faction + ':' + unitType + ':' + (unitId || '') + ':' + pKey;
         if (view.modelCache.has(key)) return view.modelCache.get(key);
         if (view.modelLoads.has(key)) return null;
+        if (typeof FSModelLoaders !== 'undefined') FSModelLoaders.register();
         const spec = byUnit || (specs[faction] && specs[faction][unitType]);
         const loader = typeof BABYLON !== 'undefined' && /** @type {any} */ (BABYLON.SceneLoader);
         if (!spec || !loader || !loader.ImportMeshAsync) { view.modelCache.set(key, null); return null; }

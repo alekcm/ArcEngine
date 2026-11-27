@@ -45,6 +45,8 @@ const MIME = {
   '.woff2':'font/woff2',
   '.ico':  'image/x-icon',
   '.glb':  'model/gltf-binary',
+  '.unity3d': 'application/octet-stream',
+  '.obj':  'text/plain; charset=utf-8',
   '.txt':  'text/plain; charset=utf-8',
   '.md':   'text/markdown; charset=utf-8',
 };

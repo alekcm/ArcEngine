@@ -37,21 +37,33 @@ const failed = [];
 
 function head(text) { console.log('\n' + C.b + '  ' + text + C.r); }
 
+const pendingScreens = [];
+
 /** Одна проверка экрана: имя, что она утверждает, и тело. */
 function screen(id, text, fn) {
     if (filter && !(id + ' ' + text).toLowerCase().includes(filter.toLowerCase())) return;
     done++;
-    try {
-        const res = fn();
+    const finish = res => {
         if (res === true || res === undefined) {
             console.log('  ' + C.grn + 'ok  ' + C.r + C.dim + id + C.r + '  ' + text);
         } else {
             failed.push({ id, why: String(res) });
             console.log('  ' + C.red + 'FAIL' + C.r + ' ' + id + '  ' + text + '\n       ' + C.red + res + C.r);
         }
-    } catch (e) {
+    };
+    const failErr = e => {
         failed.push({ id, why: e && e.message });
         console.log('  ' + C.red + 'FAIL' + C.r + ' ' + id + '  ' + text + '\n       ' + C.red + (e && e.message) + C.r);
+    };
+    try {
+        const res = fn();
+        if (res && typeof res.then === 'function') {
+            pendingScreens.push(res.then(finish, failErr));
+        } else {
+            finish(res);
+        }
+    } catch (e) {
+        failErr(e);
     }
 }
 
@@ -113,7 +125,7 @@ ctx.UI = { root: null, get: () => null, def: () => ({}), init: nothing, add: not
 ctx.Store = { get: () => '', set: nothing, del: nothing };
 
 // Клиент и панель — те же файлы и тот же порядок, что в index.html.
-for (const file of ['js/CameraControl.js', 'js/fs/FSIcons.js', 'js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js']) {
+for (const file of ['js/CameraControl.js', 'js/fs/FSIcons.js', 'js/fs/FSModelLoaders.js', 'js/fs/FSView.js', 'js/fs/FSUI.js', 'js/fs/FSGame.js']) {
     try {
         vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), ctx, { filename: file });
     } catch (e) {
@@ -3158,6 +3170,12 @@ function chipScene(opts, check) {
     scene.activeCamera = camera;
     const worldView = Object.assign(Object.create(realView3D.prototype), { world: { canvas }, engine, scene, camera });
     const app = { location: { view: worldView } };
+    const cleanup = () => {
+        scene.dispose(); engine.dispose();
+        ctx.BABYLON = oldBabylon;
+        ctx.document.getElementById = oldGet;
+    };
+    let res;
     try {
         const view = FS_VIEW.create(app);
         // Independent reference: project with the actual current camera matrices
@@ -3169,12 +3187,16 @@ function chipScene(opts, check) {
             return { x: canvasRect.left - layerRect.left + p.x * canvasRect.width / cw,
                 y: canvasRect.top - layerRect.top + p.y * canvasRect.height / ch, z: p.z };
         };
-        return check({ B, engine, scene, camera, view, layer, expected });
-    } finally {
-        scene.dispose(); engine.dispose();
-        ctx.BABYLON = oldBabylon;
-        ctx.document.getElementById = oldGet;
+        res = check({ B, engine, scene, camera, view, layer, expected });
+    } catch (e) {
+        cleanup();
+        throw e;
     }
+    if (res && typeof res.then === 'function') {
+        return res.finally(cleanup);
+    }
+    cleanup();
+    return res;
 }
 
 // Run the real board update and picking against Babylon's NullEngine. Only
@@ -4306,7 +4328,98 @@ screen('lobby-models-tuner-1', 'режим «Настройка моделей»
     }));
 });
 
+head('Модели отрядов всех фракций и загрузчики 3D');
+
+screen('faction-unit-models-1', 'каждый отряд всех 12 фракций имеет существующий файл модели в FACTION_UNIT_MODELS', () => {
+    for (const faction of FS_CATALOG_SCREENS.factions) {
+        const map = FS_VIEW.FACTION_UNIT_MODELS[faction.id];
+        if (!map) return 'нет таблицы FACTION_UNIT_MODELS для фракции ' + faction.id;
+        for (const unit of faction.units) {
+            const spec = map[unit.id];
+            if (!Array.isArray(spec) || spec.length !== 2) return faction.id + '/' + unit.id + ': не задан путь модели';
+            const full = path.join(ROOT, spec[0], spec[1]);
+            if (!fs.existsSync(full)) return faction.id + '/' + unit.id + ': файл не найден ' + spec.join('');
+        }
+    }
+    const de = FS_VIEW.FACTION_UNIT_MODELS['темные-эльдары'];
+    if (de['каббалиты-воины'][1] !== '085F623BF953FE8A518C507DE1F4EA7D1D398B20_DET0.obj') return 'неверная модель кабалитов Тёмных Эльдар';
+    if (de['крейсеры-пыток'][1] !== '8A77DA9A78BE067E7A7C14589AD184C0B4B90752_DE_0.obj') return 'неверная модель крейсеров пыток Тёмных Эльдар';
+    if (de['ведьмы'][1] !== '06B4FC4DB30FB73D7ED273981FB315D4BCF14CA8_Wych3kabal1.obj') return 'неверная модель ведьм Тёмных Эльдар';
+    if (de['опустошители'][1] !== 'E431D7EB8CF705C4A0F49874489FD2D98BAEDD31_DET2.obj') return 'неверная модель опустошителей Тёмных Эльдар';
+    if (de['гаснущие-солнца'][1] !== '8D52815467AB422CB8E65D8EB87FA0C04340CEE9_DE_2.obj') return 'неверная модель Гаснущих Солнц Тёмных Эльдар';
+    if (FS_VIEW.FACTION_UNIT_MODELS['эльдары']['фрегаты-класса-хелебор'][1] !== 'Хелебор.unity3d') return 'не подключён Хелебор.unity3d';
+    if (FS_VIEW.FACTION_UNIT_MODELS['эльдары']['аспектные-воины'][1] !== 'Аспектные воины.obj') return 'не подключены обновлённые Аспектные воины.obj';
+    if (FS_VIEW.FACTION_UNIT_MODELS['имперская-гвардия']['титаны'][1] !== '42C0F2AB8E2EAA44283EFCFB3F2831ED1376CC59_GIT3.obj') return 'не подключена актуальная модель титана ИГ';
+    return true;
+});
+
+screen('faction-unit-models-2', 'FSModelLoaders разбирает Хелебор.unity3d и санитизирует OBJ кораблей Хаоса, Инквизиции и Механикус', () => {
+    return chipScene({}, ({ B, scene }) => {
+        const FS_LOADERS = vm.runInContext('FSModelLoaders', ctx);
+        ctx.self = ctx;
+        ctx.TextDecoder = TextDecoder;
+        ctx.TextEncoder = TextEncoder;
+        const savedB = globalThis.BABYLON, savedSelf = globalThis.self, savedWin = globalThis.window;
+        try {
+            globalThis.BABYLON = B;
+            globalThis.self = ctx;
+            globalThis.window = ctx;
+            if (!B.SceneLoader.GetPluginForExtension('.obj') || B.SceneLoader.GetPluginForExtension('.obj').name !== 'obj') {
+                vm.runInContext(fs.readFileSync(path.join(ROOT, 'libs/babylonjs.loaders.min.js'), 'utf8'), ctx, { filename: 'libs/babylonjs.loaders.min.js' });
+            }
+            FS_LOADERS.register();
+            const u3dPlugin = B.SceneLoader.GetPluginForExtension('.unity3d');
+            if (!u3dPlugin || u3dPlugin.name !== 'unity3d') return 'плагин .unity3d не зарегистрирован в SceneLoader';
+
+            // 1. Проверяем бинарный разбор Хелебор.unity3d (UnityFS LZ4 + LZMA1 + MeshFilter) и построение Babylon-мешей.
+            const heleborBuf = fs.readFileSync(path.join(ROOT, 'Warhammer/Эльдары/Хелебор.unity3d'));
+            const parsed = FS_LOADERS.parseUnityBundle(heleborBuf.buffer.slice(heleborBuf.byteOffset, heleborBuf.byteOffset + heleborBuf.byteLength));
+            if (!parsed || parsed.length !== 2) return 'Хелебор.unity3d: ожидались 2 меша, получено ' + (parsed && parsed.length);
+            const u3dMeshes = FS_LOADERS.createBabylonMeshes(scene, parsed);
+            const u3dVerts = u3dMeshes.reduce((s, m) => s + m.getTotalVertices(), 0);
+            if (u3dVerts < 8000) return 'Хелебор.unity3d: слишком мало вершин после распаковки: ' + u3dVerts;
+
+            // 2. Проверяем реальную загрузку через SceneLoader (включая _decode с санитизацией) трёх ранее падавших OBJ-кораблей, обновлённых моделей и Хелебор.unity3d.
+            const objFactory = B.SceneLoader.GetPluginForExtension('.obj');
+            const objLoader = objFactory.createPlugin({ obj: { skipMaterials: true } });
+            const checkModels = [
+                ['эльдары/фрегаты-класса-хелебор', 'Warhammer/Эльдары/Хелебор.unity3d', u3dPlugin, 8000],
+                ['космодесант-хаоса/отвратительные-тяжелые-крейсеры', 'Warhammer/Хаос/httpsdrivegooglecomucexportdownloadid0BHqqb4mcF7SazZ1QzVUcTM5V3c.obj', objLoader, 10000],
+                ['инквизиция/черные-корабли', 'Warhammer/Инквизиция/6F3B44EADB288257CC4D6BAF8580B791A45A6DF6_I_2.obj', objLoader, 12000],
+                ['адептус-механикус/крепкие-крейсеры', 'Warhammer/Адептус механикус/3BE5D3DB99F0A3C584A3DA58B36C2CC406D931CE_AM_0.obj', objLoader, 10000],
+                ['темные-эльдары/каббалиты-воины', 'Warhammer/Тёмные эльдары/085F623BF953FE8A518C507DE1F4EA7D1D398B20_DET0.obj', objLoader, 4000],
+                ['темные-эльдары/крейсеры-пыток', 'Warhammer/Тёмные эльдары/8A77DA9A78BE067E7A7C14589AD184C0B4B90752_DE_0.obj', objLoader, 4000],
+                ['темные-эльдары/опустошители', 'Warhammer/Тёмные эльдары/E431D7EB8CF705C4A0F49874489FD2D98BAEDD31_DET2.obj', objLoader, 25000],
+                ['эльдары/аспектные-воины', 'Warhammer/Эльдары/Аспектные воины.obj', objLoader, 4000],
+            ];
+            return (async () => {
+                try {
+                    for (const [label, relPath, plugin, minVerts] of checkModels) {
+                        const rawBuf = fs.readFileSync(path.join(ROOT, relPath));
+                        const ab = rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength);
+                        const res = await plugin.importMeshAsync('', scene, ab, '');
+                        const added = (res.meshes || []).filter(m => m && m.getTotalVertices && m.getTotalVertices() > 0);
+                        const verts = added.reduce((s, m) => s + m.getTotalVertices(), 0);
+                        if (!added.length || verts < minVerts) return label + ': модель не загрузилась или пуста (' + verts + ' вершин)';
+                    }
+                    return true;
+                } finally {
+                    globalThis.BABYLON = savedB;
+                    globalThis.self = savedSelf;
+                    globalThis.window = savedWin;
+                }
+            })();
+        } catch (e) {
+            globalThis.BABYLON = savedB;
+            globalThis.self = savedSelf;
+            globalThis.window = savedWin;
+            throw e;
+        }
+    });
+});
+
 // ============================================================================
+await Promise.all(pendingScreens);
 console.log('\n' + (failed.length
     ? C.red + C.b + '  Экраны: ' + failed.length + ' провалов из ' + done + '.' + C.r
     : C.grn + C.b + '  Экраны сходятся: ' + done + ' проверок, 0 провалов.' + C.r) + '\n');

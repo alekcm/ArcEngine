@@ -50,7 +50,8 @@ const MIME = {
     '.css': 'text/css; charset=utf-8',
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
     '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
-    '.glb': 'model/gltf-binary', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
+    '.glb': 'model/gltf-binary', '.unity3d': 'application/octet-stream',
+    '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
     '.ico': 'image/x-icon', '.obj': 'text/plain; charset=utf-8',
 };
 
