@@ -1791,6 +1791,52 @@ screen('drawer-events-1', 'лист фракции показывает весь
     });
 });
 
+screen('drawer-events-hand-1', 'рука событий в досье показывает полный текст своих карт постранично и скрыта у соперника', () => {
+    return withAltUI(({ root }) => {
+        const st = party('drawer-events-hand');
+        const p = st.players[0], cards = FS_CATALOG_SCREENS.eventCards(p.faction).slice().sort((a, b) =>
+            (a.type === b.type ? 0 : (a.type === 'scheme' ? -1 : 1))
+            || String(a.name).localeCompare(String(b.name), 'ru'));
+        const held = cards.slice(0, 2);
+        if (held.length < 2) return p.faction + ': недостаточно карт событий';
+        p.eventHand = held.map(c => c.name);
+        p.decks.event = cards.slice(2).map(c => c.name);
+        p.eventDeckInitialized = true;
+        const owner = FS_RULES.view(st, 0);
+        FSUI.renderModern(owner, Object.assign({}, SCREEN_CTX, { actions: [] }));
+        const playerRow = nodesWithClass(root, 'fs-player').find(row => textsOf(row).includes(p.name));
+        if (!playerRow) return 'игрока нет в панели участников';
+        playerRow.click();
+        let drawer = root.querySelector('.fs-faction-drawer');
+        const eventsTab = drawer && buttonsOf(drawer).find(button => textsOf(button).includes('События'));
+        if (!eventsTab) return 'в листе фракции нет вкладки событий';
+        eventsTab.click();
+        drawer = root.querySelector('.fs-faction-drawer');
+        let handBox = drawer && drawer.querySelector('.fs-event-hand');
+        if (!handBox) return 'блок «Рука событий» не показан владельцу';
+        if (!textsOf(handBox).includes(held[0].name) || !textsOf(handBox).includes(held[0].text)) {
+            return 'первая карта на руке не показана с полным текстом';
+        }
+        if (!textsOf(handBox).some(t => /1\s*\/\s*2/.test(t))) return 'нет счётчика страниц 1 / 2';
+        const navBtns = nodesWithClass(handBox, 'fs-event-hand-btn');
+        if (navBtns.length !== 2) return 'нет кнопок перелистывания руки';
+        navBtns[1].click();
+        drawer = root.querySelector('.fs-faction-drawer');
+        handBox = drawer && drawer.querySelector('.fs-event-hand');
+        if (!handBox || !textsOf(handBox).includes(held[1].name) || !textsOf(handBox).includes(held[1].text)) {
+            return 'перелистывание не открыло вторую карту руки';
+        }
+        if (!textsOf(handBox).some(t => /2\s*\/\s*2/.test(t))) return 'счётчик страниц не переключился на 2 / 2';
+
+        const observer = FS_RULES.view(st, 1);
+        FSUI.drawerMounted = false;
+        const observedDrawer = FSUI.renderFactionDrawer(observer);
+        if (!observedDrawer) return 'не удалось открыть досье фракции сопернику';
+        if (observedDrawer.querySelector('.fs-event-hand')) return 'сопернику показан блок «Рука событий»';
+        return true;
+    });
+});
+
 screen('event-panel-1', 'панель события соперника показывает выбранную карту целиком, но скрывает выбор до его раскрытия', () => {
     return withAltUI(({ root }) => {
         const st = party('enemy-event'), player = st.players[1];
@@ -3973,7 +4019,7 @@ function withAltUI(check) {
         root: FSUI.modernRoot, chips: FSUI.chipsEl, alt: FSUI.altZoom, keys: FSUI.altKeys,
         lobby: FSUI.currentLobby, pressed: FSUI.pressedPointer, deferred: FSUI.deferredRender,
         actionStage: FSUI.actionStage, renderState: FSUI.renderState, renderCtx: FSUI.renderCtx, lastCtx: FSUI.lastCtx, added: FSUI.added,
-        panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerTab: FSUI.drawerTab, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
+        panels: FSUI.panels, factionSeat: FSUI.factionSeat, drawerTab: FSUI.drawerTab, drawerHandIndex: FSUI.drawerHandIndex, drawerMounted: FSUI.drawerMounted, helpOpen: FSUI.helpOpen,
         plaqueEl: FSUI.plaqueEl, plaqueInfo: FSUI.plaqueInfo,
         body: ctx.document.body, create: ctx.document.createElement, createText: ctx.document.createTextNode, docAdd: ctx.document.addEventListener,
         docRemove: ctx.document.removeEventListener, hidden: ctx.document.hidden,
@@ -4041,7 +4087,7 @@ function withAltUI(check) {
         FSUI.modernRoot = null; FSUI.chipsEl = null; FSUI.altZoom = false; FSUI.altKeys = new Set();
         FSUI.currentLobby = null; FSUI.pressedPointer = null; FSUI.deferredRender = null;
         FSUI.renderState = null; FSUI.renderCtx = null; FSUI.panels = null;
-        FSUI.factionSeat = null; FSUI.drawerTab = 'faction'; FSUI.helpOpen = false; FSUI.plaqueEl = null; FSUI.plaqueInfo = null;
+        FSUI.factionSeat = null; FSUI.drawerTab = 'faction'; FSUI.drawerHandIndex = 0; FSUI.helpOpen = false; FSUI.plaqueEl = null; FSUI.plaqueInfo = null;
         const root = FSUI.mount();
         return check({ root, node, fireWindow: (type, data) => fire(winEvents, type, data),
             fireDocument: (type, data) => fire(docEvents, type, data) });
@@ -4050,7 +4096,7 @@ function withAltUI(check) {
         FSUI.currentLobby = saved.lobby; FSUI.pressedPointer = saved.pressed; FSUI.deferredRender = saved.deferred;
         FSUI.actionStage = saved.actionStage; FSUI.renderState = saved.renderState; FSUI.renderCtx = saved.renderCtx;
         FSUI.lastCtx = saved.lastCtx; FSUI.added = saved.added;
-        FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerTab = saved.drawerTab; FSUI.drawerMounted = saved.drawerMounted;
+        FSUI.panels = saved.panels; FSUI.factionSeat = saved.factionSeat; FSUI.drawerTab = saved.drawerTab; FSUI.drawerHandIndex = saved.drawerHandIndex; FSUI.drawerMounted = saved.drawerMounted;
         FSUI.helpOpen = saved.helpOpen; FSUI.plaqueEl = saved.plaqueEl; FSUI.plaqueInfo = saved.plaqueInfo;
         ctx.document.body = saved.body; ctx.document.createElement = saved.create; ctx.document.createTextNode = saved.createText;
         ctx.document.addEventListener = saved.docAdd; ctx.document.removeEventListener = saved.docRemove;
@@ -4130,6 +4176,134 @@ screen('combat-chip-9', 'перерисовка боя сохраняет Alt, �
         if (root.classList.contains('is-alt')) return 'после скрытия вкладки старая клавиша осталась в наборе';
         return true;
     });
+});
+
+screen('lobby-models-tuner-1', 'режим «Настройка моделей» в лобби строит сцену отрядов на планете с Т0 ИГ рядом, применяет поворот/размер и очищается в партии', () => {
+    return chipScene({}, ({ B, scene, view }) => withAltUI(({ root }) => {
+        const app = view.app;
+        Object.assign(app.location, { width: 800, height: 600, terrain: { heightAt: () => 5 } });
+        const savedStore = ctx.Store, savedTuningFile = FS_VIEW.tuningFile, savedFactionModel = FS_VIEW.factionModel;
+        const originalTexture = B.DynamicTexture;
+        const drawnPoles = [];
+        const origDrawPoles = FS_VIEW.drawPlanetPoles;
+        FS_VIEW.factionModel = () => null;
+        const noop = () => undefined;
+        B.DynamicTexture = class extends B.Texture {
+            constructor(name, size, sc) { super(null, sc); this.name = name; }
+            getContext() {
+                return {
+                    clearRect: noop, save: noop, restore: noop, translate: noop, scale: noop,
+                    beginPath: noop, closePath: noop, arc: noop, clip: noop,
+                    fillRect: noop, ellipse: noop, fill: noop, moveTo: noop, lineTo: noop,
+                    bezierCurveTo: noop, stroke: noop, strokeText: noop, fillText: noop, setLineDash: noop,
+                    measureText: t => ({ width: String(t).length * 18 }),
+                    createRadialGradient: () => ({ addColorStop: noop }),
+                    createLinearGradient: () => ({ addColorStop: noop }),
+                };
+            }
+            update() {}
+        };
+        FS_VIEW.drawPlanetPoles = function (c, size, world) {
+            if (world) drawnPoles.push(world);
+            return origDrawPoles.call(this, c, size, world);
+        };
+        const storeData = new Map();
+        ctx.Store = {
+            get: k => storeData.get(k) || null,
+            set: (k, v) => storeData.set(k, String(v)),
+            remove: k => storeData.delete(k),
+            getJSON: (k, fb) => { try { return storeData.has(k) ? JSON.parse(storeData.get(k)) : fb; } catch { return fb; } },
+        };
+        FS_VIEW.tuningFile = JSON.parse(fs.readFileSync(path.join(ROOT, 'js/fs/FSModelTuning.json'), 'utf8'));
+        try {
+            const game = Object.create(FS_GAME.prototype);
+            Object.assign(game, {
+                app, view, room: 'TUNE', name: 'Игрок', id: 'p1', publicId: 'p1',
+                faction: 'орки', ready: false, status: '', state: null,
+                lobby: { code: 'TUNE', players: LOBBY_SEATS, factions: LOBBY_FACTIONS, started: false, host: 'p1', start: { ok: false, msg: '' } },
+                invites: [], palette: null, testMode: 'game', battle: { kind: 'ground', units: {}, cards: [] },
+                tuneSel: { faction: '', unit: '' }, tuneNote: '',
+                shareLink: () => 'http://localhost/?room=TUNE',
+            });
+            game.showLobby();
+            const modeBtn = buttonsOf(root).find(b => textsOf(b).includes('Настройка моделей'));
+            if (!modeBtn) return 'в лобби нет кнопки режима «Настройка моделей»';
+            modeBtn.click();
+            if (game.testMode !== 'models') return 'клик не переключил режим в models';
+            if (!root.querySelector('.fs-tuner')) return 'панель тюнера не отрисована';
+            if (buttonsOf(root).some(b => /fs-start-test/.test(b.className))) return 'в режиме настройки показана кнопка запуска теста';
+            // Под каждым отрядом каждого из 2 рядов (6 × 2 = 12) лежит полноценная планета с карты (обод, диск поверхности, облака, ореол).
+            const stageFaces = view.stageNodes.filter(n => n && /^fs-stage-world-\d+-/.test(n.name) && !n.name.includes('-body-') && !n.name.includes('-clouds-') && !n.name.includes('-halo-'));
+            const stageBodies = view.stageNodes.filter(n => n && /^fs-stage-world-body-/.test(n.name));
+            const stageClouds = view.stageNodes.filter(n => n && /^fs-stage-world-clouds-/.test(n.name));
+            const stageHalos = view.stageNodes.filter(n => n && /^fs-stage-world-halo-/.test(n.name));
+            if (stageFaces.length !== 12 || stageBodies.length !== 12 || stageClouds.length !== 12 || stageHalos.length !== 12) {
+                return 'под отрядами не отрисована игровая планета во всех 4 слоях: '
+                    + [stageFaces.length, stageBodies.length, stageClouds.length, stageHalos.length].join('/');
+            }
+            if (!drawnPoles.length || drawnPoles[0].name !== FS_VIEW.STAGE_WORLD.name) {
+                return 'поверхность планеты на сцене не прошла через отрисовку полюсов мира';
+            }
+            const expectedSurfaceY = 5 + 6.5 + FS_VIEW.PLANET_H + .12;
+            if (Math.abs(stageFaces[0].position.y - expectedSurfaceY) > .01) {
+                return 'высота поверхности планеты не совпадает с игровой: ' + stageFaces[0].position.y;
+            }
+            // Рядом с каждым Т0 юнитом фракции (у орков — 2 Т0 отряда × 2 ряда = 4) стоит эталонный Т0 юнит Имперской Гвардии.
+            const igRefs = view.stageNodes.filter(n => n && n.metadata && n.metadata.stageRefFor);
+            if (igRefs.length !== 4) return 'рядом с Т0 отрядами не выставлены 4 эталонных Т0 отряда ИГ: ' + igRefs.length;
+            const orkGroundT0 = ctx.FS_CATALOG.faction('орки').units.find(u => u.kl === 0 && u.type === 'ground');
+            const orkShipT0 = ctx.FS_CATALOG.faction('орки').units.find(u => u.kl === 0 && u.type === 'ship');
+            const orkHolder = view.stageNodes.find(n => n && n.name === 'fs-stage-0-' + orkGroundT0.id);
+            const igGroundRef = igRefs.find(n => n.name === 'fs-stage-0-' + orkGroundT0.id + '-ig-t0');
+            const igShipRef = igRefs.find(n => n.name === 'fs-stage-0-' + orkShipT0.id + '-ig-t0');
+            if (!orkHolder || !igGroundRef || igGroundRef.metadata.stageFaction !== 'имперская-гвардия' || igGroundRef.metadata.stageUnit !== 'гвардейцы') {
+                return 'рядом с наземным Т0 не поставлены гвардейцы ИГ';
+            }
+            if (!igShipRef || igShipRef.metadata.stageFaction !== 'имперская-гвардия' || igShipRef.metadata.stageUnit !== 'крейсеры') {
+                return 'рядом с корабельным Т0 не поставлен крейсер ИГ';
+            }
+            // Оба стоят бок о бок в пределах диска планеты (Ø96) на одной линии Z.
+            const dx = Math.abs(igGroundRef.position.x - orkHolder.position.x);
+            if (dx < 20 || dx > FS_VIEW.PLANET_D * 0.7 || Math.abs(igGroundRef.position.z - orkHolder.position.z) > .01) {
+                return 'Т0 отряд и эталон ИГ стоят не рядом на планете: dx=' + dx;
+            }
+            // У Т1/Т2 отрядов соседа ИГ нет.
+            const nonT0 = ctx.FS_CATALOG.faction('орки').units.find(u => u.kl > 0);
+            if (igRefs.some(n => n.metadata.stageRefFor === nonT0.id)) {
+                return 'эталон ИГ ошибочно поставлен рядом с не-Т0 отрядом';
+            }
+            // Эталон ИГ использует собственную настройку масштаба из FSModelTuning.json.
+            const guardTune = FS_VIEW.tuneFor('имперская-гвардия', 'ground', 'гвардейцы');
+            if (guardTune.yaw !== -160 || Math.abs(igGroundRef.scaling.x - guardTune.scale) > .001) {
+                return 'настройка эталона ИГ из FSModelTuning.json не применилась: ' + JSON.stringify(guardTune);
+            }
+            game.tuningInfo().onFaction('имперская-гвардия');
+            const info = game.tuningInfo();
+            info.onUnit('танки-леман-русс');
+            game.tuningInfo().onChange({ scale: 3.5, yaw: 45 });
+            const tankTune = FS_VIEW.tuneFor('имперская-гвардия', 'ground', 'танки-леман-русс');
+            if (tankTune.scale !== 3.5 || tankTune.yaw !== 45) return 'черновик настройки не записался: ' + JSON.stringify(tankTune);
+            game.tuningInfo().onFaction('__all__');
+            const allIgRefs = view.stageNodes.filter(n => n && n.metadata && n.metadata.stageRefFor);
+            if (!game.tuningInfo().allFactions || allIgRefs.length !== ctx.FS_CATALOG.factions.length * 2) {
+                return 'режим «Все фракции» не выстроил эталоны ИГ возле всех Т0 отрядов: ' + allIgRefs.length;
+            }
+            const sharedWorldMats = view.planetMaterials.get(FS_VIEW.STAGE_WORLD.name);
+            FS_VIEW.clearModelStage(view);
+            if (view.stageNodes.length !== 0) return 'сцена тюнера не очистилась';
+            if (!sharedWorldMats || !scene.materials.includes(sharedWorldMats.surface)) {
+                return 'очистка сцены тюнера уничтожила общий материал планеты';
+            }
+            return true;
+        } finally {
+            FS_VIEW.clearModelStage(view);
+            B.DynamicTexture = originalTexture;
+            FS_VIEW.drawPlanetPoles = origDrawPoles;
+            ctx.Store = savedStore;
+            FS_VIEW.tuningFile = savedTuningFile;
+            FS_VIEW.factionModel = savedFactionModel;
+        }
+    }));
 });
 
 // ============================================================================

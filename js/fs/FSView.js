@@ -78,6 +78,7 @@ const FSView = {
             glow: null,
             modelCache: new Map(),
             modelLoads: new Map(),
+            stageNodes: [],       // the lobby tuner stage, outside any state
             modelMaterials: new Map(),
             onModelReady: null,
             built: false,
@@ -1121,6 +1122,268 @@ const FSView = {
         return null;
     },
 
+    // --- model tuning: the «front» and the size of every miniature -----------
+    //
+    // The OBJs ship in arbitrary poses and sizes: the normalisation makes the
+    // largest side the game size, but it cannot know which way the model
+    // FACES. The combat code turns every miniature so its +Z looks at the
+    // enemy — for a model whose gun pod is not +Z that looks wrong. This
+    // table is the manual correction, one entry per model («faction/id» for a
+    // unit that has its own OBJ, «faction/*ground» / «faction/*ship» for a
+    // shared by-type model): yaw in degrees (how much to turn the holder so
+    // the model's real front points where the code points +Z) and a scale
+    // multiplier on the normalised size. Three layers stack: the defaults of
+    // this table < js/fs/FSModelTuning.json (served by the local dev server,
+    // written by the lobby tuner) < the unsaved draft in localStorage.
+    MODEL_TUNING: {
+        // 'космодесант/боевые-баржи': { yaw: 90, scale: 1 },
+    },
+
+    /** The localStorage key of the tuner's unsaved draft. */
+    TUNE_STORE: 'fs.modelTuning',
+
+    /** The key a tuning entry is written under: the exact unit when it has its
+     * own OBJ, else the shared by-type model that will actually be loaded. */
+    tuningKey(faction, unitType, unitId) {
+        const byUnit = this.FACTION_UNIT_MODELS[faction] && unitId
+            ? this.FACTION_UNIT_MODELS[faction][unitId] : null;
+        return faction + '/' + (byUnit ? unitId : '*' + unitType);
+    },
+
+    /** The three layers of one key side by side (read-only views). */
+    tuneLayers(key) {
+        const local = (typeof Store !== 'undefined' && Store.getJSON)
+            ? (Store.getJSON(this.TUNE_STORE, {}) || {}) : {};
+        return {
+            code: this.MODEL_TUNING[key] || null,
+            file: (this.tuningFile || {})[key] || null,
+            local: local[key] || null,
+        };
+    },
+
+    /** The effective tune of one model: yaw in degrees and a scale multiplier.
+     * The by-type model merges under the exact-unit one so a shared default
+     * holds for every unit of a type until a unit overrides it. */
+    tuneFor(faction, unitType, unitId) {
+        const out = { yaw: 0, scale: 1 };
+        const localAll = (typeof Store !== 'undefined' && Store.getJSON)
+            ? (Store.getJSON(this.TUNE_STORE, {}) || {}) : {};
+        for (const key of [faction + '/*' + unitType, faction + '/' + unitId]) {
+            for (const one of [this.MODEL_TUNING[key], (this.tuningFile || {})[key], localAll[key]]) {
+                if (!one) continue;
+                if (Number.isFinite(one.yaw)) out.yaw = one.yaw;
+                if (Number.isFinite(one.scale) && one.scale > 0) out.scale = one.scale;
+            }
+        }
+        return out;
+    },
+
+    /** Every tuned key, merged: the content the file export carries. */
+    tuneAll() {
+        const local = (typeof Store !== 'undefined' && Store.getJSON)
+            ? (Store.getJSON(this.TUNE_STORE, {}) || {}) : {};
+        const out = {};
+        for (const src of [this.MODEL_TUNING, this.tuningFile || {}, local]) {
+            for (const [key, one] of Object.entries(src)) {
+                if (!one) continue;
+                const next = Object.assign({}, out[key]);
+                if (Number.isFinite(one.yaw)) next.yaw = one.yaw;
+                if (Number.isFinite(one.scale) && one.scale > 0) next.scale = one.scale;
+                if (Object.keys(next).length) out[key] = next;
+            }
+        }
+        return out;
+    },
+
+    /** The tuner's draft: an unsaved correction lives in localStorage, above
+     * the file and the code table, until it is saved to the server or exported. */
+    setTuneLocal(key, patch) {
+        if (typeof Store === 'undefined' || !Store.getJSON) return;
+        const all = Store.getJSON(this.TUNE_STORE, {}) || {};
+        if (patch === null) delete all[key];
+        else all[key] = Object.assign({}, all[key], patch);
+        if (!Object.keys(all).length) Store.remove(this.TUNE_STORE);
+        else Store.set(this.TUNE_STORE, JSON.stringify(all));
+    },
+
+    /** The tuning file the dev server writes: optional, absence is silence. */
+    fetchTuning() {
+        if (typeof fetch !== 'function') return Promise.resolve(null);
+        const done = data => {
+            this.tuningFile = (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+            return this.tuningFile;
+        };
+        this.tuningPromise = fetch('js/fs/FSModelTuning.json', { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : {})).then(done).catch(() => done(null));
+        return this.tuningPromise;
+    },
+
+    // --- the lobby tuner stage: two facing rows, like a battle ----------------
+
+    // Типичная среднестатистическая планета с карты (Alco: вместимость 3,
+    // 1 ресурс, 1 кузница) — эталон размера под моделями в режиме настройки.
+    STAGE_WORLD: { name: 'Alco', capacity: 3, materiel: 1, assets: ['forge'] },
+    STAGE_GUARD_FACTION: 'имперская-гвардия',
+    STAGE_GUARD_T0: { ground: 'гвардейцы', ship: 'крейсеры' },
+
+    // Настоящая планета как на карте игры (обод, диск поверхности с полюсами,
+    // облака и ореол атмосферы), но для сцены настройки — не кликабельная.
+    createStagePlanet(app, view, id, x, z) {
+        const world = this.STAGE_WORLD;
+        const mats = this.planetMaterial(view, world.name, world);
+        const radius = this.PLANET_D / 2;
+        const base = app.location.terrain.heightAt(x, z) + 6.5;
+        const body = BABYLON.MeshBuilder.CreateCylinder('fs-stage-world-body-' + id,
+            { diameter: this.PLANET_D, height: this.PLANET_H, tessellation: 64 }, view.scene);
+        body.position.set(x, base + this.PLANET_H / 2, z);
+        body.material = mats.rim; body.isPickable = false;
+        const face = BABYLON.MeshBuilder.CreateDisc('fs-stage-world-' + id,
+            { radius, tessellation: 64 }, view.scene);
+        face.rotation.x = Math.PI / 2;
+        face.position.set(x, base + this.PLANET_H + .12, z);
+        face.material = mats.surface; face.isPickable = false;
+        const clouds = BABYLON.MeshBuilder.CreateDisc('fs-stage-world-clouds-' + id,
+            { radius: radius - 1, tessellation: 64 }, view.scene);
+        clouds.rotation.x = Math.PI / 2;
+        clouds.position.set(x, base + this.PLANET_H + .34, z);
+        clouds.material = mats.clouds; clouds.isPickable = false;
+        const glow = BABYLON.MeshBuilder.CreateTorus('fs-stage-world-halo-' + id,
+            { diameter: this.PLANET_D + 5, thickness: 1.6, tessellation: 64 }, view.scene);
+        glow.position.set(x, base + this.PLANET_H + .2, z);
+        glow.material = mats.glow; glow.isPickable = false;
+        World3D.addObject(app.location.view, body, 'prop', { castShadow: true, ink: false, outline: false });
+        for (const mesh of [face, clouds, glow]) {
+            World3D.addObject(app.location.view, mesh, 'prop', { castShadow: false, ink: false, outline: false });
+        }
+        view.stageNodes.push(body, face, clouds, glow);
+        return base + this.PLANET_H + .12;
+    },
+
+    placeStageMiniature(view, tag, factionId, unitType, unitId, pos, rowYaw) {
+        const tune = this.tuneFor(factionId, unitType, unitId);
+        const model = this.factionModel(view, factionId, unitType, unitId,
+            { primary: this.factionColor(factionId) });
+        const holder = new BABYLON.TransformNode('fs-stage-' + tag, view.scene);
+        holder.metadata = { stageUnit: unitId, stageFaction: factionId, stageType: unitType };
+        if (model) {
+            const scl = (unitType === 'ship' ? 1 : this.ON_WORLD) * tune.scale;
+            this.placeFactionModel(holder, model, pos, scl, false, rowYaw + tune.yaw * Math.PI / 180);
+            // The cached original stays hidden; the stage gets its own clones.
+            for (let pi = 0; pi < model.parts.length; pi++) {
+                const source = model.parts[pi];
+                const clone = source.clone('fs-stage-part-' + tag + '-' + pi, holder, false);
+                if (!clone) continue;
+                clone.material = model.materials[model.partMats[pi]] || model.materials[0];
+                clone.isPickable = false;
+                clone.setEnabled(true);
+            }
+        } else if (unitType === 'ship') {
+            holder.position.set(pos.x, pos.y + 4, pos.z);
+            const unitMat = view.material('stage-' + factionId, this.factionColor(factionId), { emissive: true });
+            const hull = BABYLON.MeshBuilder.CreateCylinder('fs-stage-hull-' + tag,
+                { height: 30, diameterTop: 2.5, diameterBottom: 8, tessellation: 8 }, view.scene);
+            hull.parent = holder; hull.rotation.z = Math.PI / 2; hull.material = unitMat; hull.isPickable = false;
+            const wing = BABYLON.MeshBuilder.CreateBox('fs-stage-wing-' + tag,
+                { width: 13, depth: 23, height: 2 }, view.scene);
+            wing.parent = holder; wing.position.x = -2; wing.material = unitMat; wing.isPickable = false;
+            const cockpit = BABYLON.MeshBuilder.CreateSphere('fs-stage-cockpit-' + tag,
+                { diameter: 4, segments: 8 }, view.scene);
+            cockpit.parent = holder; cockpit.position.set(4, 2, 0);
+            cockpit.material = view.material('unit-cockpit', '#a9e7ff', { emissive: true });
+            cockpit.isPickable = false;
+            holder.scaling.setAll(tune.scale);
+            holder.rotation.y = rowYaw + tune.yaw * Math.PI / 180;
+        } else {
+            // No OBJ yet (loading) or none at all: the board's fallback silhouette.
+            holder.position.set(pos.x, pos.y + 9, pos.z);
+            const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-stage-sh-' + tag,
+                { diameterTop: 16, diameterBottom: 24, height: 18, tessellation: 8 }, view.scene);
+            mesh.parent = holder;
+            mesh.isPickable = false;
+            mesh.material = view.material('stage-' + factionId, this.factionColor(factionId), { emissive: true });
+            holder.scaling.setAll(tune.scale);
+            holder.rotation.y = rowYaw + tune.yaw * Math.PI / 180;
+        }
+        view.stageNodes.push(holder);
+        return holder;
+    },
+
+    /**
+     * The stage of the lobby model tuner: every unit of the faction stands
+     * twice — one copy in the attacker's row, one in the defender's — so the
+     * rows face each other exactly the way the combat code turns them. A model
+     * whose front is off is seen immediately.
+     */
+    buildModelStage(app, view, factionId) {
+        this.clearModelStage(view);
+        if (!view.stageNodes) view.stageNodes = [];
+        if (!app || !app.location) return;
+        const cx = app.location.width / 2, cz = app.location.height / 2;
+        // One faction: its units stand twice, as attackers and as defenders.
+        // «Все фракции»: two blocks of rows facing each other across the
+        // centre line — built to compare the height of every miniature at
+        // once. The facing of every row is the same battle transform.
+        const rows = factionId === '__all__'
+            ? FS_CATALOG.factions.map((f, i) => ({
+                faction: f.id,
+                z: cz + (i < Math.ceil(FS_CATALOG.factions.length / 2) ? 1 : -1)
+                    * (80 + (i % Math.ceil(FS_CATALOG.factions.length / 2)) * 116),
+                yaw: i < Math.ceil(FS_CATALOG.factions.length / 2) ? Math.PI : 0,
+            }))
+            : [{ faction: factionId, z: cz + 115, yaw: Math.PI }, { faction: factionId, z: cz - 115, yaw: 0 }];
+        // Под каждой моделью лежит среднестатистическая планета с карты игры
+        // (Ø96, высота 7, поверхность с полюсами, облака и атмосфера), чтобы
+        // сразу сопоставлять габариты отряда с миром, на котором он стоит.
+        const spreadX = 128;
+        const pairOffset = this.PLANET_D * 0.23;
+        rows.forEach((row, ri) => {
+            const faction = FS_CATALOG.faction(row.faction);
+            if (!faction) return;
+            const units = faction.units || [];
+            units.forEach((u, i) => {
+                const x = cx + (i - (units.length - 1) / 2) * spreadX;
+                const y = this.createStagePlanet(app, view, ri + '-' + u.id, x, row.z);
+                const refUnit = u.kl === 0 ? this.STAGE_GUARD_T0[u.type] : null;
+                if (refUnit) {
+                    const ux = x - pairOffset, rx = x + pairOffset;
+                    this.placeStageMiniature(view, ri + '-' + u.id, row.faction, u.type, u.id,
+                        { x: ux, y, z: row.z }, row.yaw);
+                    const refHolder = this.placeStageMiniature(view, ri + '-' + u.id + '-ig-t0',
+                        this.STAGE_GUARD_FACTION, u.type, refUnit, { x: rx, y, z: row.z }, row.yaw);
+                    refHolder.metadata.stageRefFor = u.id;
+                } else {
+                    this.placeStageMiniature(view, ri + '-' + u.id, row.faction, u.type, u.id,
+                        { x, y, z: row.z }, row.yaw);
+                }
+            });
+        });
+        // The contested area between the rows: a quiet line on the table,
+        // wide enough for the widest row on the stage.
+        const widest = Math.max(1, ...rows.map(r => ((FS_CATALOG.faction(r.faction) || {}).units || []).length));
+        const line = BABYLON.MeshBuilder.CreateBox('fs-stage-line',
+            { width: (widest * spreadX) + 60, depth: 2, height: 1 }, view.scene);
+        line.position.set(cx, app.location.terrain.heightAt(cx, cz) + 5, cz);
+        line.material = view.material('stage-line', '#d8b873', { emissive: true });
+        view.stageNodes.push(line);
+    },
+
+    clearModelStage(view) {
+        const locationView = view && view.app && view.app.location && view.app.location.view;
+        for (const node of view.stageNodes || []) {
+            // Never dispose materials or textures: the stage clones share the
+            // cached faction and planet materials with the board — burning them
+            // kills every model or world of that kind until reload.
+            try {
+                if (locationView && typeof World3D !== 'undefined' && node && node.getTotalVertices) {
+                    World3D.removeObject(locationView, node);
+                } else if (node) {
+                    node.dispose(false, false);
+                }
+            } catch (e) { /* already gone */ }
+        }
+        view.stageNodes = [];
+    },
+
     factionModel(view, faction, unitType, unitId, palette) {
         // The model of the unit itself, per the faction's smoly file; the old
         // per-type pair stays as the fallback. The army palette changes the
@@ -1210,18 +1473,31 @@ const FSView = {
         return null;
     },
 
-    placeFactionModel(holder, model, pos, scale, routed) {
+    placeFactionModel(holder, model, pos, scale, routed, yaw) {
         const k = scale || 1;
-        holder.position.set(pos.x + model.root.position.x * k, pos.y + model.root.position.y * k, pos.z + model.root.position.z * k);
+        if (routed) {
+            holder.position.set(
+                pos.x + (-model.root.position.y + model.size.y / 2) * k,
+                pos.y + (model.root.position.x + model.size.x / 2) * k,
+                pos.z + model.root.position.z * k,
+            );
+            holder.scaling.copyFrom(model.root.scaling);
+            holder.scaling.scaleInPlace(k);
+            holder.rotation.z = Math.PI / 2;
+            return;
+        }
+        const ox = model.root.position.x * k;
+        const oy = model.root.position.y * k;
+        const oz = model.root.position.z * k;
+        if (yaw) {
+            const c = Math.cos(yaw), s = Math.sin(yaw);
+            holder.position.set(pos.x + ox * c + oz * s, pos.y + oy, pos.z - ox * s + oz * c);
+            holder.rotation.y = yaw;
+        } else {
+            holder.position.set(pos.x + ox, pos.y + oy, pos.z + oz);
+        }
         holder.scaling.copyFrom(model.root.scaling);
         holder.scaling.scaleInPlace(k);
-        if (routed) {
-            holder.rotation.z = Math.PI / 2;
-            // The OBJ's origin is arbitrary. Rotate its normalization offset as
-            // well, then centre the sideways bounds and rest them on the table.
-            holder.position.x = pos.x + (-model.root.position.y + model.size.y / 2) * k;
-            holder.position.y = pos.y + (model.root.position.x + model.size.x / 2) * k;
-        }
     },
 
     addFactionUnit(view, unit, pos, offset, color, unitType, scale, palette) {
@@ -1233,7 +1509,12 @@ const FSView = {
         // No extra base disc or rim under the miniature: the model itself has
         // its own stand, and a black circle around it only gets in the way.
         const holder = new BABYLON.TransformNode('fs-unit-model-' + unit.id, view.scene);
-        this.placeFactionModel(holder, model, { x: pos.x + offset.x, y: pos.y, z: pos.z + offset.y }, scale, unit.routed);
+        // The manual tune of the model: the scale rides the normalised size,
+        // the base yaw stands the model on its corrected front even outside a
+        // battle (where the facing below rewrites the rotation outright).
+        const tune = this.tuneFor(unit.faction, unitType, unit.unit);
+        const yaw = !unit.routed && tune.yaw ? tune.yaw * Math.PI / 180 : 0;
+        this.placeFactionModel(holder, model, { x: pos.x + offset.x, y: pos.y, z: pos.z + offset.y }, scale * tune.scale, unit.routed, yaw);
         holder.metadata = { fs: 'unit', unit: unit.id, system: unit.system, pos: unit.area };
         for (let i = 0; i < model.parts.length; i++) {
             const source = model.parts[i];
@@ -1335,10 +1616,17 @@ const FSView = {
                     base = { x: p.x, y: h(p.x, p.y) + 4 + this.MARKER_Y, z: p.y };
                 }
                 if (view.unitPositions) view.unitPositions.set(u.id, { x: base.x + off.x, y: base.y, z: base.z + off.y });
-                placed.push({ root: null, x: base.x + off.x, z: base.z + off.y, seat: u.seat, routed: !!u.routed });
+                const tune = this.tuneFor(owner ? owner.faction : '', def && def.type, u.unit);
+                placed.push({ root: null, x: base.x + off.x, y: base.y, z: base.z + off.y, seat: u.seat,
+                    routed: !!u.routed, yaw: tune.yaw * Math.PI / 180, scl: tune.scale,
+                    model: null, mScale: onWorld * tune.scale });
                 const slot = placed[placed.length - 1];
                 const model = def && this.addFactionUnit(view, u, base, off, color, def.type, onWorld, palette);
-                if (model) { slot.root = model; return; }
+                if (model) {
+                    slot.root = model;
+                    slot.model = this.factionModel(view, u.faction, def.type, u.unit, palette);
+                    return;
+                }
                 // Until a faction OBJ loads (or if it fails), use sculpted silhouettes rather than
                 // identical flat counters: ships read as long hulls, ground units as raised pieces.
                 const ship = def && def.type === 'ship';
@@ -1370,6 +1658,8 @@ const FSView = {
                         part.isPickable = true; part.metadata = unitMeta;
                     }
                     if (u.routed) craft.rotation.z = Math.PI / 2;
+                    else if (slot.yaw) craft.rotation.y = slot.yaw;
+                    craft.scaling.scaleInPlace(slot.scl);
                     this.addMarker(view, craft, 'actor');
                 } else {
                     const mesh = BABYLON.MeshBuilder.CreateCylinder('fs-u' + u.id,
@@ -1379,6 +1669,8 @@ const FSView = {
                     slot.root = mesh;
                     mesh.material = unitMaterial;
                     if (u.routed) mesh.rotation.z = Math.PI / 2;
+                    else if (slot.yaw) mesh.rotation.y = slot.yaw;
+                    mesh.scaling.scaleInPlace(slot.scl);
                     mesh.isPickable = true; mesh.metadata = unitMeta;
                     this.addMarker(view, mesh, 'actor');
                 }
@@ -1396,7 +1688,15 @@ const FSView = {
                     const fz = foes.reduce((a, q) => a + q.z, 0) / foes.length;
                     for (const q of placed) {
                         if (q.seat !== seat || q.routed || !q.root) continue;
-                        q.root.rotation.y = Math.atan2(fx - q.x, fz - q.z);
+                        // The manual correction of the model's front rides on
+                        // top of the facing turn: a wrong-side OBJ is fixed in
+                        // the lobby tuner, and the fix shows up exactly here.
+                        const totalYaw = Math.atan2(fx - q.x, fz - q.z) + (q.yaw || 0);
+                        if (q.model) {
+                            this.placeFactionModel(q.root, q.model, { x: q.x, y: q.y, z: q.z }, q.mScale, false, totalYaw);
+                        } else {
+                            q.root.rotation.y = totalYaw;
+                        }
                     }
                 }
             }
@@ -1817,6 +2117,16 @@ const FSView = {
                 ? FS_RULES.reinforceUnitDef(sidePlayer.faction, area.world ? 'ground' : 'ship') : null;
             const reinModel = reinDef
                 ? this.factionModel(view, sidePlayer.faction, reinDef.type, reinDef.id, null) : null;
+            const reinTune = reinDef
+                ? this.tuneFor(sidePlayer.faction, reinDef.type, reinDef.id) : { yaw: 0, scale: 1 };
+            const foeSeat = CombatSides.seatOf(c, side.id === 'attacker' ? 'defender' : 'attacker');
+            const foeUps = state.units
+                .filter(u => field.holds(u) && u.seat === foeSeat)
+                .map(u => view.unitPositions && view.unitPositions.get(u.id))
+                .filter(Boolean);
+            const foeCenter = foeUps.length
+                ? { x: foeUps.reduce((sx, p) => sx + p.x, 0) / foeUps.length, z: foeUps.reduce((sz, p) => sz + p.z, 0) / foeUps.length }
+                : null;
             const whiteMat = view.material('rein-white', '#f4f1e8');
             // The reinforcement stands WITH the fighters — on the same ring the
             // miniatures occupy, in the gaps between them, never down among
@@ -1861,8 +2171,10 @@ const FSView = {
                 if (reinModel) {
                     // The CL0 miniature, every part plain white; a routed token
                     // lies flipped on its side, inert.
-                    const k = area.world ? this.ON_WORLD : 1;
-                    this.placeFactionModel(node, reinModel, { x: pt.x, y: groundY(pt.x, pt.z), z: pt.z }, k, isRouted);
+                    const k = (area.world ? this.ON_WORLD : 1) * reinTune.scale;
+                    const baseYaw = reinTune.yaw * Math.PI / 180;
+                    const reinYaw = isRouted ? 0 : (foeCenter ? Math.atan2(foeCenter.x - pt.x, foeCenter.z - pt.z) + baseYaw : baseYaw);
+                    this.placeFactionModel(node, reinModel, { x: pt.x, y: groundY(pt.x, pt.z), z: pt.z }, k, isRouted, reinYaw);
                     for (let p = 0; p < reinModel.parts.length; p++) {
                         const clone = reinModel.parts[p].clone('fs-rein-part-' + side.id + '-' + i + '-' + p, node, false);
                         if (!clone) continue;

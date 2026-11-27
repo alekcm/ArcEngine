@@ -893,6 +893,32 @@ function handle(ws, msg) {
 //  The static server
 // ---------------------------------------------------------------------------
 const server = http.createServer(async (req, res) => {
+    // The lobby model tuner saves its corrections into the repo through the
+    // local dev server: POST /js/fs/FSModelTuning.json with the merged JSON.
+    // Only from this very machine — a remote preview must not rewrite sources.
+    if (req.method === 'POST' && req.url && req.url.split('?')[0] === '/js/fs/FSModelTuning.json') {
+        const ip = String(req.socket.remoteAddress || '');
+        const local = /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(ip);
+        const fail = (code, msg) => {
+            res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: msg }));
+        };
+        if (!local) return fail(403, 'Запись настроек доступна только локально');
+        try {
+            let body = '';
+            for await (const chunk of req) {
+                body += chunk;
+                if (body.length > 65536) return fail(413, 'too large');
+            }
+            const data = JSON.parse(body);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return fail(400, 'Ожидается объект настроек');
+            fs.writeFileSync(path.join(ROOT, 'js/fs/FSModelTuning.json'), JSON.stringify(data, null, 1) + '\n');
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: true, keys: Object.keys(data).length }));
+        } catch (e) {
+            return fail(400, String(e && e.message || e));
+        }
+    }
     let pathname;
     try {
         pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname);

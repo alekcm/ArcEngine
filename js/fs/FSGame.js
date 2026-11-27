@@ -18,6 +18,7 @@ const FS_TEST_MODES = [
     { id: 'game', icon: 'ui.menu', title: 'Обычная игра', text: 'Сборка галактики с нуля и партия по сети: 2–4 игрока.' },
     { id: 'map', icon: 'ui.card', title: 'Готовая карта', text: 'Галактика уже собрана, 1 на 1: игра начинается с планирования. Вы играете за обоих.' },
     { id: 'battle', icon: 'cube.att', title: 'Тест боя', text: 'Наземный или космический бой: выберите свои отряды и карты в колоде.' },
+    { id: 'models', icon: 'mark.ground', title: 'Настройка моделей', text: 'Поворот передней стороны и размер миниатюр: модели стоят друг против друга, как в бою.' },
 ];
 
 class FSGame {
@@ -31,7 +32,16 @@ class FSGame {
         else FSView.spaceGround(app);
         this.state = null;
         this.view.onModelReady = () => {
-            if (!this.state || this.view.modelRefreshQueued) return;
+            // The lobby tuner's stage loads the same models: a late OBJ arrival
+            // rebuilds the stage too, not only the board of a running game.
+            if (!this.state) {
+                if (this.testMode === 'models' && !this.view.modelRefreshQueued) {
+                    this.view.modelRefreshQueued = true;
+                    setTimeout(() => { this.view.modelRefreshQueued = false; this.applyModelStage(); }, 0);
+                }
+                return;
+            }
+            if (this.view.modelRefreshQueued) return;
             this.view.modelRefreshQueued = true;
             const redraw = () => {
                 this.view.modelRefreshQueued = false;
@@ -78,6 +88,10 @@ class FSGame {
         // The public id of this seat: the room list is matched against it.
         this.publicId = '';
         this.lobby = { code: '', players: [], factions: [], started: false, host: '', start: { ok: false, msg: '' } };
+        // The model tuner of the lobby: which faction/unit is being corrected.
+        this.tuneSel = { faction: '', unit: '' };
+        this.tuneNote = '';
+        FSView.fetchTuning().then(() => this.applyModelStage());
         // The invite links reported by the server (one per LAN address); used
         // for the "for friends" link when this page was opened through localhost.
         this.invites = [];
@@ -273,7 +287,8 @@ class FSGame {
             mode: this.testMode,
             status: this.status,
             battle: this.battleInfo(),
-            onMode: id => { this.testMode = id; this.showLobby(); },
+            tuning: this.testMode === 'models' ? this.tuningInfo() : null,
+            onMode: id => { this.testMode = id; this.applyModelStage(); this.showLobby(); },
             onBattle: patch => { this.onBattle(patch); },
             onStart: () => this.startTest(),
             // «Готов» / «Я ещё не готов»: the flag lives on the server; the list
@@ -331,6 +346,131 @@ class FSGame {
     // The ordinary party is started by the host once everybody is ready. The
     // two test modes are opened by one person who plays both seats: the ready
     // map (the game after the construction) and the battlefield.
+
+    // --- the model tuner (lobby mode «models») --------------------------------
+    //
+    // The OBJ miniatures ship in arbitrary poses: the code turns a model so
+    // that its +Z looks at the enemy — which side of a model that is, the data
+    // never said. This tuner shows every unit of a faction twice, in two rows
+    // facing each other like a battle, and lets the player turn and scale any
+    // model by hand. The corrections layer: FSView.MODEL_TUNING in the repo <
+    // js/fs/FSModelTuning.json (the dev server saves it locally) < the unsaved
+    // draft of this browser.
+
+    /** The faction the tuner corrects right now; the sentinel lines up all of them. */
+    tuneFaction() {
+        const factions = FS_CATALOG.factions.map(f => f.id);
+        if (!this.tuneSel) this.tuneSel = { faction: '', unit: '' };
+        if (this.tuneSel.faction !== '__all__' && !factions.includes(this.tuneSel.faction)) {
+            this.tuneSel.faction = this.faction && factions.includes(this.faction) ? this.faction : factions[0];
+            this.tuneSel.unit = '';
+        }
+        return this.tuneSel.faction;
+    }
+
+    /** The unit under the sliders; the all-factions lineup takes none. */
+    tuneUnit() {
+        const factionId = this.tuneFaction();
+        if (factionId === '__all__') { this.tuneSel.unit = ''; return null; }
+        const faction = FS_CATALOG.faction(factionId);
+        const units = faction ? (faction.units || []) : [];
+        if (!units.some(u => u.id === this.tuneSel.unit)) this.tuneSel.unit = units[0] ? units[0].id : '';
+        return units.find(u => u.id === this.tuneSel.unit) || units[0] || null;
+    }
+
+    /** The payload of the lobby tuner panel. */
+    tuningInfo() {
+        const factionId = this.tuneFaction();
+        const allFactions = factionId === '__all__';
+        const def = this.tuneUnit();
+        const key = def ? FSView.tuningKey(factionId, def.type, def.id) : '';
+        const cur = def ? FSView.tuneFor(factionId, def.type, def.id) : { yaw: 0, scale: 1 };
+        const layers = (typeof FSView.tuneLayers === 'function' && key) ? FSView.tuneLayers(key) : {};
+        const source = layers.local ? 'черновик этого браузера' : layers.file ? 'файл FSModelTuning.json' : layers.code ? 'таблица в коде' : 'по умолчанию';
+        const all = FSView.tuneAll();
+        const entries = Object.keys(all).sort().map(k => {
+            const [fId, kind] = k.split('/');
+            const f = FS_CATALOG.faction(fId);
+            let label = (f ? f.name : fId) + ' · ';
+            if (kind && kind.startsWith('*')) label += kind === '*ship' ? 'общий корабль' : 'общий наземный';
+            else if (f) {
+                const u = (f.units || []).find(u => u.id === kind);
+                label += u ? u.name : kind;
+            } else label += kind;
+            return { key: k, label, yaw: all[k].yaw || 0, scale: all[k].scale || 1,
+                shared: !!(kind && kind.startsWith('*')) };
+        });
+        const write = (patch, announce) => {
+            // Every drag tick writes the draft: localStorage IS the working
+            // copy, the stage reads it live. «Сохранить в файл» bakes it.
+            if (key) FSView.setTuneLocal(key, patch);
+            if (announce) this.tuneNote = 'Сохранено в черновик браузера.';
+            this.applyModelStage();
+        };
+        return {
+            // The sentinel leads the list: the stage of every faction at once,
+            // to weigh the height of the miniatures against each other.
+            factions: [{ id: '__all__', name: 'Все фракции' }, ...FS_CATALOG.factions.map(f => ({ id: f.id, name: f.name }))],
+            faction: factionId,
+            allFactions,
+            units: (!allFactions && factionId) ? (FS_CATALOG.faction(factionId).units || []).map(u => ({
+                id: u.id, name: u.name, type: u.type,
+                shared: !((FSView.FACTION_UNIT_MODELS[factionId] || {})[u.id]),
+            })) : [],
+            unit: def ? def.id : '',
+            key,
+            yaw: cur.yaw,
+            scale: cur.scale,
+            shared: !!(def && key && key.endsWith('*' + def.type)),
+            source,
+            note: this.tuneNote,
+            entries,
+            onFaction: id => { this.tuneSel.faction = id; this.tuneSel.unit = ''; this.applyModelStage(); this.showLobby(); },
+            onUnit: id => { this.tuneSel.unit = id; this.showLobby(); },
+            // Dragging a slider updates only the stage; releasing it refreshes
+            // the panel (rebuilding a slider under the pointer swallows clicks).
+            onPreview: patch => write(patch, false),
+            onChange: patch => { write(patch, true); this.showLobby(); },
+            onReset: k => { FSView.setTuneLocal(k || key, null); this.tuneNote = ''; this.applyModelStage(); this.showLobby(); },
+            onExport: () => this.tuneExport(),
+            onSaveFile: () => this.tuneSaveFile(),
+        };
+    }
+
+    /** The stage reads the tuning layers live — a single rebuild is the preview. */
+    applyModelStage() {
+        if (!this.view || typeof FSView.buildModelStage !== 'function') return;
+        if (this.testMode !== 'models' || this.state) { FSView.clearModelStage(this.view); return; }
+        FSView.buildModelStage(this.app, this.view, this.tuneFaction());
+    }
+
+    /** The export: the whole merged tuning as the file's JSON, into the clipboard. */
+    tuneExport() {
+        const json = JSON.stringify(FSView.tuneAll(), null, 1);
+        this.tuneNote = 'JSON скопирован в буфер обмена — вставьте его в js/fs/FSModelTuning.json и закоммитьте.';
+        if (typeof fsCopyText === 'function') fsCopyText(json).catch(() => {});
+        else if (navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
+        this.showLobby();
+    }
+
+    /** Save straight into the repo through the local dev server. */
+    tuneSaveFile() {
+        const json = JSON.stringify(FSView.tuneAll(), null, 1);
+        fetch('js/fs/FSModelTuning.json', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: json,
+        }).then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            // The file is the new base: the browser draft of the same keys is spent.
+            if (typeof Store !== 'undefined') Store.remove(FSView.TUNE_STORE);
+            return FSView.fetchTuning();
+        }).then(() => {
+            this.tuneNote = 'Сохранено в js/fs/FSModelTuning.json — закоммитьте файл в репозиторий.';
+        }).catch(() => {
+            this.tuneNote = 'Сервер не принял файл (нужен локальный запуск): используйте «Скопировать JSON» и вставьте вручную.';
+        }).finally(() => { this.applyModelStage(); this.showLobby(); });
+    }
 
     battleFaction() {
         return FS_CATALOG.faction(this.faction) || FS_CATALOG.factions[0];
@@ -412,6 +552,9 @@ class FSGame {
 
     // --- the state -------------------------------------------------------------
     onState(view) {
+        // A state arriving ends the lobby: the tuner stage of the mode «models»
+        // must not stand behind a running board.
+        FSView.clearModelStage(this.view);
         const setupKey = view.setup ? [view.setup.stage, view.setup.turn, view.setup.currentSystem].join(':') : '';
         this.setupSubmitting = false;
         if (this.setupKey !== setupKey) {
